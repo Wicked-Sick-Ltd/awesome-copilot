@@ -19,8 +19,9 @@ Before executing any API commands, verify credentials are configured:
 2. If not configured, guide the user through setup:
    a. **Show public IP** — run `python3 namecheap.py public-ip` to display the user's public IP
    b. **Instruct IP whitelisting** — tell the user to go to https://ap.www.namecheap.com/settings/tools/apiaccess/, enable API (select ON), and whitelist the displayed IP
-   c. **Have the user run setup themselves** — ask the user to run `python3 namecheap.py setup` directly **in their own terminal**. The script prompts for the username and reads the API key with a hidden prompt (`getpass`), writes `~/.namecheap-api` with `chmod 600`, and validates the connection. **Never ask the user to paste their API key into the chat, and never log, echo, or display the API key value.** If you cannot run an interactive terminal for the user, instruct them to run `setup` themselves, or to export `NAMECHEAP_API_USER` and `NAMECHEAP_API_KEY` as environment variables in their own shell — rather than collecting the secret via `ask_user`.
-   d. **Confirm** — once the user reports setup succeeded, proceed with DNS operations.
+   c. **Have the user run setup themselves** — ask the user to run `python3 namecheap.py setup` directly **in their own terminal**. The script prompts for the username and reads the API key with a hidden prompt (`getpass`), writes the username to `~/.namecheap-api` with `chmod 600`, validates the connection, and then prints the keychain command the user should run to persist the key. **Never ask the user to paste their API key into the chat, and never log, echo, or display the API key value.** If you cannot run an interactive terminal for the user, instruct them to run `setup` themselves, or to export `NAMECHEAP_API_USER` and `NAMECHEAP_API_KEY` as environment variables in their own shell — rather than collecting the secret via `ask_user`.
+   d. **Store the API key outside of any file** — the script never writes the key to disk. The user stores it in their OS keychain with the command `setup` prints (`security add-generic-password …` on macOS, `secret-tool store …` on Linux); both prompt for the value, so the key never reaches shell history. Where no keychain helper exists (for example Windows), the key is supplied via the `NAMECHEAP_API_KEY` environment variable instead.
+   e. **Confirm** — once the user reports setup succeeded, proceed with DNS operations.
 
 ### DNS Operations
 
@@ -102,7 +103,7 @@ python3 namecheap.py domains.ns.update --domain example.com --nameserver ns1.exa
 
 ## Behavior
 
-- **Always check credentials first.** Before any API operation, verify `~/.namecheap-api` exists and is readable. If not, run the setup flow.
+- **Always check credentials first.** Before any API operation, verify that `~/.namecheap-api` exists and is readable and that the API key is available from the keychain or `NAMECHEAP_API_KEY`. If not, run the setup flow.
 - **Show current records before modifying.** Before adding or removing records, always fetch and display the current DNS records so the user can confirm the change.
 - **Use `ask_user` to confirm destructive changes.** Before removing records or replacing all records with `setHosts`, confirm with the user.
 - **The Namecheap `setHosts` API replaces ALL records.** Never call `domains.dns.setHosts` directly unless you have fetched all existing records first. Use `dns.addHost` and `dns.removeHost` for safe single-record operations — they handle the fetch-modify-write cycle internally.
@@ -111,14 +112,26 @@ python3 namecheap.py domains.ns.update --domain example.com --nameserver ns1.exa
 
 ## Credential Storage
 
-Credentials are stored in `~/.namecheap-api`:
+The API key is never written to disk. Only the username is stored in `~/.namecheap-api`, with `600` permissions (owner read/write only):
 
 ```bash
 NAMECHEAP_API_USER="username"
-NAMECHEAP_API_KEY="api-key-here"
 ```
 
-This file must have `600` permissions (owner read/write only). Alternatively, the script reads credentials from the `NAMECHEAP_API_USER` and `NAMECHEAP_API_KEY` environment variables, which take precedence over the file when both are set.
+The key is resolved in this order:
+
+1. The `NAMECHEAP_API_USER` and `NAMECHEAP_API_KEY` environment variables, which take precedence when both are set.
+2. The OS keychain — `security` (macOS) or `secret-tool` (Linux), under service `namecheap-api` and account `<username>`. Store it with the command `setup` prints; it prompts for the value rather than taking it as an argument:
+
+```bash
+# macOS
+security add-generic-password -U -s namecheap-api -a username
+
+# Linux (libsecret)
+secret-tool store --label='Namecheap API key' service namecheap-api account username
+```
+
+3. A `NAMECHEAP_API_KEY="…"` line left over in `~/.namecheap-api` by an older version of this skill. It still works, but every command warns about it; running `setup` again removes the clear-text key from the file.
 
 ## Supported Record Types
 
