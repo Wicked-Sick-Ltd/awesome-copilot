@@ -6,6 +6,8 @@ reports/
 # macOS system files
 .DS_Store
 *.tmp
+__pycache__/
+*.py[cod]
 
 # Generated files
 /llms.txt

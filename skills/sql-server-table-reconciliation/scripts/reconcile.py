@@ -32,6 +32,21 @@ import pyarrow.compute as pc
 from mssql_python import connect as mssql_connect
 
 
+def quote_identifier(identifier):
+    """Return a SQL Server identifier safely delimited with brackets."""
+    if not isinstance(identifier, str) or not identifier or "\x00" in identifier:
+        raise ValueError("SQL identifiers must be non-empty strings without NUL bytes")
+    return f"[{identifier.replace(']', ']]')}]"
+
+
+def quote_qualified_table(table):
+    """Quote a table name that contains exactly one schema and table component."""
+    parts = table.split(".")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"Expected schema.table, got {table!r}")
+    return ".".join(quote_identifier(part) for part in parts)
+
+
 # --- Connection Setup ---
 def connect(server, database, auth_mode, user=None, password=None):
     """Connect using mssql-python driver.
@@ -151,26 +166,30 @@ def detect_primary_key(conn, table):
 # --- Data Extraction (Arrow) ---
 def extract_table(conn, table, pk_cols, chunk_size=100000):
     """Extract table data as Arrow Table, using Arrow columnar transfer."""
-    pk_order = ", ".join(pk_cols)
-    query = f"SELECT * FROM {table} ORDER BY {pk_order}"
+    quoted_table = quote_qualified_table(table)
+    pk_order = ", ".join(quote_identifier(column) for column in pk_cols)
+    query = f"SELECT * FROM {quoted_table} ORDER BY {pk_order}"
     cur = conn.cursor()
-    cur.execute(query)
+    # Identifiers cannot be bound parameters; every dynamic identifier is bracket-escaped above.
+    cur.execute(query)  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query
     return cur.arrow()
 
 
 # --- Hash Pre-check (for large tables) ---
 def extract_hashes(conn, table, pk_cols, compare_cols):
     """Extract PK + row hash for large table optimization."""
-    pk_select = ", ".join(pk_cols)
-    col_concat = ", ".join(compare_cols)
+    quoted_table = quote_qualified_table(table)
+    pk_select = ", ".join(quote_identifier(column) for column in pk_cols)
+    col_concat = ", ".join(quote_identifier(column) for column in compare_cols)
     query = f"""
     SELECT {pk_select},
            HASHBYTES('SHA2_256', CONCAT_WS('|', {col_concat})) AS row_hash
-    FROM {table}
+    FROM {quoted_table}
     ORDER BY {pk_select}
     """
     cur = conn.cursor()
-    cur.execute(query)
+    # Identifiers cannot be bound parameters; every dynamic identifier is bracket-escaped above.
+    cur.execute(query)  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query
     return cur.arrow()
 
 
