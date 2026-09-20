@@ -5,6 +5,7 @@ import { getCachedEntry } from "./cache.mjs";
 import { mimeForPath } from "./detector.mjs";
 import { isCanonicalHost } from "./security.mjs";
 import { streamZipEntry } from "./zip.mjs";
+import { internalErrorMessage, jsonForScript } from "../shared/security.mjs";
 
 const previewServers = new Map();
 const HTML_INJECTION_SEARCH_BYTES = 64 * 1024;
@@ -40,8 +41,8 @@ function normalizeParentOrigin(value) {
 }
 
 function themeBridgeMarkup(theme, parentOrigin) {
-  const initialTheme = JSON.stringify(theme);
-  const expectedOrigin = JSON.stringify(parentOrigin);
+  const initialTheme = jsonForScript(theme);
+  const expectedOrigin = jsonForScript(parentOrigin);
   return `<script data-copilot-preview-theme>(()=>{const expectedOrigin=${expectedOrigin};const apply=theme=>{if(theme!=="light"&&theme!=="dark")return;const root=document.documentElement;const modeClass=theme+"-mode";const usesPlainMode=root.classList.contains("light")||root.classList.contains("dark");root.dataset.colorMode=theme;root.dataset.theme=theme;root.setAttribute("data-color-scheme",theme);root.setAttribute("data-bs-theme",theme);root.style.colorScheme=theme;root.classList.remove("light-mode","dark-mode");root.classList.add(modeClass);if(usesPlainMode){root.classList.toggle("light",theme==="light");root.classList.toggle("dark",theme==="dark")}try{localStorage.setItem("theme",modeClass)}catch{}};apply(${initialTheme});addEventListener("message",event=>{if(event.source!==window.parent||event.origin!==expectedOrigin||event.data?.type!=="copilot-preview-theme")return;apply(event.data.theme)});})();</script>`;
 }
 
@@ -204,7 +205,7 @@ async function servePreviewRequest(
         "X-Content-Type-Options": "nosniff",
       });
     }
-    res.end(error instanceof Error ? error.message : String(error));
+    res.end(internalErrorMessage());
   }
 }
 

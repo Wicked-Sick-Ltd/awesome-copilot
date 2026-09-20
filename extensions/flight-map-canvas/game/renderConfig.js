@@ -50,9 +50,13 @@ var RenderConfig = (function () {
      */
     function merge(target, source) {
         for (var key in source) {
-            if (!source.hasOwnProperty(key)) continue;
+            if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
             if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-                if (!target[key]) target[key] = {};
+                if (!Object.prototype.hasOwnProperty.call(target, key) ||
+                    !target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+                    target[key] = {};
+                }
                 merge(target[key], source[key]);
             } else {
                 target[key] = source[key];
@@ -113,10 +117,21 @@ var RenderConfig = (function () {
         var keys = path.split('.');
         var obj = config;
         for (var i = 0; i < keys.length - 1; i++) {
-            if (!obj[keys[i]]) obj[keys[i]] = {};
-            obj = obj[keys[i]];
+            var key = keys[i];
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                throw new Error('Unsafe configuration path');
+            }
+            if (!Object.prototype.hasOwnProperty.call(obj, key) ||
+                !obj[key] || typeof obj[key] !== 'object' || Array.isArray(obj[key])) {
+                obj[key] = {};
+            }
+            obj = obj[key];
         }
-        obj[keys[keys.length - 1]] = value;
+        var finalKey = keys[keys.length - 1];
+        if (finalKey === '__proto__' || finalKey === 'constructor' || finalKey === 'prototype') {
+            throw new Error('Unsafe configuration path');
+        }
+        obj[finalKey] = value;
         apply();
         notify(path, value);
     }

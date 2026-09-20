@@ -21,6 +21,7 @@ import { networkInterfaces } from "node:os";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { assembleApng, solidColorPng, encodeRgbaPng } from "./apng.mjs";
 import { encodeQr } from "./qr.mjs";
+import { internalErrorMessage } from "../shared/security.mjs";
 
 const EXT_DIR = fileURLToPath(new URL(".", import.meta.url));
 const WEB_DIR = join(EXT_DIR, "web");
@@ -730,7 +731,8 @@ async function handleRequest(entry, req, res) {
                 return send(res, 200, "application/json", JSON.stringify(info));
             } catch (err) {
                 const status = err instanceof CanvasError ? 400 : 500;
-                return send(res, status, "text/plain", err.message || "Could not start sharing.");
+                const message = err instanceof CanvasError ? err.message : internalErrorMessage();
+                return send(res, status, "text/plain", message);
             }
         }
         if (method === "POST" && path === "/share/stop") {
@@ -751,7 +753,7 @@ async function handleRequest(entry, req, res) {
         // CanvasError is a user-facing validation error (bad frame, size
         // mismatch, nothing to export), not a server fault.
         if (err instanceof CanvasError) return send(res, 400, "text/plain", err.message);
-        return send(res, 500, "text/plain", String(err && err.message ? err.message : err));
+        return send(res, 500, "text/plain", internalErrorMessage());
     }
 }
 
@@ -887,7 +889,7 @@ async function shareRequest(req, res) {
         return send(res, 404, "text/plain", "not found");
     } catch (err) {
         if (err instanceof HttpError) return send(res, err.status, "text/plain", err.message);
-        return send(res, 500, "text/plain", String(err && err.message ? err.message : err));
+        return send(res, 500, "text/plain", internalErrorMessage());
     }
 }
 

@@ -43,6 +43,7 @@ import {
   stopStaticPreviewsForArtifact,
   stopStaticPreviewsForOrigin,
 } from "./preview.mjs";
+import { internalErrorMessage } from "../shared/security.mjs";
 import { ExpiringPromiseCache } from "./memory-cache.mjs";
 import { renderHtml } from "./render.mjs";
 import {
@@ -888,7 +889,10 @@ async function handleRequest(req, res, entry) {
           ? error.status
           : 500;
     sendJson(res, status, {
-      error: error instanceof Error ? error.message : String(error),
+      error:
+        error instanceof HttpError || error instanceof GitHubApiError
+          ? error.message
+          : internalErrorMessage(),
       status,
     });
   }

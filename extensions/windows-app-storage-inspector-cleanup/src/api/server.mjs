@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { renderHtml } from "../ui/renderer.mjs";
 import { assertWindowsPlatform, createWindowsOnlyError, isWindowsPlatform } from "../core/platform.mjs";
+import { publicErrorResponse } from "../../../shared/security.mjs";
 
 const MAX_BODY_BYTES = 1_048_576;
 const GITHUB_MARK = readFileSync(new URL("../../assets/github-mark-16.svg", import.meta.url));
@@ -17,10 +18,8 @@ function sendJson(response, statusCode, value) {
 }
 
 function sendError(response, error) {
-    sendJson(response, error.statusCode ?? 400, {
-        code: error.code ?? "storage_inspector_error",
-        message: error.message ?? String(error),
-    });
+    const { statusCode, body } = publicErrorResponse(error, "storage_inspector_error");
+    sendJson(response, statusCode, body);
 }
 
 async function readJson(request) {
