@@ -27,9 +27,13 @@ var HostBridge = (function () {
     if (api) {
         window.addEventListener('message', function (event) {
             var message = event.data;
-            if (!message || !message.command) return;
+            if (!message || typeof message.command !== 'string') return;
+            // Only dispatch commands explicitly registered through on(): the
+            // command name arrives from an untrusted message, so anything else
+            // (inherited Object.prototype members included) must not be called.
+            if (Object.keys(handlers).indexOf(message.command) === -1) return;
             var fn = handlers[message.command];
-            if (fn) fn(message);
+            if (typeof fn === 'function') fn(message);
         });
     }
 
