@@ -346,12 +346,15 @@ jobs:
         id: create-discussion
         continue-on-error: true
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          REPORT_TITLE: ${{ steps.report.outputs.title }}
+          COMMENT_COUNT: ${{ steps.report.outputs.comment_count }}
         with:
           script: |
             const fs = require('fs');
-            const title = '${{ steps.report.outputs.title }}'.replace(/'/g, "\\'");
+            const title = process.env.REPORT_TITLE || '';
             const body = fs.readFileSync('report-body.md', 'utf8');
-            const commentCount = parseInt('${{ steps.report.outputs.comment_count }}' || '0', 10);
+            const commentCount = parseInt(process.env.COMMENT_COUNT || '0', 10);
 
             // Find the "Skill Quality Reports" category
             const categoriesResult = await github.graphql(`
@@ -420,17 +423,18 @@ jobs:
         if: steps.create-discussion.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
+          REPORT_TITLE: ${{ steps.report.outputs.title }}
+          COMMENT_COUNT: ${{ steps.report.outputs.comment_count }}
         run: |
           # Create label if it doesn't exist (ignore errors if it already exists)
           gh label create "skill-quality" --description "Automated skill quality reports" --color "d4c5f9" 2>/dev/null || true
           ISSUE_URL=$(gh issue create \
-            --title "${{ steps.report.outputs.title }}" \
+            --title "$REPORT_TITLE" \
             --body-file report-body.md \
             --label "skill-quality")
           echo "Created issue: $ISSUE_URL"
 
           # Post overflow detail comments on the issue
-          COMMENT_COUNT=${{ steps.report.outputs.comment_count }}
           for i in $(seq 0 $(( ${COMMENT_COUNT:-0} - 1 ))); do
             if [ -f "report-comment-${i}.md" ]; then
               gh issue comment "$ISSUE_URL" --body-file "report-comment-${i}.md"

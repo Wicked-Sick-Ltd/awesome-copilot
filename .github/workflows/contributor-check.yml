@@ -45,7 +45,7 @@ jobs:
           set +e
           python3 "$RUNNER_TEMP/agt/contributor_check.py" \
             --username "$USERNAME" \
-            --repo "${{ github.repository }}" \
+            --repo "$GITHUB_REPOSITORY" \
             --json > "$RUNNER_TEMP/contributor-check/profile.json" 2>"$RUNNER_TEMP/contributor-check/profile.log"
           status=$?
           set -e
@@ -64,7 +64,7 @@ jobs:
           set +e
           python3 "$RUNNER_TEMP/agt/credential_audit.py" \
             --username "$USERNAME" \
-            --repo "${{ github.repository }}" \
+            --repo "$GITHUB_REPOSITORY" \
             --json > "$RUNNER_TEMP/contributor-check/cred.json" 2>"$RUNNER_TEMP/contributor-check/cred.log"
           status=$?
           set -e
@@ -149,6 +149,9 @@ jobs:
 
       - name: Compute overall risk
         id: overall
+        env:
+          PROFILE_RISK: ${{ steps.results.outputs.profile }}
+          CREDENTIAL_RISK: ${{ steps.results.outputs.credential }}
         run: |
           risk_to_num() {
             case "$1" in
@@ -159,8 +162,8 @@ jobs:
               *) echo 0 ;;
             esac
           }
-          p=$(risk_to_num "${{ steps.results.outputs.profile }}")
-          c=$(risk_to_num "${{ steps.results.outputs.credential }}")
+          p=$(risk_to_num "$PROFILE_RISK")
+          c=$(risk_to_num "$CREDENTIAL_RISK")
           max=$p; [ "$c" -gt "$max" ] && max=$c
           case "$max" in
             3) r="HIGH" ;;
@@ -180,7 +183,7 @@ jobs:
         run: |
           marker="<!-- agt-contributor-check -->"
           comment_ids=$(
-            gh api "repos/${{ github.repository }}/issues/$NUMBER/comments" --paginate \
+            gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --paginate \
               | jq -r --arg marker "$marker" '.[] | select((.user.login // "") == "github-actions[bot]" and ((.body // "") | contains($marker))) | .id'
           )
           comment_id=$(printf "%s\n" "$comment_ids" | sed -n '1p')
@@ -189,7 +192,7 @@ jobs:
             if [ -n "$comment_id" ]; then
               while IFS= read -r id; do
                 [ -z "$id" ] && continue
-                gh api --method DELETE "repos/${{ github.repository }}/issues/comments/$id" \
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
                   || echo "Comment $id could not be deleted; continuing because the comment may have already been removed or changed."
               done <<< "$comment_ids"
             fi
@@ -208,19 +211,19 @@ jobs:
           | Credential audit | $CREDENTIAL_RISK |
 
           Maintainers: please review this contributor before merging.
-          See the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for full details.
+          See the [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) for full details.
           *Automated check powered by [AGT](https://github.com/microsoft/agent-governance-toolkit).*
           EOF
           )
 
           if [ -n "$comment_id" ]; then
-            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/$comment_id" -f body="$body"
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -f body="$body"
             printf "%s\n" "$comment_ids" | sed '1d' | while IFS= read -r id; do
               [ -z "$id" ] && continue
-              gh api --method DELETE "repos/${{ github.repository }}/issues/comments/$id" >/dev/null 2>&1 || true
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" >/dev/null 2>&1 || true
             done
           else
-            gh api --method POST "repos/${{ github.repository }}/issues/$NUMBER/comments" -f body="$body"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -f body="$body"
           fi
 
       - name: Sync risk label
@@ -231,7 +234,7 @@ jobs:
         run: |
           for label in needs-review:MEDIUM needs-review:HIGH; do
             if [ "$label" != "needs-review:$RISK" ]; then
-              gh api --method DELETE "repos/${{ github.repository }}/issues/$NUMBER/labels/$label" >/dev/null 2>&1 || true
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/$NUMBER/labels/$label" >/dev/null 2>&1 || true
             fi
           done
 
@@ -243,21 +246,25 @@ jobs:
             --description "Contributor reputation check flagged $RISK risk" \
             --color "FFA500" --force 2>/dev/null || true
 
-          gh api --method POST "repos/${{ github.repository }}/issues/$NUMBER/labels" \
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/labels" \
             -f labels[]="needs-review:$RISK" >/dev/null
 
       - name: Job summary
         if: always()
+        env:
+          USERNAME: ${{ github.event.issue.user.login }}
+          RISK: ${{ steps.overall.outputs.risk }}
+          PROFILE_RISK: ${{ steps.results.outputs.profile }}
+          CREDENTIAL_RISK: ${{ steps.results.outputs.credential }}
         run: |
-          risk="${{ steps.overall.outputs.risk }}"
-          case "$risk" in HIGH) icon="🔴" ;; MEDIUM) icon="🟡" ;; LOW) icon="✅" ;; *) icon="❓" ;; esac
+          case "$RISK" in HIGH) icon="🔴" ;; MEDIUM) icon="🟡" ;; LOW) icon="✅" ;; *) icon="❓" ;; esac
           {
-            echo "## $icon Contributor Check: \`${{ github.event.issue.user.login }}\`"
+            echo "## $icon Contributor Check: \`$USERNAME\`"
             echo "| Check | Risk |"
             echo "|-------|------|"
-            echo "| Profile | ${{ steps.results.outputs.profile }} |"
-            echo "| Credential | ${{ steps.results.outputs.credential }} |"
-            echo "| **Overall** | **$risk** |"
+            echo "| Profile | $PROFILE_RISK |"
+            echo "| Credential | $CREDENTIAL_RISK |"
+            echo "| **Overall** | **$RISK** |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   pr-check:
@@ -296,7 +303,7 @@ jobs:
           set +e
           python3 "$RUNNER_TEMP/agt/contributor_check.py" \
             --username "$USERNAME" \
-            --repo "${{ github.repository }}" \
+            --repo "$GITHUB_REPOSITORY" \
             --json > "$RUNNER_TEMP/contributor-check/profile.json" 2>"$RUNNER_TEMP/contributor-check/profile.log"
           status=$?
           set -e
@@ -315,7 +322,7 @@ jobs:
           set +e
           python3 "$RUNNER_TEMP/agt/credential_audit.py" \
             --username "$USERNAME" \
-            --repo "${{ github.repository }}" \
+            --repo "$GITHUB_REPOSITORY" \
             --json > "$RUNNER_TEMP/contributor-check/cred.json" 2>"$RUNNER_TEMP/contributor-check/cred.log"
           status=$?
           set -e
@@ -370,6 +377,9 @@ jobs:
 
       - name: Compute overall risk
         id: overall
+        env:
+          PROFILE_RISK: ${{ steps.results.outputs.profile }}
+          CREDENTIAL_RISK: ${{ steps.results.outputs.credential }}
         run: |
           risk_to_num() {
             case "$1" in
@@ -380,8 +390,8 @@ jobs:
               *) echo 0 ;;
             esac
           }
-          p=$(risk_to_num "${{ steps.results.outputs.profile }}")
-          c=$(risk_to_num "${{ steps.results.outputs.credential }}")
+          p=$(risk_to_num "$PROFILE_RISK")
+          c=$(risk_to_num "$CREDENTIAL_RISK")
           max=$p; [ "$c" -gt "$max" ] && max=$c
           case "$max" in
             3) r="HIGH" ;;
@@ -424,16 +434,20 @@ jobs:
 
       - name: Job summary
         if: always()
+        env:
+          USERNAME: ${{ github.event.pull_request.user.login }}
+          RISK: ${{ steps.overall.outputs.risk }}
+          PROFILE_RISK: ${{ steps.results.outputs.profile }}
+          CREDENTIAL_RISK: ${{ steps.results.outputs.credential }}
         run: |
-          risk="${{ steps.overall.outputs.risk }}"
-          case "$risk" in HIGH) icon="🔴" ;; MEDIUM) icon="🟡" ;; LOW) icon="✅" ;; *) icon="❓" ;; esac
+          case "$RISK" in HIGH) icon="🔴" ;; MEDIUM) icon="🟡" ;; LOW) icon="✅" ;; *) icon="❓" ;; esac
           {
-            echo "## $icon Contributor Check: \`${{ github.event.pull_request.user.login }}\`"
+            echo "## $icon Contributor Check: \`$USERNAME\`"
             echo "| Check | Risk |"
             echo "|-------|------|"
-            echo "| Profile | ${{ steps.results.outputs.profile }} |"
-            echo "| Credential | ${{ steps.results.outputs.credential }} |"
-            echo "| **Overall** | **$risk** |"
+            echo "| Profile | $PROFILE_RISK |"
+            echo "| Credential | $CREDENTIAL_RISK |"
+            echo "| **Overall** | **$RISK** |"
             echo ""
             echo "PR label/comment synchronization is handled by the workflow_run writer after PR state is re-fetched."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -26,7 +26,7 @@ jobs:
 
       - name: Collect changed files
         run: |
-          git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" \
+          git diff --name-only --diff-filter=ACMR "origin/${GITHUB_BASE_REF}...HEAD" \
             | awk '!/^(README\.md|docs\/README\.[^/]+\.md)$/' \
             > changed-files.txt
           echo "Changed files:"
@@ -66,8 +66,10 @@ jobs:
           echo "$scan_exit_code" > pr-risk-results/scan-exit-code.txt
 
       - name: Save metadata
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "${{ github.event.pull_request.number }}" > pr-risk-results/pr-number.txt
+          echo "$PR_NUMBER" > pr-risk-results/pr-number.txt
 
       - name: Upload scan artifact
         if: always()
