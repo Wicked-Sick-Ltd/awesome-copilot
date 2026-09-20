@@ -69,3 +69,8 @@ The following instructions are only to be applied when performing a code review.
 - [ ] If `items` is present, each item has `path` and `kind` fields.
 - [ ] The `kind` field value is one of: `prompt`, `agent`, `instruction`, `skill`, or `hook`.
 - [ ] The plugin does not reference non-existent files.
+
+## Shared repository guidance
+
+Read [../AGENTS.md](../AGENTS.md) for the shared contributor and agent instructions.
+Keep the project-specific constraints above in effect.

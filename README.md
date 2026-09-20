@@ -578,3 +578,15 @@ trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
+
+<!-- repository-guidance:begin -->
+## Contributing and agent guidance
+
+- [Contributor guide](CONTRIBUTING.md): development workflow and validation.
+- [Agent instructions](AGENTS.md): shared guidance for Codex and other coding agents.
+- [Security policy](SECURITY.md): private vulnerability reporting.
+
+## Repository license
+
+MIT licensed; see [LICENSE](LICENSE). Preserve third-party notices.
+<!-- repository-guidance:end -->
