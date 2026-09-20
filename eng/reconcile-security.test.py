@@ -16,7 +16,13 @@ def load_reconcile_module():
     mssql_python.connect = lambda _connection_string: None
     sys.modules.setdefault("mssql_python", mssql_python)
 
-    module_path = pathlib.Path(__file__).with_name("reconcile.py")
+    module_path = (
+        pathlib.Path(__file__).parents[1]
+        / "skills"
+        / "sql-server-table-reconciliation"
+        / "scripts"
+        / "reconcile.py"
+    )
     spec = importlib.util.spec_from_file_location("reconcile", module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
