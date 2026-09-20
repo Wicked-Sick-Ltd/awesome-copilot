@@ -178,6 +178,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLUGIN_SLUG: ${{ steps.parse.outputs.plugin-slug }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           result=$(node ./eng/external-plugin-approval.mjs approve "$GITHUB_EVENT_PATH" --file ./plugins/external.json)
           {
@@ -189,8 +191,8 @@ jobs:
           plugin_name=$(node -e "const data = JSON.parse(process.argv[1]); process.stdout.write(data.plugin.name);" "$result")
           action=$(node -e "const data = JSON.parse(process.argv[1]); process.stdout.write(data.action);" "$result")
           source_repo=$(node -e "const data = JSON.parse(process.argv[1]); process.stdout.write(data.plugin.source.repo);" "$result")
-          plugin_slug='${{ steps.parse.outputs.plugin-slug }}'
-          issue_number='${{ github.event.issue.number }}'
+          plugin_slug="$PLUGIN_SLUG"
+          issue_number="$ISSUE_NUMBER"
           branch="automation/external-plugin-approve-${issue_number}-${plugin_slug}"
 
           if [ "$action" = "inserted" ]; then

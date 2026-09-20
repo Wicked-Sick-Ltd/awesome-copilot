@@ -26,7 +26,7 @@ jobs:
         run: |
           # Check for YAML/lock files in workflows/ and any .github/ modifications
           # Allow .github/aw/actions-lock.json which is needed for workflow compilation
-          forbidden=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD -- \
+          forbidden=$(git diff --name-only --diff-filter=ACM "origin/${GITHUB_BASE_REF}...HEAD" -- \
             'workflows/**/*.yml' \
             'workflows/**/*.yaml' \
             'workflows/**/*.lock.yml' \

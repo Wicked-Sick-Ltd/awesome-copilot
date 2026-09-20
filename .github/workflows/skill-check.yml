@@ -64,7 +64,7 @@ jobs:
                 fi
                 ;;
             esac
-          done < <(git diff --name-only -z "origin/${{ github.base_ref }}...HEAD")
+          done < <(git diff --name-only -z "origin/${GITHUB_BASE_REF}...HEAD")
 
           SKILL_COUNT=${#SKILL_DIRS[@]}
           AGENT_COUNT=${#AGENT_FILES[@]}
@@ -142,13 +142,19 @@ jobs:
       # ── Upload results for the commenting workflow ────────────────
       - name: Save metadata
         if: always()
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DETECT_TOTAL: ${{ steps.detect.outputs.total }}
+          SKILL_COUNT: ${{ steps.detect.outputs.skill_count }}
+          AGENT_COUNT: ${{ steps.detect.outputs.agent_count }}
+          CHECK_EXIT_CODE: ${{ steps.check.outputs.exit_code }}
         run: |
           mkdir -p vally-results
-          echo "${{ github.event.pull_request.number }}" > vally-results/pr-number.txt
-          echo "${{ steps.detect.outputs.total }}" > vally-results/total.txt
-          echo "${{ steps.detect.outputs.skill_count }}" > vally-results/skill-count.txt
-          echo "${{ steps.detect.outputs.agent_count }}" > vally-results/agent-count.txt
-          echo "${{ steps.check.outputs.exit_code }}" > vally-results/exit-code.txt
+          echo "$PR_NUMBER" > vally-results/pr-number.txt
+          echo "$DETECT_TOTAL" > vally-results/total.txt
+          echo "$SKILL_COUNT" > vally-results/skill-count.txt
+          echo "$AGENT_COUNT" > vally-results/agent-count.txt
+          echo "$CHECK_EXIT_CODE" > vally-results/exit-code.txt
           if [ -f vally-output.txt ]; then
             cp vally-output.txt vally-results/vally-output.txt
           fi
