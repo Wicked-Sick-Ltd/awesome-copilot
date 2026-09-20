@@ -170,7 +170,8 @@ def extract_table(conn, table, pk_cols, chunk_size=100000):
     pk_order = ", ".join(quote_identifier(column) for column in pk_cols)
     query = f"SELECT * FROM {quoted_table} ORDER BY {pk_order}"
     cur = conn.cursor()
-    cur.execute(query)
+    # Identifiers cannot be bound parameters; every dynamic identifier is bracket-escaped above.
+    cur.execute(query)  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query
     return cur.arrow()
 
 
@@ -187,7 +188,8 @@ def extract_hashes(conn, table, pk_cols, compare_cols):
     ORDER BY {pk_select}
     """
     cur = conn.cursor()
-    cur.execute(query)
+    # Identifiers cannot be bound parameters; every dynamic identifier is bracket-escaped above.
+    cur.execute(query)  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query
     return cur.arrow()
 
 
