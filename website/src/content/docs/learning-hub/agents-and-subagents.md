@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-02
+lastUpdated: 2026-09-20
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -199,6 +199,12 @@ If you share agent files across surfaces, document those differences so users kn
 When an agent delegates work to multiple chats, VS Code's **Agents window** now shows those chats as children of their parent session in the sessions list, so you can see which chats belong together instead of managing a flat list of unrelated sessions. Each chat row shows its own title, status, and pending approvals. A delegated request also includes a source link (for example **Sent by another session**) so you can jump straight back to whichever session or chat initiated it.
 
 This pairs with **improved workspace resolution**: agents can resolve a workspace by project name (for example, "run this in the vscode workspace") in addition to absolute paths, which simplifies prompts that hand off work across multiple repositories.
+
+## Model routing for orchestrated work (VS Code 1.139+)
+
+When you rely on the **Auto** model across many delegated subagent turns, VS Code now exposes an **Optimize for** control alongside the Auto model, with **Efficiency**, **Balance**, and **Intelligence** options for balancing model capability, speed, and cost in Copilot Chat and Copilot SDK agent sessions. This is useful when orchestrating several subagents at once — you can bias routing toward cheaper/faster models for simple worker tasks and reserve higher-capability routing for the coordinator or for steps that need deeper reasoning. Multi-turn context routing was also improved so Auto model selection stays more consistent across a long chain of delegated turns.
+
+The model picker additionally gained separate controls for a model's **Thinking Effort** and, when the model offers it, a longer **Context Size** — useful for tuning subagent workers that process large amounts of delegated context without needing the same reasoning depth as the coordinator.
 
 ## Common questions
 
