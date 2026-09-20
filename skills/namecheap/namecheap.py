@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Namecheap API CLI wrapper for DNS management.
 
-Uses only the Python standard library (no third-party dependencies). Credentials
-are read from ``~/.namecheap-api`` (or env vars) and are never passed on the
-command line, so they cannot leak via ``ps``/shell history.
+Uses only the Python standard library (no third-party dependencies). The API key
+is read from the ``NAMECHEAP_API_KEY`` environment variable or from the OS
+keychain and is never written to disk by this script; ``~/.namecheap-api`` holds
+only the non-secret API username. Credentials are never passed on the command
+line either, so they cannot leak via ``ps``/shell history.
 """
 
 import argparse
@@ -11,7 +13,10 @@ import getpass
 import json
 import os
 import re
+import shlex
+import shutil
 import stat
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -20,6 +25,7 @@ import xml.etree.ElementTree as ET
 
 API_URL = "https://api.namecheap.com/xml.response"
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".namecheap-api")
+KEYCHAIN_SERVICE = "namecheap-api"
 
 # Known multi-part (second-level) public suffixes. Best-effort list, not a full
 # public-suffix database. For unlisted suffixes the domain is split on the last
@@ -75,21 +81,87 @@ class NamecheapError(Exception):
 
 # --- Configuration --------------------------------------------------------
 
+def _read_config_file():
+    """Return the ``KEY`` -> value pairs stored in the config file."""
+    if not os.path.isfile(CONFIG_FILE):
+        return {}
+    with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+        content = fh.read()
+    # File uses shell-style KEY="value" lines for backward compatibility.
+    pattern = re.compile(r'^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$', re.MULTILINE)
+    return {m.group(1): m.group(2) for m in pattern.finditer(content)}
+
+
+def _keychain_commands(api_user):
+    """Return (read_cmd, store_cmd) for the OS keychain, or (None, None)."""
+    if sys.platform == "darwin" and shutil.which("security"):
+        # find-generic-password -w prints only the password; add-generic-password
+        # prompts for it when -w is omitted, keeping the key out of argv.
+        read_cmd = ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"]
+        store_cmd = ["security", "add-generic-password", "-U", "-s", KEYCHAIN_SERVICE]
+    elif shutil.which("secret-tool"):
+        read_cmd = ["secret-tool", "lookup", "service", KEYCHAIN_SERVICE]
+        store_cmd = ["secret-tool", "store", "--label=Namecheap API key",
+                     "service", KEYCHAIN_SERVICE]
+    else:
+        return None, None
+
+    if api_user:
+        account_flag = "-a" if store_cmd[0] == "security" else "account"
+        read_cmd += [account_flag, api_user]
+        store_cmd += [account_flag, api_user]
+    return read_cmd, store_cmd
+
+
+def keychain_get(api_user):
+    """Return the API key from the OS keychain, or None when it is not there."""
+    read_cmd, _ = _keychain_commands(api_user)
+    if not read_cmd:
+        return None
+    try:
+        result = subprocess.run(read_cmd, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def print_keychain_hint(api_user):
+    """Explain how to persist the API key without writing it to a file."""
+    _, store_cmd = _keychain_commands(api_user)
+    if store_cmd:
+        print("Store the API key in your OS keychain. The command below prompts for")
+        print("the value, so the key stays out of your shell history:")
+        print("  " + " ".join(shlex.quote(part) for part in store_cmd))
+        print()
+        print("Afterwards this script reads the key from the keychain automatically.")
+    else:
+        print("No OS keychain helper was found. Export the API key in your shell")
+        print("without echoing it, for example:")
+        print("  read -rs NAMECHEAP_API_KEY && export NAMECHEAP_API_KEY")
+
+
 def load_config():
-    """Return (api_user, api_key), preferring env vars then the config file."""
+    """Return (api_user, api_key) from env vars, the OS keychain, or the config file.
+
+    The API key is never persisted by this script. A key left behind in an older
+    clear-text config file is still honoured, with a warning, so existing setups
+    keep working until ``setup`` migrates them to the keychain.
+    """
     api_user = os.environ.get("NAMECHEAP_API_USER")
     api_key = os.environ.get("NAMECHEAP_API_KEY")
     if api_user and api_key:
         return api_user, api_key
 
-    if os.path.isfile(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
-            content = fh.read()
-        # File uses shell-style KEY="value" lines for backward compatibility.
-        pattern = re.compile(r'^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$', re.MULTILINE)
-        values = {m.group(1): m.group(2) for m in pattern.finditer(content)}
-        api_user = api_user or values.get("NAMECHEAP_API_USER")
-        api_key = api_key or values.get("NAMECHEAP_API_KEY")
+    values = _read_config_file()
+    api_user = api_user or values.get("NAMECHEAP_API_USER")
+    api_key = api_key or keychain_get(api_user)
+
+    if not api_key and values.get("NAMECHEAP_API_KEY"):
+        warn(f"{CONFIG_FILE} still stores the API key in clear text. Run "
+             "'python3 namecheap.py setup' to move it into your OS keychain.")
+        api_key = values["NAMECHEAP_API_KEY"]
 
     return api_user, api_key
 
@@ -99,7 +171,8 @@ def check_credentials():
     if not api_user or not api_key:
         err("Namecheap API credentials not configured.")
         print()
-        print("Run 'python3 namecheap.py setup' to configure your credentials.")
+        print("Run 'python3 namecheap.py setup' to configure your credentials, or")
+        print("export NAMECHEAP_API_USER and NAMECHEAP_API_KEY in your shell.")
         print()
         print("You need:")
         print("  1. Your Namecheap username")
@@ -109,10 +182,10 @@ def check_credentials():
     return api_user, api_key
 
 
-def save_config(api_user, api_key):
+def save_config(api_user):
+    """Persist the API username only; the API key is never written to disk."""
     with open(CONFIG_FILE, "w", encoding="utf-8") as fh:
         fh.write(f'NAMECHEAP_API_USER="{api_user}"\n')
-        fh.write(f'NAMECHEAP_API_KEY="{api_key}"\n')
     os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)  # 600
 
 
@@ -248,8 +321,11 @@ def cmd_setup(_args):
         err("Both username and API key are required.")
         sys.exit(1)
 
-    save_config(api_user, api_key)
-    success(f"Credentials saved to {CONFIG_FILE}")
+    had_clear_text_key = bool(_read_config_file().get("NAMECHEAP_API_KEY"))
+    save_config(api_user)
+    success(f"Username saved to {CONFIG_FILE}")
+    if had_clear_text_key:
+        success("Removed the clear-text API key from that file.")
     print("\nTesting API connection...")
     try:
         # Use the just-entered credentials directly for the validation call.
@@ -263,6 +339,12 @@ def cmd_setup(_args):
         print(f"  2. IP address {public_ip} is whitelisted")
         print("  3. Your API key is correct")
         print(f"  (details: {exc})")
+
+    print()
+    if keychain_get(api_user) == api_key:
+        success("API key already present in your OS keychain — nothing else to do.")
+    else:
+        print_keychain_hint(api_user)
 
 
 def cmd_domains_list(args):
