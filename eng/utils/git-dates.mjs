@@ -5,8 +5,7 @@
  * Uses a single git log command for efficiency.
  */
 
-import { execSync } from "child_process";
-import path from "path";
+import { execFileSync } from "node:child_process";
 
 /**
  * Get the last modification date for all tracked files in specified directories.
@@ -32,7 +31,7 @@ export function getGitFileDates(directories, rootDir) {
       ...directories,
     ];
 
-    const output = execSync(`git ${gitArgs.join(" ")}`, {
+    const output = execFileSync("git", gitArgs, {
       encoding: "utf8",
       cwd: rootDir,
       stdio: ["pipe", "pipe", "pipe"],
@@ -86,8 +85,9 @@ export function getGitFileDates(directories, rootDir) {
  */
 export function getGitFileDate(filePath, rootDir) {
   try {
-    const output = execSync(
-      `git --no-pager log -1 --format="%aI" -- "${filePath}"`,
+    const output = execFileSync(
+      "git",
+      ["--no-pager", "log", "-1", "--format=%aI", "--", filePath],
       {
         encoding: "utf8",
         cwd: rootDir,
