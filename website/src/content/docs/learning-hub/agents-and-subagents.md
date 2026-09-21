@@ -155,6 +155,8 @@ The **complementary model strategy** lets you specify that the rubber-duck agent
 
 Because it runs as a sub-agent layer rather than replacing your primary model, you keep your current session model and context while the rubber-duck analysis runs in the background.
 
+**Broader availability** *(v1.0.87+)*: The rubber-duck agent is now enabled for every model family, not just GPT-powered sessions, and for low-cost-tier session models — so you can use it regardless of which model you've selected. Note that the `/rubber-duck` command is automatically hidden if a model refresh removes its compatible critic model.
+
 > **Note**: This is an experimental feature and may change. Provide feedback via `/feedback` if you find it useful.
 
 ## Orchestration patterns that work well
