@@ -317,6 +317,8 @@ For example, a PostgreSQL server that can't connect because `DATABASE_URL` is no
 
 You can also open the `/mcp` manager while the agent is working to toggle servers on or off mid-turn. Add, edit, delete, and re-auth actions wait until the turn finishes, but enabling or disabling a server takes effect immediately.
 
+**`copilot mcp list` and `copilot mcp get` show the built-in GitHub server** *(v1.0.87+)*: When you're signed in, these CLI commands now report the built-in `github-mcp-server` alongside your other configured servers, instead of it only appearing in the interactive `/mcp` view.
+
 **Toggling servers on and off** (v1.0.66+): From the `/mcp` list view, you can **enable or disable individual MCP servers** without editing your config file. Select a server in the list and toggle it — disabled servers won't start in future sessions and their tools won't be available to agents. This is useful for temporarily disabling a server that's causing slowdowns or errors without removing it from your configuration entirely.
 
 **Common causes and fixes**:
