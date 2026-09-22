@@ -3,7 +3,7 @@ title: 'Creating Effective Skills'
 description: 'Master the art of writing reusable, shareable skill folders that deliver consistent results across your team.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-20
+lastUpdated: 2026-09-22
 estimatedReadingTime: '9 minutes'
 tags:
   - skills
@@ -384,6 +384,8 @@ copilot skill remove my-skill           # remove an installed skill by name
 You can also run `/skill` (or the existing `/skills`) inside an interactive session to see what's loaded. The `copilot skill` subcommand is the recommended way to install skills that aren't packaged inside a plugin.
 
 > **`--project` flag (v1.0.85+, breaking change)**: `copilot skill add --project` replaces the old `copilot plugins install --skill --scope project`, installing the skill at the repository level (shared with your team) instead of the user level. The `--scope` spelling has been removed.
+
+> **Namespaced skills and ignored directories (v1.0.88+)**: Skill discovery now supports namespaced custom skills (so two plugins or directories can each ship a skill with the same short name without colliding) and lets you mark specific skill directories as ignored so they're excluded from discovery entirely.
 
 **Q: How are skills different from prompts?**
 

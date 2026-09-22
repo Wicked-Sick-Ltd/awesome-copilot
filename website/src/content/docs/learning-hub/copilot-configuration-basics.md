@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-20
+lastUpdated: 2026-09-22
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -539,6 +539,8 @@ In the session picker, press **`s`** to cycle the sort order: relevance, last us
 
 With the sidebar open, you can see all running and backgrounded sessions in a split-view panel alongside your active conversation. Sessions are listed with their name, working directory, and running status. Click or keyboard-navigate (arrow keys, **n** to spawn, **x** twice to close) to switch sessions instantly. Use this when you regularly juggle several parallel workstreams and want a persistent view of all your sessions rather than accessing them through the `/resume` picker.
 
+> **Clearer dismiss confirmation (v1.0.88+)**: In the Sessions tab, pressing **x** on a dismissible row now requires **x** again to confirm, and the footer tells you what that second press will do — permanently delete a local session, or just close a server-backed session (leaving its conversation intact on the server). Rows that can't be dismissed no longer show the **x** hint at all.
+
 The `/rewind` command opens a timeline picker that lets you roll back the conversation to any earlier point in history. You can also trigger it by pressing **double-Esc**:
 
 ```
@@ -566,6 +568,8 @@ The `/fork` command (v1.0.45+) copies the current session into a **new independe
 ```
 
 After forking, the new session is immediately active. Both sessions share the same history up to the fork point but accumulate changes independently from that moment forward. Use `/fork` to experiment with a risky refactor without abandoning your current working session. Since v1.0.47, forked sessions display their **origin session** name in the sessions dialog, making it easy to trace which session a fork came from.
+
+> **Fork during an active turn (v1.0.88+)**: You can now run `/fork` while a turn is still in progress — the branch happens immediately instead of requiring you to wait for the current response to finish.
 
 The `/cd` command changes the working directory for the current session. Since v1.0.65, the working directory **persists when you resume a session** — if you restart the CLI and resume, you return to the same directory automatically. Changing directory also triggers discovery of custom agents in the new location, so switching to a different project loads its agents without a restart:
 
@@ -793,6 +797,14 @@ gh copilot --effort high "Refactor the authentication module"
 
 Accepted values are `low`, `medium`, and `high`. You can also set a default via the `effortLevel` config setting.
 
+### Indexed Search
+
+Grep searches in large monorepos use an **indexed search engine** for significantly faster results instead of scanning every file on each query. The index status is visible in the CLI so you know when indexing is active, and it works across platforms — including Windows ReFS volumes — with a reliable fallback to standard ripgrep search if indexing is unavailable.
+
+**Glob filtering and file listings (v1.0.88+)**: Indexed search now supports glob filtering and `--files` listings, so you can narrow a search to a specific file pattern (e.g., `**/*.test.ts`) or list matching files directly, with accurate fallback behavior if the index can't service a particular query.
+
+Indexed search keeps refreshing automatically as files change — including on Linux, where it now recovers gracefully when the OS's native file-watch limit is exhausted (v1.0.87+) — and supports explicit cloud-sync overrides for repositories stored in synced folders (e.g., OneDrive, Dropbox) where native file events may be unreliable. On Windows, index updates no longer leak disk space over long sessions (v1.0.86+).
+
 ### CLI Startup Flags
 
 The `-C <directory>` flag changes the working directory before starting, similar to `git -C` (v1.0.42+). This is useful for scripts or aliases that need to start Copilot CLI in a specific project directory without a separate `cd`:
@@ -905,6 +917,8 @@ echo 'source ~/.copilot-completion.bash' >> ~/.bashrc
 ```
 
 > **Tip**: Reload your shell (`source ~/.bashrc` or open a new terminal) after adding the completion script for changes to take effect.
+
+> **Terminal notifications (v1.0.88+)**: Enable optional OSC 777 terminal notifications so Ghostty and WezTerm sessions can surface a native desktop notification when the agent finishes a turn — useful when you switch away from the terminal during long-running tasks.
 
 ## Common Questions
 
