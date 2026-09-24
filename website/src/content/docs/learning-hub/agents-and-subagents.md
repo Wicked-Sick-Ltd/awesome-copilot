@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-20
+lastUpdated: 2026-09-24
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -207,6 +207,12 @@ This pairs with **improved workspace resolution**: agents can resolve a workspac
 When you rely on the **Auto** model across many delegated subagent turns, VS Code now exposes an **Optimize for** control alongside the Auto model, with **Efficiency**, **Balance**, and **Intelligence** options for balancing model capability, speed, and cost in Copilot Chat and Copilot SDK agent sessions. This is useful when orchestrating several subagents at once — you can bias routing toward cheaper/faster models for simple worker tasks and reserve higher-capability routing for the coordinator or for steps that need deeper reasoning. Multi-turn context routing was also improved so Auto model selection stays more consistent across a long chain of delegated turns.
 
 The model picker additionally gained separate controls for a model's **Thinking Effort** and, when the model offers it, a longer **Context Size** — useful for tuning subagent workers that process large amounts of delegated context without needing the same reasoning depth as the coordinator.
+
+## Managing many delegated sessions (VS Code 1.139+)
+
+Coordinator-and-worker patterns can quickly produce large numbers of sessions and chats. VS Code 1.139 speeds up loading and refreshing large session lists in the Agents window — the sessions list now reads from a lightweight catalog instead of opening every conversation database, which is measurably faster the more sessions you accumulate. A new **Compact View** in the sessions list fits more delegated sessions and chats on screen at once, expanding a row automatically when it needs your input or approval. You can also rename a session or a nested chat directly from the sessions list (double-click the title, or use the **Rename** context menu action), which helps keep a large tree of coordinator and worker sessions identifiable at a glance.
+
+Remote Dev Container support (`setting(chat.agentHost.devContainer.enabled)`) also extends to SSH, Tunnel, and WSL hosts, so a delegated worker agent can build and test inside your project's Dev Container on a remote machine instead of duplicating toolchain setup locally.
 
 ## Common questions
 
