@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-23
+lastUpdated: 2026-09-24
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -473,6 +473,8 @@ The model picker opens in a **full-screen view** with inline reasoning effort ad
 
 When you leave plan mode, the CLI automatically reverts to your session model. This pairing works well with repository model pinning — you can enforce a high-quality model for implementation while allowing a lighter model during exploration and planning.
 
+**Autocomplete model IDs (v1.0.89+)**: The `/model` and `/model plan` argument pickers now autocomplete model IDs as you type, making it faster to jump straight to a specific model without scrolling through the full grouped list.
+
 ### CLI Session Commands
 
 The `/settings` command (v1.0.61+) opens an interactive dialog to browse and edit all user settings in one place. Use it to discover available settings, toggle options, and update values without manually editing your config file:
@@ -690,6 +692,8 @@ Use `/diagnose` when a session is behaving unexpectedly — it inspects session 
 **Worktree switch reliability (v1.0.82+)**: If you start typing a new message while `/worktree` or `/move` is preparing a worktree switch, that message is no longer dropped when the switch completes.
 
 **Steering prompt recall** *(v1.0.87+)*: Consecutive steering prompts sent in the same mode combine into a single pending message. Press **Up** in an empty chat input to recall that pending message back into the composer for editing — including any pasted text and attachments — with a recall hint shown alongside it. **Ctrl+C** stops the running turn instead of removing queued prompts one at a time, while **Ctrl+Q** queued prompts remain separate from steering prompts. Use **Ctrl+P** to browse prompt history without withdrawing pending prompts. This is available for local sessions; prompts already being processed cannot be recalled.
+
+**Take back an unstarted prompt (v1.0.89+)**: Press **Esc Esc** in an empty chat input to pull back a queued prompt whose turn the model hasn't started answering yet, removing it from the conversation so you can edit and resend it (or decide not to send it at all). This complements steering prompt recall by letting you retract a prompt entirely rather than just editing it in place.
 
 The `/ask` command lets you ask a quick question without affecting your conversation history. The current session context is preserved, so you can use it for one-off lookups without derailing an ongoing task. Responses are rendered as full markdown, including tables and formatted links:
 
