@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-24
+lastUpdated: 2026-09-25
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -213,6 +213,12 @@ The model picker additionally gained separate controls for a model's **Thinking 
 Coordinator-and-worker patterns can quickly produce large numbers of sessions and chats. VS Code 1.139 speeds up loading and refreshing large session lists in the Agents window — the sessions list now reads from a lightweight catalog instead of opening every conversation database, which is measurably faster the more sessions you accumulate. A new **Compact View** in the sessions list fits more delegated sessions and chats on screen at once, expanding a row automatically when it needs your input or approval. You can also rename a session or a nested chat directly from the sessions list (double-click the title, or use the **Rename** context menu action), which helps keep a large tree of coordinator and worker sessions identifiable at a glance.
 
 Remote Dev Container support (`setting(chat.agentHost.devContainer.enabled)`) also extends to SSH, Tunnel, and WSL hosts, so a delegated worker agent can build and test inside your project's Dev Container on a remote machine instead of duplicating toolchain setup locally.
+
+## Comparing multiple implementation attempts (VS Code 1.140+)
+
+Instead of delegating a single attempt at a task, use **Run Multiple Agents...** in the Agents window to send the same prompt to several agents at once, each working in its own isolated git worktree. Once every agent finishes, a **judge agent** reviews the resulting implementations and recommends which one to keep — useful when you want to explore a few different approaches to a tricky refactor or bug fix without manually setting up parallel worktrees yourself and comparing the diffs by hand.
+
+This release also clarifies session provenance in the sessions list: chats started outside VS Code (for example, from the CLI or another client) are now labeled **external**, so you can distinguish them at a glance from sessions launched directly in the Agents window. Marking an active session as **Done** now stops it immediately instead of letting it keep consuming tokens in the background.
 
 ## Common questions
 
