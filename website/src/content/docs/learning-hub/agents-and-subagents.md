@@ -214,6 +214,12 @@ Coordinator-and-worker patterns can quickly produce large numbers of sessions an
 
 Remote Dev Container support (`setting(chat.agentHost.devContainer.enabled)`) also extends to SSH, Tunnel, and WSL hosts, so a delegated worker agent can build and test inside your project's Dev Container on a remote machine instead of duplicating toolchain setup locally.
 
+## Comparing parallel attempts and cleaner session bookkeeping (VS Code 1.140+)
+
+Use **Run Multiple Agents...** to send the same prompt to several agents at once, each running in its own isolated worktree, and have a judge agent review the results and recommend the best implementation. This is a fast way to compare candidate approaches — for example, different models or agent configurations — without manually setting up parallel worktrees or reviewing every diff yourself.
+
+A few smaller changes round out delegated-session bookkeeping in 1.140: marking an active agent session as **Done** now actually stops it, instead of letting it keep consuming tokens in the background; sessions started outside VS Code (for example, from the CLI or another tool) are now clearly labeled as **external** in the sessions list, so you can tell at a glance which sessions originated elsewhere; and the cross-posting affordance shows contextual guidance (for example, when a new model becomes available or when work could run in parallel) instead of a generic prompt.
+
 ## Common questions
 
 **Do users always invoke subagents directly?**
