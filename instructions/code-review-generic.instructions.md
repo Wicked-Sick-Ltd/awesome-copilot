@@ -126,11 +126,9 @@ When performing a code review, check for security issues:
 - **Dependency Security**: Check for known vulnerabilities in dependencies
 
 ### Examples
-```java
-// ❌ BAD: SQL injection vulnerability
-String query = "SELECT * FROM users WHERE email = '" + email + "'";
+Flag statement text assembled by concatenating `email` into the query. Require a bound parameter:
 
-// ✅ GOOD: Parameterized query
+```java
 PreparedStatement stmt = conn.prepareStatement(
     "SELECT * FROM users WHERE email = ?"
 );
@@ -253,11 +251,9 @@ An attacker could manipulate the email parameter to execute arbitrary SQL comman
 potentially exposing or deleting all database data.
 
 **Suggested fix:**
-```sql
--- Instead of:
-query = "SELECT * FROM users WHERE email = '" + email + "'"
+Replace the concatenated email predicate with a bound parameter:
 
--- Use:
+```sql
 PreparedStatement stmt = conn.prepareStatement(
     "SELECT * FROM users WHERE email = ?"
 );

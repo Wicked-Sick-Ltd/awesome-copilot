@@ -67,21 +67,32 @@ def identifier_json(names):
     return json.dumps(list(names), ensure_ascii=False)
 
 
-# Static T-SQL: identifiers arrive as bound parameters and are QUOTENAME'd server-side.
+# Static T-SQL. Schema, table, and column lists are bound parameters.
+# Identifiers are QUOTENAME'd server-side. The statement is assembled with
+# CONCAT so Python never formats SQL and T-SQL never uses '+' on SQL text.
 EXTRACT_TABLE_SQL = """
 SET NOCOUNT ON;
 DECLARE @schema sysname = ?;
 DECLARE @table sysname = ?;
 DECLARE @pk_json nvarchar(max) = ?;
 DECLARE @order nvarchar(max);
+DECLARE @quoted_schema nvarchar(258);
+DECLARE @quoted_table nvarchar(258);
 DECLARE @sql nvarchar(max);
 
 SELECT @order = STRING_AGG(QUOTENAME(j.[value]), N', ')
                 WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@pk_json) AS j;
 
-SET @sql = N'SELECT * FROM ' + QUOTENAME(@schema) + N'.' + QUOTENAME(@table)
-         + CASE WHEN @order IS NULL OR @order = N'' THEN N'' ELSE N' ORDER BY ' + @order END;
+SET @quoted_schema = QUOTENAME(@schema);
+SET @quoted_table = QUOTENAME(@table);
+IF @quoted_schema IS NULL OR @quoted_table IS NULL
+    THROW 50000, N'Invalid schema or table identifier.', 1;
+
+SET @sql = CONCAT(N'SELECT * FROM ', @quoted_schema, N'.', @quoted_table);
+IF @order IS NOT NULL AND @order <> N''
+    SET @sql = CONCAT(@sql, N' ORDER BY ', @order);
+
 EXEC sp_executesql @sql;
 """
 
@@ -93,6 +104,8 @@ DECLARE @pk_json nvarchar(max) = ?;
 DECLARE @cols_json nvarchar(max) = ?;
 DECLARE @pk_select nvarchar(max);
 DECLARE @col_concat nvarchar(max);
+DECLARE @quoted_schema nvarchar(258);
+DECLARE @quoted_table nvarchar(258);
 DECLARE @sql nvarchar(max);
 
 SELECT @pk_select = STRING_AGG(QUOTENAME(j.[value]), N', ')
@@ -103,10 +116,19 @@ SELECT @col_concat = STRING_AGG(QUOTENAME(j.[value]), N', ')
                      WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@cols_json) AS j;
 
-SET @sql = N'SELECT ' + @pk_select
-         + N', HASHBYTES(''SHA2_256'', CONCAT_WS(''|'', ' + @col_concat + N')) AS row_hash FROM '
-         + QUOTENAME(@schema) + N'.' + QUOTENAME(@table)
-         + N' ORDER BY ' + @pk_select;
+SET @quoted_schema = QUOTENAME(@schema);
+SET @quoted_table = QUOTENAME(@table);
+IF @quoted_schema IS NULL OR @quoted_table IS NULL
+   OR @pk_select IS NULL OR @pk_select = N''
+   OR @col_concat IS NULL OR @col_concat = N''
+    THROW 50000, N'Invalid identifier list for row-hash extraction.', 1;
+
+SET @sql = CONCAT(
+    N'SELECT ', @pk_select,
+    N', HASHBYTES(''SHA2_256'', CONCAT_WS(''|'', ', @col_concat,
+    N')) AS row_hash FROM ', @quoted_schema, N'.', @quoted_table,
+    N' ORDER BY ', @pk_select
+);
 EXEC sp_executesql @sql;
 """
 

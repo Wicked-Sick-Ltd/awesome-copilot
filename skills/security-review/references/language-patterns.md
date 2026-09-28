@@ -59,8 +59,9 @@ export default function handler(req, res) {
 
 ### Django specific
 ```python
-# Raw SQL
-User.objects.raw(f"SELECT * FROM users WHERE name = '{name}'")  # SQLi
+# Raw SQL: flag calls that interpolate values into the statement text.
+# Safe form passes the value in the params sequence.
+User.objects.raw("SELECT * FROM users WHERE name = %s", [name])
 
 # Missing CSRF
 @csrf_exempt  # Only OK for APIs with token auth
@@ -109,9 +110,11 @@ async def read_file(filename: str):
 
 ### Spring Boot specific
 ```java
-// SQL Injection
-String query = "SELECT * FROM users WHERE name = '" + name + "'";
-jdbcTemplate.query(query, ...);
+// SQL injection: flag statement text assembled from user input.
+// Safe form binds the value.
+PreparedStatement statement = connection.prepareStatement(
+    "SELECT * FROM users WHERE name = ?");
+statement.setString(1, name);
 
 // XXE
 DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
@@ -133,8 +136,10 @@ management.endpoints.web.exposure.include=*  # in application.properties
 ## PHP
 
 ```php
-// Direct user input in queries
-$result = mysql_query("SELECT * FROM users WHERE id = " . $_GET['id']);
+// Direct user input in queries: flag removed mysql_* APIs and any query
+// built by joining request data onto the SQL text.
+$statement = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$statement->execute([$_GET['id']]);
 
 // File inclusion
 include($_GET['page'] . ".php");  // local/remote file inclusion
@@ -160,8 +165,9 @@ unserialize($_COOKIE['data']);  // remote code execution
 // Command injection
 exec.Command("sh", "-c", userInput)
 
-// SQL injection
-db.Query("SELECT * FROM users WHERE name = '" + name + "'")
+// SQL injection: flag Query calls whose statement text includes user data.
+// Safe form uses a placeholder and a named argument.
+db.Query("SELECT * FROM users WHERE name = @name", sql.Named("name", name))
 
 // Path traversal
 filePath := filepath.Join("/uploads/", userInput)  // sanitize userInput first
@@ -181,9 +187,8 @@ go func() {
 ## Ruby on Rails
 
 ```ruby
-# SQL injection (safe alternatives use placeholders)
-User.where("name = '#{params[:name]}'")  # VULNERABLE
-User.where("name = ?", params[:name])   # SAFE
+# SQL injection: flag where() fragments that interpolate params into the SQL text.
+User.where("name = ?", params[:name])
 
 # Mass assignment without strong params
 @user.update(params[:user])  # should be params.require(:user).permit(...)

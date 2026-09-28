@@ -10,18 +10,19 @@ Perform a thorough SQL code review of ${selection} (or entire project if no sele
 ## 🔒 Security Analysis
 
 ### SQL Injection Prevention
-```sql
--- ❌ CRITICAL: SQL Injection vulnerability
-query = "SELECT * FROM users WHERE id = " + userInput;
-query = f"DELETE FROM orders WHERE user_id = {user_id}";
 
--- ✅ SECURE: Parameterized queries
--- PostgreSQL/MySQL
+Flag any statement that splices request data into the SQL text (concatenation, interpolation, or format calls). The review comment should require a bound parameter instead.
+
+```sql
+-- PostgreSQL/MySQL: placeholder, value passed separately
 PREPARE stmt FROM 'SELECT * FROM users WHERE id = ?';
 EXECUTE stmt USING @user_id;
 
 -- SQL Server
 EXEC sp_executesql N'SELECT * FROM users WHERE id = @id', N'@id INT', @id = @user_id;
+
+-- Python DB-API
+-- cursor.execute("DELETE FROM orders WHERE user_id = ?", (user_id,))
 ```
 
 ### Access Control & Permissions

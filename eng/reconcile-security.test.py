@@ -56,6 +56,8 @@ class SqlIdentifierTests(unittest.TestCase):
             self.assertIn("DECLARE @schema sysname = ?;", sql)
             self.assertIn("QUOTENAME(@schema)", sql)
             self.assertIn("QUOTENAME(@table)", sql)
+            self.assertIn("CONCAT(", sql)
+            self.assertNotIn("+", sql)
             self.assertNotRegex(sql, r"\{[a-zA-Z_][a-zA-Z0-9_]*\}")
 
     def test_extract_table_binds_schema_table_and_pk_json(self):

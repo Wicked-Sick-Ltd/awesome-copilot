@@ -58,8 +58,7 @@ Confidence: HIGH / MEDIUM / LOW
 📍 Location:  src/routes/users.js, Line 47
 
 🔍 Vulnerable Code:
-  const query = `SELECT * FROM users WHERE id = ${req.params.id}`;
-  db.execute(query);
+  db.execute(query) where the statement interpolates req.params.id into a user lookup query
 
 ⚠️  Risk:
   An attacker can manipulate the `id` parameter to execute arbitrary
@@ -137,11 +136,7 @@ Patch 1/3: SQL Injection in src/routes/users.js
 ─────────────────────────────────────────────
 
 BEFORE (vulnerable):
-```js
-// Line 47
-const query = `SELECT * FROM users WHERE id = ${req.params.id}`;
-db.execute(query);
-```
+The user-lookup query interpolates `req.params.id` into the statement text before `db.execute`.
 
 AFTER (fixed):
 ```js

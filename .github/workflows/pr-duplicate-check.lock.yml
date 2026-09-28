@@ -469,6 +469,23 @@ jobs:
         env:
           GH_HOST: github.com
           GH_AW_COMPILED_VERSION: v0.85.4
+      # Cache hits only prepend the toolcache directory to PATH. The AWF
+      # harness still executes /usr/local/bin/copilot, which is absent on a
+      # cache hit and fails the agent job with ENOENT.
+      - name: Expose Copilot CLI at /usr/local/bin
+        run: |
+          if [ ! -x /usr/local/bin/copilot ]; then
+            src="$(command -v copilot)"
+            if [ -z "$src" ]; then
+              echo "copilot is not on PATH after install" >&2
+              exit 1
+            fi
+            sudo tee /usr/local/bin/copilot >/dev/null <<EOF
+          #!/usr/bin/env bash
+          exec $(printf '%q' "$src") "\$@"
+          EOF
+            sudo chmod 0755 /usr/local/bin/copilot
+          fi
       - name: Install AWF binary
         run: bash "${RUNNER_TEMP}/gh-aw/actions/install_awf_binary.sh" v0.27.44 --rootless
       - name: Determine automatic lockdown mode for GitHub MCP Server
@@ -1327,6 +1344,23 @@ jobs:
         env:
           GH_HOST: github.com
           GH_AW_COMPILED_VERSION: v0.85.4
+      # Cache hits only prepend the toolcache directory to PATH. The AWF
+      # harness still executes /usr/local/bin/copilot, which is absent on a
+      # cache hit and fails with ENOENT.
+      - name: Expose Copilot CLI at /usr/local/bin
+        run: |
+          if [ ! -x /usr/local/bin/copilot ]; then
+            src="$(command -v copilot)"
+            if [ -z "$src" ]; then
+              echo "copilot is not on PATH after install" >&2
+              exit 1
+            fi
+            sudo tee /usr/local/bin/copilot >/dev/null <<EOF
+          #!/usr/bin/env bash
+          exec $(printf '%q' "$src") "\$@"
+          EOF
+            sudo chmod 0755 /usr/local/bin/copilot
+          fi
       - name: Install AWF binary
         run: bash "${RUNNER_TEMP}/gh-aw/actions/install_awf_binary.sh" v0.27.44
       - name: Execute GitHub Copilot CLI
