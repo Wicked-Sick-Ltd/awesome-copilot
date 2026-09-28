@@ -65,13 +65,11 @@ password_hash = generate_password_hash(password, method='scrypt')
 ```
 
 **A03 - Injection Attacks:**
-```python
-# VULNERABILITY
-query = f"SELECT * FROM users WHERE id = {user_id}"
 
-# SECURE
-query = "SELECT * FROM users WHERE id = %s"
-cursor.execute(query, (user_id,))
+Flag queries that interpolate or concatenate user input into the statement text. Require a bound parameter:
+
+```python
+cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
 ```
 
 ## Step 1.5: OWASP LLM Top 10 (AI Systems)

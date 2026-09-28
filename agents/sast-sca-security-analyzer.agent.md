@@ -315,7 +315,7 @@ Evaluate findings against common policy frameworks. For each applicable policy, 
 - Secrets in `.env` committed or hardcoded → Use of Hardcoded Credentials (CWE-798)
 
 ### Python
-- `cursor.execute(f"SELECT ... {userInput}")` → SQL Injection (CWE-89)
+- `cursor.execute` of a query that interpolates user input → SQL Injection (CWE-89)
 - `subprocess.call(cmd, shell=True)` → OS Command Injection (CWE-78)
 - `pickle.loads(userdata)`, `yaml.load(data)` → Deserialization of Untrusted Data (CWE-502)
 - `hashlib.md5(password)` → Use of Broken Cryptographic Algorithm (CWE-327)
@@ -325,7 +325,7 @@ Evaluate findings against common policy frameworks. For each applicable policy, 
 - LLM prompting with unsanitized user input → Improper Neutralization of Input Used for LLM Prompting (CWE-1427)
 
 ### Java / Kotlin
-- `stmt.executeQuery("SELECT ... " + userInput)` → SQL Injection (CWE-89)
+- `stmt.executeQuery` of SQL concatenated with user input → SQL Injection (CWE-89)
 - `Runtime.exec(userInput)` → OS Command Injection (CWE-78)
 - `ObjectInputStream.readObject()` → Deserialization of Untrusted Data (CWE-502)
 - `MessageDigest.getInstance("MD5")` → Use of Broken Cryptographic Algorithm (CWE-327)

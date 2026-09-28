@@ -16,14 +16,10 @@ Load this during Step 4 of the scan workflow.
 - Stored procedures called with unsanitized input
 
 **Detection signals (all languages):**
-```
-"SELECT ... " + variable
-`SELECT ... ${variable}`
-f"SELECT ... {variable}"
-"SELECT ... %s" % variable   # Only safe with proper driver parameterization
-cursor.execute("... " + input)
-db.raw(`... ${req.params.id}`)
-```
+- SQL text concatenated with a variable
+- Template literals or f-strings that interpolate a variable into a query
+- Percent-operator formatting applied to a SQL string (a placeholder passed as a separate argument is fine)
+- `cursor.execute` / `db.raw` whose statement argument is built from user input
 
 **Safe patterns (parameterized):**
 ```js

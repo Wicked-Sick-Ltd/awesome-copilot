@@ -130,12 +130,9 @@ Use `<apex:form>` for all postback actions — the platform injects a CSRF token
 
 ### 3.3 SOQL Injection Prevention in Controllers
 
-```apex
-// ❌ NEVER
-String soql = 'SELECT Id FROM Account WHERE Name = \'' + ApexPages.currentPage().getParameters().get('name') + '\'';
-List<Account> results = Database.query(soql);
+Do not concatenate page parameters into a dynamic SOQL string. Read the parameter, then bind it:
 
-// ✅ ALWAYS — bind variable
+```apex
 String nameParam = ApexPages.currentPage().getParameters().get('name');
 List<Account> results = [SELECT Id FROM Account WHERE Name = :nameParam];
 ```

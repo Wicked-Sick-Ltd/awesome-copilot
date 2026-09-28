@@ -40,11 +40,9 @@ Comprehensive security rules for web application development. Every anti-pattern
 - **Detection**: `\$\{.*\}.*(?:SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)`
 - **OWASP**: A05
 
-```typescript
-// BAD
-const unsafeResult = await db.query(`SELECT * FROM users WHERE id = ${userId}`);
+Flag query calls that interpolate `userId` into the statement text. Require a bound parameter:
 
-// GOOD — parameterized query
+```typescript
 const safeResult = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
 ```
 

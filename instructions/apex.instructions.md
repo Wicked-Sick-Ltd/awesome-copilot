@@ -197,7 +197,7 @@ public class AccountService {
 - Avoid `SELECT *` - always specify required fields.
 - Use relationship queries to minimize the number of SOQL queries.
 - Order queries by indexed fields when possible.
-- **Always use `String.escapeSingleQuotes()`** when using user input in SOQL queries to prevent SOQL injection attacks.
+- **Bind user input in SOQL** (`:variable` or `Database.queryWithBinds`). Do not concatenate request data into the query text.
 - **Check query selectivity** - Aim for >10% selectivity (filters reduce results to <10% of total records).
 - Use **Query Plan** to verify query efficiency and index usage.
 - Test queries with realistic data volumes to ensure performance.
@@ -215,12 +215,11 @@ List<Account> accounts = [
 // Good Example - LIMIT 1 for single record
 Account account = [SELECT Id, Name FROM Account WHERE Name = 'Acme' LIMIT 1];
 
-// Good Example - escapeSingleQuotes() to prevent SOQL injection
-String searchTerm = String.escapeSingleQuotes(userInput);
-List<Account> accounts = Database.query('SELECT Id, Name FROM Account WHERE Name LIKE \'%' + searchTerm + '%\'');
-
-// Bad Example - Direct user input without escaping (SECURITY RISK)
-List<Account> accounts = Database.query('SELECT Id, Name FROM Account WHERE Name LIKE \'%' + userInput + '%\'');
+// Bind the LIKE pattern. Do not concatenate user input into the SOQL text.
+String likeValue = '%' + userInput + '%';
+List<Account> accounts = [
+    SELECT Id, Name FROM Account WHERE Name LIKE :likeValue
+];
 
 // Good Example - Selective query with indexed fields (high selectivity)
 List<Account> accounts = [

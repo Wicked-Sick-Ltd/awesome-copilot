@@ -878,12 +878,15 @@ function createUserWithUniqueEmail(userData) {
     var context = getContext();
     var container = context.getCollection();
     
-    // Check if email already exists
-    var query = `SELECT * FROM c WHERE c.email = "${userData.email}"`;
+    // Check if email already exists. Bind the value; do not interpolate it.
+    var querySpec = {
+        query: "SELECT * FROM c WHERE c.email = @email",
+        parameters: [{ name: "@email", value: userData.email }]
+    };
     
     var isAccepted = container.queryDocuments(
         container.getSelfLink(),
-        query,
+        querySpec,
         function(err, documents) {
             if (err) throw new Error('Error querying documents: ' + err.message);
             

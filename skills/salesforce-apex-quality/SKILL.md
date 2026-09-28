@@ -67,17 +67,24 @@ Rule: any Apex method callable from a UI component, REST endpoint, or `@Invocabl
 
 ## Step 4 — SOQL Injection Prevention
 
+Reject any dynamic SOQL that splices user input into the statement text. Bind the value:
+
 ```apex
-// ❌ NEVER — concatenates user input into SOQL string
-String soql = 'SELECT Id FROM Account WHERE Name = \'' + userInput + '\'';
+List<Account> rows = [SELECT Id FROM Account WHERE Name = :userInput];
+```
 
-// ✅ ALWAYS — bind variable
-String soql = [SELECT Id FROM Account WHERE Name = :userInput];
+Field names cannot be bound. Choose a static query from an allowlist, and still bind the comparison value:
 
-// ✅ For dynamic SOQL with user-controlled field names — validate against a whitelist
-Set<String> allowedFields = new Set<String>{'Name', 'Industry', 'AnnualRevenue'};
-if (!allowedFields.contains(userInput)) {
-    throw new IllegalArgumentException('Field not permitted: ' + userInput);
+```apex
+List<Account> rows;
+if (fieldName == 'Name') {
+    rows = [SELECT Id FROM Account WHERE Name = :userInput];
+} else if (fieldName == 'Industry') {
+    rows = [SELECT Id FROM Account WHERE Industry = :userInput];
+} else if (fieldName == 'AnnualRevenue') {
+    rows = [SELECT Id FROM Account WHERE AnnualRevenue = :userInput];
+} else {
+    throw new IllegalArgumentException('Field not permitted');
 }
 ```
 
@@ -152,7 +159,7 @@ private class AccountServiceTest {
 | Class missing sharing declaration | Add `with sharing` (or document why `without sharing`) |
 | `escape="false"` on user data (VF) | Remove — auto-escaping enforces XSS prevention |
 | Empty `catch` block | Add logging and appropriate re-throw or error handling |
-| String-concatenated SOQL with user input | Replace with bind variable or whitelist validation |
+| String-concatenated SOQL with user input | Replace with a bind variable or a static allowlisted query |
 | Test with no assertion | Add a meaningful `Assert.*` call |
 | `System.assert` / `System.assertEquals` style | Upgrade to `Assert.isTrue` / `Assert.areEqual` |
 | Hardcoded record ID (`'001...'`) | Replace with queried or inserted test record ID |
