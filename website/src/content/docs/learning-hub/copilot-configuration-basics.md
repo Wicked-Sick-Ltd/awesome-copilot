@@ -645,6 +645,8 @@ The `/delegate` command creates a **delegate PR** — a pull request that the co
 
 This is useful when you want to hand off a task to the coding agent on a specific branch — for example, backporting a fix to an older release branch or targeting a long-lived feature branch for automated work.
 
+> **PR templates honored automatically (v1.0.89+)**: When the CLI creates a pull request (via `/pr`, `/delegate`, or `/fleet`), it now follows any repository pull request template, preserving its required sections and checklist structure instead of generating a freeform description. Keep your `.github/PULL_REQUEST_TEMPLATE.md` (or `.github/PULL_REQUEST_TEMPLATE/` folder) up to date to ensure agent-authored PRs match your team's review conventions.
+
 The `/share html` command exports the current session — including conversation history and any research reports — as a **self-contained interactive HTML file**:
 
 ```
@@ -652,6 +654,8 @@ The `/share html` command exports the current session — including conversation
 ```
 
 The exported file contains everything needed to view the session without a network connection and can be shared with teammates or stored for later reference. This complements `/share` (which shares via URL) for cases where an offline or attached format is preferred.
+
+> **Session and memory import (v1.0.85+)**: New import commands accept the semantic JSONL interchange format, letting you bring session transcripts or memory records generated outside the CLI (or exported from another tool) back into a Copilot CLI session for reference or continuation.
 
 The `/chronicle` command opens an interactive timeline of everything the agent has done in the current session. It shows file changes, tool calls, and conversation turns in chronological order, letting you review the full arc of the session at a glance:
 
