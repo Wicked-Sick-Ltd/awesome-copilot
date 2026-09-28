@@ -146,6 +146,8 @@ When you work on a file matching the pattern, Copilot incorporates that instruct
 
 *(v1.0.66+)* Copilot CLI supports **@-style imports** in instruction files, AGENTS.md, and CLAUDE.md. Use a bare `@path/to/file.md` reference to embed the content of another file at that point:
 
+> **Claude Code rule files (v1.0.89+)**: Copilot CLI also reads markdown files under `.claude/rules/` as custom instructions, alongside `AGENTS.md`, `copilot-instructions.md`, and `CLAUDE.md`. If your repository already maintains rule files for Claude Code, Copilot CLI picks them up automatically without requiring a separate `.instructions.md` copy.
+
 ```markdown
 ---
 description: 'Full TypeScript standards for this project'
