@@ -78,9 +78,19 @@ jobs:
             local worktree_dir="$2"
             local publish_ref="$3"
 
-            git fetch origin "${branch}"
-            marketplace_base_sha="$(git rev-parse "origin/${branch}")"
-            git worktree add --force --detach "${worktree_dir}" "origin/${branch}"
+            # The distribution branch is created on the first successful publish.
+            # git fetch fails with exit 128 when that ref does not exist yet.
+            if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+              git fetch origin "${branch}"
+              marketplace_base_sha="$(git rev-parse "origin/${branch}")"
+              git worktree add --force --detach "${worktree_dir}" "origin/${branch}"
+            else
+              echo "Remote branch ${branch} does not exist; creating it from the publish snapshot."
+              marketplace_base_sha=""
+              git worktree add --force --detach "${worktree_dir}" HEAD
+              git -C "${worktree_dir}" checkout --orphan "publish-new-${branch}"
+              git -C "${worktree_dir}" rm -rf . >/dev/null 2>&1 || true
+            fi
 
             rsync -a --delete \
               --exclude '.git' \
@@ -98,12 +108,14 @@ jobs:
 
           publish_branch "${MARKETPLACE_BRANCH}" "${marketplace_worktree_dir}" "${marketplace_publish_ref}"
 
-          git fetch origin "${MARKETPLACE_BRANCH}"
-          current_marketplace_tip="$(git rev-parse "origin/${MARKETPLACE_BRANCH}")"
-          if [[ "${current_marketplace_tip}" != "${marketplace_base_sha}" ]]; then
-            echo "Remote branch tip changed: ${MARKETPLACE_BRANCH} expected ${marketplace_base_sha}, got ${current_marketplace_tip}"
-            echo "Concurrent branch update detected during publish. Please rerun the publish workflow."
-            exit 1
+          if [[ -n "${marketplace_base_sha}" ]]; then
+            git fetch origin "${MARKETPLACE_BRANCH}"
+            current_marketplace_tip="$(git rev-parse "origin/${MARKETPLACE_BRANCH}")"
+            if [[ "${current_marketplace_tip}" != "${marketplace_base_sha}" ]]; then
+              echo "Remote branch tip changed: ${MARKETPLACE_BRANCH} expected ${marketplace_base_sha}, got ${current_marketplace_tip}"
+              echo "Concurrent branch update detected during publish. Please rerun the publish workflow."
+              exit 1
+            fi
           fi
 
           git push origin --atomic \
