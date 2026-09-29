@@ -269,6 +269,8 @@ copilot --plugin-dir /path/to/my-plugin
 
 Plugins loaded this way appear in `/plugin list` under a separate **External Plugins** section, clearly distinguished from marketplace-installed plugins. This is useful for testing local plugins in development or loading private plugins that aren't published to any marketplace.
 
+> **Enable/disable direct plugin installs (v1.0.89+)**: Plugins installed directly (not via a marketplace) can now be enabled and disabled like any other plugin. A direct install previously recorded as disabled now correctly stops loading, and you can re-enable it with `copilot plugin enable`.
+
 ### Where Plugins Are Stored
 
 - **Marketplace plugins**: `~/.copilot/installed-plugins/MARKETPLACE/PLUGIN-NAME/`

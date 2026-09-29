@@ -159,6 +159,10 @@ Because it runs as a sub-agent layer rather than replacing your primary model, y
 
 > **Note**: This is an experimental feature and may change. Provide feedback via `/feedback` if you find it useful.
 
+### Context management for agents and subagents (v1.0.85+)
+
+Run `/settings` and opt in to **context management tools** to let orchestrator agents and their subagents actively manage their own context windows during long delegated runs — for example, summarising or trimming earlier tool output before it crowds out room for new work. This is particularly useful for `/fleet`-style sessions that spawn many subagents in sequence, since each subagent otherwise accumulates its own context independently and can run out of room on long chains of delegated turns.
+
 ## Orchestration patterns that work well
 
 ### Coordinator and worker
