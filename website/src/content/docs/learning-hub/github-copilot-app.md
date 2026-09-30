@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-23
+lastUpdated: 2026-09-30
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -114,6 +114,18 @@ Agent Merge also understands **stacked pull requests**: it shows a stack summary
 ### Requesting Code Reviews
 
 From the app, you can request a Copilot code review on a pull request—and re-request a review even from reviewers who already responded—without leaving the session. This keeps the review loop inside the same workspace where the change was made.
+
+> **Reply in review threads (v1.1.24+)**: The agent can now reply inside an existing inline pull request review thread without resolving it, so follow-up discussion on a specific line of code stays attached to that thread instead of becoming a new top-level comment.
+
+### Retrying Agent Responses
+
+**Retry** *(v1.1.24+)* lets you resend the same request with a different model, reasoning effort, or context tier directly from an agent response, without retyping your prompt. This is useful when a response comes back lower quality than expected, or when you want to compare how a stronger (or cheaper) model handles the same task.
+
+### Searching Your Prompt History
+
+Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer for searching and reusing your previous prompts across all sessions—handy for reusing a well-tuned prompt without hunting back through old conversations.
+
+> **Voice dictation is generally available (v1.1.24+)**: Voice dictation is no longer experimental and is now turned on by default, so you can dictate prompts without enabling it manually first.
 
 ## Who is the Copilot app for?
 
