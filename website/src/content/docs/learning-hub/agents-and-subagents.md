@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-24
+lastUpdated: 2026-10-01
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -223,6 +223,20 @@ Remote Dev Container support (`setting(chat.agentHost.devContainer.enabled)`) al
 Use **Run Multiple Agents...** to send the same prompt to several agents at once, each running in its own isolated worktree, and have a judge agent review the results and recommend the best implementation. This is a fast way to compare candidate approaches — for example, different models or agent configurations — without manually setting up parallel worktrees or reviewing every diff yourself.
 
 A few smaller changes round out delegated-session bookkeeping in 1.140: marking an active agent session as **Done** now actually stops it, instead of letting it keep consuming tokens in the background; sessions started outside VS Code (for example, from the CLI or another tool) are now clearly labeled as **external** in the sessions list, so you can tell at a glance which sessions originated elsewhere; and the cross-posting affordance shows contextual guidance (for example, when a new model becomes available or when work could run in parallel) instead of a generic prompt.
+
+## Delegating to remote agent hosts and multi-folder sessions (VS Code 1.140+, Experimental)
+
+VS Code 1.140 adds two experimental features that extend delegation beyond a single local worktree:
+
+**Delegate tasks to remote agent hosts**: Enable `setting(chat.remoteAgentHostsEnabled)` and `setting(chat.remoteSessions.tools.enabled)` in the Agents window to let your agent delegate work to connected remote agent hosts without you picking a host from a picker each time. New built-in tools let an agent discover hosts and capacities with `list_agent_hosts`, start a session with `create_remote_session` (specifying a host directly, or letting automatic placement match an operating system, memory, and CPU requirement), check status with `get_remote_session`, and send follow-ups or results back to the originating chat with `send_remote_message`. Keep the coordinating Agents window open for messages to flow — remote agents report back through `send_remote_message`, and their final answers are not forwarded automatically.
+
+**Multi-folder sessions**: Previously, every chat in a multi-chat session shared the same folder and checkout, which made it hard to coordinate truly independent subagent work. With multi-folder sessions enabled (`setting(chat.agentHost.copilotAgent.multiRootEnabled)` for the Copilot harness, with equivalent settings for Claude and Codex), each chat in a session can use its own folder or worktree without changes leaking between chats — useful for implementing a feature across repositories, or comparing approaches in separate worktrees of the same repository with independent branches and pull requests.
+
+Both features are off by default and require enabling the setting(s) directly in your user-scoped `settings.json`, since they are not yet exposed in the Settings editor.
+
+## Research Preview: HydraFusion model orchestration (VS Code 1.140+)
+
+[HydraFusion](https://github.blog/ai-and-ml/github-copilot/project-hydrafusion-frontier-quality-via-multi-model-orchestration/) is an adaptive model-orchestration system you can select from the model picker (when preview features are enabled) instead of manually delegating to a single model. Rather than running every turn through one chosen model, HydraFusion dynamically chooses the models and workflow per task: it can solve with one model, escalate to a stronger model if needed, or have a second model critique and revise the first model's result. This is conceptually related to subagent orchestration — both trade a single monolithic execution for a more specialized, multi-pass approach — but HydraFusion operates across models for a single task rather than across tasks for multiple delegated subagents.
 
 ## Common questions
 

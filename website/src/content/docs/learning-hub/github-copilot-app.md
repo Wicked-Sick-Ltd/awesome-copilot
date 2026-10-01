@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-23
+lastUpdated: 2026-10-01
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -97,6 +97,16 @@ For a hands-on guide to building canvases with `/create-canvas`, see [Working wi
 - Create, edit, or remove your own **personal skills** directly in the app, without hand-authoring a `SKILL.md` file
 
 This makes Customize a good starting point if you want to extend the app's capabilities but don't need the full `copilot plugin` CLI workflow described in [Installing and Using Plugins](../installing-and-using-plugins/).
+
+### Retrying and Searching Past Prompts
+
+> **Retry agent responses (v1.1.24+)**: Use the new **Retry** action on an agent response to resend the same request with a different model, reasoning effort, or context tier — without retyping your prompt. This is useful when a response falls short and you want to try a more capable model or a different reasoning level for just that turn.
+
+> **Search past prompts (v1.1.24+)**: Press **Ctrl+R** (**Cmd+R** on macOS) to open a focused composer that searches and reuses your previous prompts across all sessions, so you don't have to scroll back through session history to find a prompt you want to send again.
+
+> **Voice dictation is generally available (v1.1.24+)**: Voice dictation is no longer experimental and is turned on by default, with the mic button available directly in the composer.
+
+> **Reply inside inline PR review threads (v1.1.24+)**: The agent can now reply inside an existing inline pull request review thread without resolving it, keeping the conversation attached to the relevant line of code instead of starting a new top-level comment.
 
 ### Agent Merge
 

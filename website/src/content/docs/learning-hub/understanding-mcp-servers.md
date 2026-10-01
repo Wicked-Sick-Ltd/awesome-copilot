@@ -3,7 +3,7 @@ title: 'Understanding MCP Servers'
 description: 'Learn how Model Context Protocol servers extend GitHub Copilot with access to external tools, databases, and APIs.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-08-28
+lastUpdated: 2026-10-01
 estimatedReadingTime: '8 minutes'
 tags:
   - mcp
@@ -93,6 +93,8 @@ Example `.mcp.json` or `.vscode/mcp.json`:
 ```
 
 > **Protocol update (v1.0.81+)**: GitHub Copilot CLI, the SDK, IDE integrations, and in-memory clients now support the **MCP 2026-07-28 specification**, keeping compatibility current with the latest Model Context Protocol servers as they adopt the new spec revision.
+
+> **Add servers from a guided flow (VS Code 1.140+)**: Use the **MCP: Add Server** command to add a server to a portable configuration file without hand-editing JSON. Choose **Copilot Global** to save it to `$COPILOT_HOME/mcp-config.json` (or `~/.copilot/mcp-config.json` when `COPILOT_HOME` is unset) so the same server is available across compatible Copilot tools, or choose workspace-root `.mcp.json` to save it alongside your repository for shared, repo-scoped configuration. Both destinations supersede the older, tool-specific user settings and `.vscode/mcp.json` locations, which still work but are considered deprecated for new configurations.
 
 ### Installing MCP Servers from the Registry
 
@@ -212,6 +214,7 @@ Some MCP servers require authentication to connect to protected resources. GitHu
 - **Microsoft Entra ID (Azure AD)**: MCP servers that authenticate via Microsoft Entra ID are fully supported. Once you complete the initial login, the CLI caches the authentication and **will not show the consent screen on subsequent connections** — you authenticate once per session rather than every time the server reconnects.
 - **API keys via environment variables**: Pass secrets through the `env` field in the MCP server configuration (see examples above). Never hardcode credentials in `.mcp.json`.
 - **`${input:variableName}` prompts**: VS Code will prompt for these values at runtime, keeping secrets out of committed files.
+- **Scoping your GitHub account auth** *(v1.0.90+)*: By default, your signed-in GitHub account credentials are available to any configured MCP server. Start the CLI with `--mcp-github-auth` to restrict that GitHub auth to only the MCP server origins you explicitly approve — useful when you add third-party or less-trusted MCP servers alongside the official GitHub MCP server.
 
 > **Tip**: If your MCP server uses OAuth with Dynamic Client Registration but hosts its authorization metadata at a non-standard URL (as some enterprise servers like Atlassian Rovo do), Copilot CLI handles this automatically.
 
