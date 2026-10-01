@@ -3,7 +3,7 @@ title: 'GitHub Copilot Terminology Glossary'
 description: 'A quick reference guide defining common GitHub Copilot and platform-specific terms.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-02
+lastUpdated: 2026-10-01
 estimatedReadingTime: '8 minutes'
 tags:
   - glossary
@@ -276,6 +276,24 @@ tools: ['codebase', 'terminalCommand', 'github']
 ```
 
 **Related terms**: [MCP](#mcp-model-context-protocol), [Built-in Tool](#built-in-tool), [Agent](#agent)
+
+---
+
+### Agent Host
+
+A dedicated background process, based on the Agent Host Protocol (AHP), that runs an agent session independently of any single VS Code window. Because the session lives in the agent host rather than inside one editor process, you can connect to the same running session from multiple VS Code windows, or from a remote machine.
+
+**Related terms**: [Copilot Harness](#copilot-harness)
+
+---
+
+### Copilot Harness
+
+The VS Code agent harness (v1.140+) powered by the Copilot SDK, selectable from the harness picker in the chat input. It gives VS Code agent sessions the same underlying behavior and capabilities as other Copilot products, including the GitHub Copilot app and Copilot CLI, and runs inside an [Agent Host](#agent-host) so sessions can be shared across windows.
+
+**When to use**: When you want VS Code's agent behavior to match the Copilot app or Copilot CLI exactly, rather than relying on an editor-specific implementation.
+
+**Related terms**: [Agent Host](#agent-host)
 
 ---
 
