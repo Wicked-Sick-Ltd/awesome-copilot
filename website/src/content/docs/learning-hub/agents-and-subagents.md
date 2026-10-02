@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-24
+lastUpdated: 2026-09-30
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -199,6 +199,20 @@ That means you should think about delegation features in product-specific terms:
 - **GitHub.com coding agent / cloud agent**: supports custom agents, but some VS Code-specific frontmatter is intentionally ignored
 
 If you share agent files across surfaces, document those differences so users know which behaviors are portable and which are editor-specific.
+
+## Running worker agents in Dev Containers and with Codex (VS Code 1.138+)
+
+`setting(chat.agentHost.devContainer.enabled)` lets a subagent run inside a local folder's Dev Container instead of your local machine, so a worker task uses the project's configured toolchain and dependencies rather than whatever happens to be installed locally. When enabled, folders with a supported Dev Container configuration show a **Use Dev Container** action in the folder menu; Docker must be installed on your machine. (Remote hosts — SSH, Tunnel, and WSL — gained the same Dev Container support in VS Code 1.139, covered below.)
+
+The agent host's **Codex** harness was also expanded: you can choose between a GitHub Copilot subscription or a ChatGPT subscription for Codex-backed models, continue the same Codex session across the ChatGPT app and VS Code, reuse ChatGPT computer-use setup to interact with desktop apps, and give Codex access to the full set of VS Code tools (built-in, extension, and MCP) — useful if you want to delegate a subtask to Codex specifically rather than your default agent.
+
+Separately, the Claude and Codex agents rely on an SDK that VS Code downloads on first use; the download prompt now appears consistently whenever the SDK is missing, instead of only during signed-out account setup.
+
+## Creating pull requests directly from agent sessions (VS Code 1.138+)
+
+**Setting**: `setting(chat.agentMerge.enabled)` (experimental, for Agent Merge only)
+
+Once a coordinator or worker session in the Agents window has produced changes, you can create the pull request from the same form used to review and edit the generated title and description, choose draft status, and configure merge options — without leaving the session. This complements the Copilot app's [Agent Merge](../github-copilot-app/#agent-merge) feature for teams that prefer to stay in VS Code for the whole delegated workflow.
 
 ## Tracking delegated work in VS Code (v1.136+)
 
