@@ -3,7 +3,7 @@ title: 'Understanding MCP Servers'
 description: 'Learn how Model Context Protocol servers extend GitHub Copilot with access to external tools, databases, and APIs.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-08-28
+lastUpdated: 2026-10-04
 estimatedReadingTime: '8 minutes'
 tags:
   - mcp
@@ -214,6 +214,8 @@ Some MCP servers require authentication to connect to protected resources. GitHu
 - **`${input:variableName}` prompts**: VS Code will prompt for these values at runtime, keeping secrets out of committed files.
 
 > **Tip**: If your MCP server uses OAuth with Dynamic Client Registration but hosts its authorization metadata at a non-standard URL (as some enterprise servers like Atlassian Rovo do), Copilot CLI handles this automatically.
+
+> **Scoping GitHub account auth to approved origins (v1.0.90+)**: The `--mcp-github-auth` startup flag restricts your signed-in GitHub account credentials so they are only shared with MCP servers whose origin you've explicitly approved, instead of being available to every configured MCP server by default.
 
 ## How Agents Use MCP Tools
 
