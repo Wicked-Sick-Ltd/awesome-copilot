@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-24
+lastUpdated: 2026-10-07
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -441,6 +441,16 @@ CLI settings use **camelCase** naming. Key settings added in recent releases:
 > **Config sidebar (v1.0.85+)**: Run `/config` to open a sidebar configuration screen without leaving your session, instead of editing `config.json` by hand or hunting through individual slash commands.
 
 > **Vim mode (v1.0.85+)**: Turn on modal editing in the composer with `/vim`, or set `editorMode` to `vim` in your configuration. The current mode (insert or normal) is shown while you type, matching the modal editing experience from Vim.
+
+> **`copilot config` subcommands (v1.0.92+)**: Manage settings directly from the shell without opening a session — `copilot config list` shows all current settings, `copilot config get <key>` reads a single value, `copilot config set <key> <value>` writes one, and `copilot config remove <key>` deletes it. This is useful for scripting CLI setup in CI or onboarding automation.
+
+> **Breaking change — settings file split (v1.0.93+)**: User-level settings are now read exclusively from `~/.copilot/settings.json`. Any user-setting keys still present in `~/.copilot/config.json` are silently ignored. If you previously stored personal preferences such as `editorMode` or `defaultMode` directly in `config.json`, move them to `settings.json`.
+
+> **Pre-conversation environment picker (v1.0.92+)**: Press **Ctrl+E** before starting a conversation to switch between running the session locally and running it in the cloud, without leaving the CLI.
+
+> **MCP config changes apply live (v1.0.92+)**: Edits to MCP server configuration now take effect between turns — you no longer need to restart the session for added, removed, or updated MCP servers to be picked up.
+
+> **Enterprise network boundary (v1.0.93+)**: Organizations can set `permissions.limitTo` to enforce managed-domain boundaries for all outbound network requests the CLI makes, restricting agents and MCP servers to an approved allowlist of hosts.
 
 In addition to the main config file, GitHub Copilot CLI reads two optional per-project files for repository-specific overrides:
 
