@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-30
+lastUpdated: 2026-10-06
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -237,6 +237,20 @@ Remote Dev Container support (`setting(chat.agentHost.devContainer.enabled)`) al
 Use **Run Multiple Agents...** to send the same prompt to several agents at once, each running in its own isolated worktree, and have a judge agent review the results and recommend the best implementation. This is a fast way to compare candidate approaches — for example, different models or agent configurations — without manually setting up parallel worktrees or reviewing every diff yourself.
 
 A few smaller changes round out delegated-session bookkeeping in 1.140: marking an active agent session as **Done** now actually stops it, instead of letting it keep consuming tokens in the background; sessions started outside VS Code (for example, from the CLI or another tool) are now clearly labeled as **external** in the sessions list, so you can tell at a glance which sessions originated elsewhere; and the cross-posting affordance shows contextual guidance (for example, when a new model becomes available or when work could run in parallel) instead of a generic prompt.
+
+## The Copilot harness and multi-folder sessions (VS Code 1.140+)
+
+VS Code 1.140 introduced the **Copilot harness**, a new default option in the chat input's harness picker. It's powered by the Copilot SDK, so delegation behavior (how subagents are launched, tracked, and reported back to the coordinator) is now consistent across VS Code, the standalone GitHub Copilot app, and Copilot CLI. The harness runs in a dedicated **agent host** process based on the **Agent Host Protocol (AHP)**, which means you can connect to the same running agent session from multiple VS Code windows instead of being tied to the window that started it.
+
+This release also added **multi-folder sessions (Experimental)** — `setting(chat.agentHost.copilotAgent.multiRootEnabled)` (plus equivalent settings for the Claude and Codex agent hosts). Previously, every chat in a multi-chat session shared the same folder and checkout; now each coordinator or worker chat can use its own folder or worktree without changes leaking between them. This is useful for delegation patterns that span repositories (ask a worker chat to implement a change in a second repository while the coordinator stays in the first) or that compare worktree-isolated approaches to the same repository side by side. Related to this, **Archive chats in a session** lets you select **Mark as Done** on a single finished peer chat without ending the rest of the session — handy when a worker has completed its task but the coordinator (or other workers) are still active.
+
+For orchestration-heavy workflows, `setting(chat.agentHost.agentOrchestrationLimits)` raises the process-wide limits for agent-created sessions, chats, inter-session messages, and recursive session creation, so large coordinator/worker trees are less likely to stall before the work finishes.
+
+Eligible users with preview features enabled may also see **HydraFusion** (Research Preview) in the model picker — an adaptive model-orchestration system that chooses the model and workflow per task, escalating to a stronger model or having a second model critique and revise a result when it improves quality.
+
+## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
+
+An experimental **Run and Compare Agents...** action in the Agents window extends the 1.140 "Run Multiple Agents" idea: it runs the same prompt across several agents in isolated worktrees and surfaces a side-by-side comparison so you can pick the best implementation before merging. A new **Chat: Clean Up Agent Worktrees** command helps you review and remove worktrees left behind by delegated sessions that are no longer active, reducing manual `git worktree` bookkeeping after heavy delegation.
 
 ## Common questions
 
