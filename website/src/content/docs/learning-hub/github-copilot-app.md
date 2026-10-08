@@ -137,6 +137,18 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 
 > **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
 
+### Resuming Coordinator Agents and Viewing Richer Media
+
+> **Resume interrupted coordinator agents (v1.1.27+)**: You can now resume an interrupted **coordinator agent** and its child sessions directly from the sidebar, without leaving your current conversation — useful when a multi-agent task gets interrupted and you want to pick it back up without manually reconnecting each child session.
+
+> **Images and file edits in remote sessions (v1.1.27+)**: Remote agent sessions now show images and file edits returned by tool calls directly in the conversation, including expandable diffs for edited files, instead of requiring a separate view to inspect what changed.
+
+> **Video attachments (v1.1.27+)**: Video attachments now appear alongside images in the conversation's media grid and the Library's All Files list, with preview and playback support, and can be added to the composer via `@` file mentions.
+
+> **Version history for artifacts (v1.1.27+)**: The artifact editor now tracks **version history**, so you can view and preview previous versions of an edited artifact instead of only seeing the latest state.
+
+> **Discard file changes from the diff view (v1.1.27+)**: You can now discard a file's changes directly from the diff view, with a confirmation dialog before restoring it — a quicker path than reverting changes manually.
+
 ## Who is the Copilot app for?
 
 The Copilot app isn't a replacement for existing Copilot experiences—it's another tool in the toolbox. Here's who it serves best:
