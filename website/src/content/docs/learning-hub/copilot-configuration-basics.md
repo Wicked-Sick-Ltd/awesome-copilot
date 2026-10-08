@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-24
+lastUpdated: 2026-10-06
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -794,6 +794,12 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **Session-scoped read-only directory approvals (v1.0.90+)**: Path access prompts now let you grant **read-only access to a directory for the rest of the session**, instead of only choosing between a one-off approval and a persistent read/write grant. This gives you a middle ground when an agent needs to browse a directory it hasn't touched before but shouldn't be allowed to write there. `/list-dirs` shows exact-path grants (including those created for missing paths without granting the parent directory), and `/reset-allowed-tools` clears them.
 
 > **Complete read-only shell pipelines reviewed automatically (v1.0.91+)**: Shell pipelines that are complete, statically analyzable, and entirely read-only can now go through automatic execution-evidence review instead of requiring a manual approval prompt. Incomplete or unbound pipelines (for example, ones using command substitution the CLI can't fully analyze ahead of time) still require explicit approval.
+
+> **`copilot config` subcommands (v1.0.92+)**: Manage settings directly from the command line with `copilot config list`, `copilot config get <key>`, `copilot config set <key> <value>`, and `copilot config remove <key>` — useful for scripting configuration changes or auditing settings without opening `/config` or editing `config.json` by hand.
+
+> **Pre-conversation environment picker (v1.0.92+)**: Press **Ctrl+E** before starting a conversation to choose whether the session runs locally or in a connected cloud environment, instead of having to specify `--connect` or launch a separate remote session.
+
+> **Enterprise network boundary enforcement (v1.0.93+)**: Enterprise administrators can set `permissions.limitTo` to enforce managed-domain boundaries for the CLI's outbound network requests, restricting agent sessions to an approved set of destinations regardless of per-user configuration.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
