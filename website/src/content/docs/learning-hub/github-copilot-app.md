@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-07
+lastUpdated: 2026-10-06
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -129,13 +129,13 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 
 ### Child Chats and In-Session Terminal Snippets
 
-> **Nested child chats (v1.1.26+)**: Any chat can now start a child chat that appears nested beneath its parent in the sidebar, with its own transcript, notifications, and plan review — useful for branching off a side investigation without losing the thread of the original conversation.
+> **Child chats (v1.1.26+)**: A chat can now start its own **child chat**, nested beneath it in the sidebar with its own transcript, notifications, and plan review — useful for breaking off a focused sub-task without losing the parent conversation's context or cluttering it with unrelated back-and-forth.
 
-> **Run code snippets in the session terminal (v1.1.26+)**: Bash and PowerShell code blocks in a conversation can be run directly in that session's terminal (reusing an existing shell when available), instead of copying them out to a separate terminal window.
+> **Run code snippets in the session terminal (v1.1.26+)**: Bash and PowerShell code blocks in a conversation can now be run directly in that session's terminal (reusing an existing shell when one is available), instead of copying the snippet out to run it elsewhere.
 
-> **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer.
+> **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer, as an alternative to the file picker.
 
-> **Set tool permissions from the composer (v1.1.26+)**: Choose tool permissions directly from the composer's mode menu, in addition to the existing `/permissions` slash command.
+> **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
 
 ## Who is the Copilot app for?
 

@@ -442,15 +442,9 @@ CLI settings use **camelCase** naming. Key settings added in recent releases:
 
 > **Vim mode (v1.0.85+)**: Turn on modal editing in the composer with `/vim`, or set `editorMode` to `vim` in your configuration. The current mode (insert or normal) is shown while you type, matching the modal editing experience from Vim.
 
-> **`copilot config` subcommands (v1.0.92+)**: Manage settings directly from the shell without opening a session — `copilot config list` shows all current settings, `copilot config get <key>` reads a single value, `copilot config set <key> <value>` writes one, and `copilot config remove <key>` deletes it. This is useful for scripting CLI setup in CI or onboarding automation.
-
 > **Breaking change — settings file split (v1.0.93+)**: User-level settings are now read exclusively from `~/.copilot/settings.json`. Any user-setting keys still present in `~/.copilot/config.json` are silently ignored. If you previously stored personal preferences such as `editorMode` or `defaultMode` directly in `config.json`, move them to `settings.json`.
 
-> **Pre-conversation environment picker (v1.0.92+)**: Press **Ctrl+E** before starting a conversation to switch between running the session locally and running it in the cloud, without leaving the CLI.
-
 > **MCP config changes apply live (v1.0.92+)**: Edits to MCP server configuration now take effect between turns — you no longer need to restart the session for added, removed, or updated MCP servers to be picked up.
-
-> **Enterprise network boundary (v1.0.93+)**: Organizations can set `permissions.limitTo` to enforce managed-domain boundaries for all outbound network requests the CLI makes, restricting agents and MCP servers to an approved allowlist of hosts.
 
 In addition to the main config file, GitHub Copilot CLI reads two optional per-project files for repository-specific overrides:
 
@@ -804,6 +798,12 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **Session-scoped read-only directory approvals (v1.0.90+)**: Path access prompts now let you grant **read-only access to a directory for the rest of the session**, instead of only choosing between a one-off approval and a persistent read/write grant. This gives you a middle ground when an agent needs to browse a directory it hasn't touched before but shouldn't be allowed to write there. `/list-dirs` shows exact-path grants (including those created for missing paths without granting the parent directory), and `/reset-allowed-tools` clears them.
 
 > **Complete read-only shell pipelines reviewed automatically (v1.0.91+)**: Shell pipelines that are complete, statically analyzable, and entirely read-only can now go through automatic execution-evidence review instead of requiring a manual approval prompt. Incomplete or unbound pipelines (for example, ones using command substitution the CLI can't fully analyze ahead of time) still require explicit approval.
+
+> **`copilot config` subcommands (v1.0.92+)**: Manage settings directly from the command line with `copilot config list`, `copilot config get <key>`, `copilot config set <key> <value>`, and `copilot config remove <key>` — useful for scripting configuration changes or auditing settings without opening `/config` or editing `config.json` by hand.
+
+> **Pre-conversation environment picker (v1.0.92+)**: Press **Ctrl+E** before starting a conversation to choose whether the session runs locally or in a connected cloud environment, instead of having to specify `--connect` or launch a separate remote session.
+
+> **Enterprise network boundary enforcement (v1.0.93+)**: Enterprise administrators can set `permissions.limitTo` to enforce managed-domain boundaries for the CLI's outbound network requests, restricting agent sessions to an approved set of destinations regardless of per-user configuration.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
