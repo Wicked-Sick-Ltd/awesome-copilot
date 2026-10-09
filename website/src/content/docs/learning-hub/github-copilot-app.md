@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-01
+lastUpdated: 2026-10-06
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -98,16 +98,6 @@ For a hands-on guide to building canvases with `/create-canvas`, see [Working wi
 
 This makes Customize a good starting point if you want to extend the app's capabilities but don't need the full `copilot plugin` CLI workflow described in [Installing and Using Plugins](../installing-and-using-plugins/).
 
-### Retrying and Searching Past Prompts
-
-> **Retry agent responses (v1.1.24+)**: Use the new **Retry** action on an agent response to resend the same request with a different model, reasoning effort, or context tier — without retyping your prompt. This is useful when a response falls short and you want to try a more capable model or a different reasoning level for just that turn.
-
-> **Search past prompts (v1.1.24+)**: Press **Ctrl+R** (**Cmd+R** on macOS) to open a focused composer that searches and reuses your previous prompts across all sessions, so you don't have to scroll back through session history to find a prompt you want to send again.
-
-> **Voice dictation is generally available (v1.1.24+)**: Voice dictation is no longer experimental and is turned on by default, with the mic button available directly in the composer.
-
-> **Reply inside inline PR review threads (v1.1.24+)**: The agent can now reply inside an existing inline pull request review thread without resolving it, keeping the conversation attached to the relevant line of code instead of starting a new top-level comment.
-
 ### Agent Merge
 
 **Agent Merge** is a feature that can carry your pull requests through the entire workflow:
@@ -124,6 +114,28 @@ Agent Merge also understands **stacked pull requests**: it shows a stack summary
 ### Requesting Code Reviews
 
 From the app, you can request a Copilot code review on a pull request—and re-request a review even from reviewers who already responded—without leaving the session. This keeps the review loop inside the same workspace where the change was made.
+
+> **Reply in review threads (v1.1.24+)**: The agent can now reply inside an existing inline pull request review thread without resolving it, so follow-up discussion on a specific line of code stays attached to that thread instead of becoming a new top-level comment.
+
+### Retrying Agent Responses
+
+**Retry** *(v1.1.24+)* lets you resend the same request with a different model, reasoning effort, or context tier directly from an agent response, without retyping your prompt. This is useful when a response comes back lower quality than expected, or when you want to compare how a stronger (or cheaper) model handles the same task.
+
+### Searching Your Prompt History
+
+Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer for searching and reusing your previous prompts across all sessions—handy for reusing a well-tuned prompt without hunting back through old conversations.
+
+> **Voice dictation is generally available (v1.1.24+)**: Voice dictation is no longer experimental and is now turned on by default, so you can dictate prompts without enabling it manually first.
+
+### Child Chats and In-Session Terminal Snippets
+
+> **Child chats (v1.1.26+)**: A chat can now start its own **child chat**, nested beneath it in the sidebar with its own transcript, notifications, and plan review — useful for breaking off a focused sub-task without losing the parent conversation's context or cluttering it with unrelated back-and-forth.
+
+> **Run code snippets in the session terminal (v1.1.26+)**: Bash and PowerShell code blocks in a conversation can now be run directly in that session's terminal (reusing an existing shell when one is available), instead of copying the snippet out to run it elsewhere.
+
+> **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer, as an alternative to the file picker.
+
+> **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
 
 ## Who is the Copilot app for?
 

@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-01
+lastUpdated: 2026-10-06
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -200,6 +200,20 @@ That means you should think about delegation features in product-specific terms:
 
 If you share agent files across surfaces, document those differences so users know which behaviors are portable and which are editor-specific.
 
+## Running worker agents in Dev Containers and with Codex (VS Code 1.138+)
+
+`setting(chat.agentHost.devContainer.enabled)` lets a subagent run inside a local folder's Dev Container instead of your local machine, so a worker task uses the project's configured toolchain and dependencies rather than whatever happens to be installed locally. When enabled, folders with a supported Dev Container configuration show a **Use Dev Container** action in the folder menu; Docker must be installed on your machine. (Remote hosts — SSH, Tunnel, and WSL — gained the same Dev Container support in VS Code 1.139, covered below.)
+
+The agent host's **Codex** harness was also expanded: you can choose between a GitHub Copilot subscription or a ChatGPT subscription for Codex-backed models, continue the same Codex session across the ChatGPT app and VS Code, reuse ChatGPT computer-use setup to interact with desktop apps, and give Codex access to the full set of VS Code tools (built-in, extension, and MCP) — useful if you want to delegate a subtask to Codex specifically rather than your default agent.
+
+Separately, the Claude and Codex agents rely on an SDK that VS Code downloads on first use; the download prompt now appears consistently whenever the SDK is missing, instead of only during signed-out account setup.
+
+## Creating pull requests directly from agent sessions (VS Code 1.138+)
+
+**Setting**: `setting(chat.agentMerge.enabled)` (experimental, for Agent Merge only)
+
+Once a coordinator or worker session in the Agents window has produced changes, you can create the pull request from the same form used to review and edit the generated title and description, choose draft status, and configure merge options — without leaving the session. This complements the Copilot app's [Agent Merge](../github-copilot-app/#agent-merge) feature for teams that prefer to stay in VS Code for the whole delegated workflow.
+
 ## Tracking delegated work in VS Code (v1.136+)
 
 When an agent delegates work to multiple chats, VS Code's **Agents window** now shows those chats as children of their parent session in the sessions list, so you can see which chats belong together instead of managing a flat list of unrelated sessions. Each chat row shows its own title, status, and pending approvals. A delegated request also includes a source link (for example **Sent by another session**) so you can jump straight back to whichever session or chat initiated it.
@@ -224,19 +238,25 @@ Use **Run Multiple Agents...** to send the same prompt to several agents at once
 
 A few smaller changes round out delegated-session bookkeeping in 1.140: marking an active agent session as **Done** now actually stops it, instead of letting it keep consuming tokens in the background; sessions started outside VS Code (for example, from the CLI or another tool) are now clearly labeled as **external** in the sessions list, so you can tell at a glance which sessions originated elsewhere; and the cross-posting affordance shows contextual guidance (for example, when a new model becomes available or when work could run in parallel) instead of a generic prompt.
 
-## Delegating to remote agent hosts and multi-folder sessions (VS Code 1.140+, Experimental)
+## The Copilot harness and multi-folder sessions (VS Code 1.140+)
 
-VS Code 1.140 adds two experimental features that extend delegation beyond a single local worktree:
+VS Code 1.140 introduced the **Copilot harness**, a new default option in the chat input's harness picker. It's powered by the Copilot SDK, so delegation behavior (how subagents are launched, tracked, and reported back to the coordinator) is now consistent across VS Code, the standalone GitHub Copilot app, and Copilot CLI. The harness runs in a dedicated **agent host** process based on the **Agent Host Protocol (AHP)**, which means you can connect to the same running agent session from multiple VS Code windows instead of being tied to the window that started it.
 
-**Delegate tasks to remote agent hosts**: Enable `setting(chat.remoteAgentHostsEnabled)` and `setting(chat.remoteSessions.tools.enabled)` in the Agents window to let your agent delegate work to connected remote agent hosts without you picking a host from a picker each time. New built-in tools let an agent discover hosts and capacities with `list_agent_hosts`, start a session with `create_remote_session` (specifying a host directly, or letting automatic placement match an operating system, memory, and CPU requirement), check status with `get_remote_session`, and send follow-ups or results back to the originating chat with `send_remote_message`. Keep the coordinating Agents window open for messages to flow — remote agents report back through `send_remote_message`, and their final answers are not forwarded automatically.
+This release also added **multi-folder sessions (Experimental)** — `setting(chat.agentHost.copilotAgent.multiRootEnabled)` (plus equivalent settings for the Claude and Codex agent hosts). Previously, every chat in a multi-chat session shared the same folder and checkout; now each coordinator or worker chat can use its own folder or worktree without changes leaking between them. This is useful for delegation patterns that span repositories (ask a worker chat to implement a change in a second repository while the coordinator stays in the first) or that compare worktree-isolated approaches to the same repository side by side. Related to this, **Archive chats in a session** lets you select **Mark as Done** on a single finished peer chat without ending the rest of the session — handy when a worker has completed its task but the coordinator (or other workers) are still active.
 
-**Multi-folder sessions**: Previously, every chat in a multi-chat session shared the same folder and checkout, which made it hard to coordinate truly independent subagent work. With multi-folder sessions enabled (`setting(chat.agentHost.copilotAgent.multiRootEnabled)` for the Copilot harness, with equivalent settings for Claude and Codex), each chat in a session can use its own folder or worktree without changes leaking between chats — useful for implementing a feature across repositories, or comparing approaches in separate worktrees of the same repository with independent branches and pull requests.
+For orchestration-heavy workflows, `setting(chat.agentHost.agentOrchestrationLimits)` raises the process-wide limits for agent-created sessions, chats, inter-session messages, and recursive session creation, so large coordinator/worker trees are less likely to stall before the work finishes.
 
-Both features are off by default and require enabling the setting(s) directly in your user-scoped `settings.json`, since they are not yet exposed in the Settings editor.
+Eligible users with preview features enabled may also see [**HydraFusion**](https://github.blog/ai-and-ml/github-copilot/project-hydrafusion-frontier-quality-via-multi-model-orchestration/) (Research Preview) in the model picker — an adaptive model-orchestration system that chooses the model and workflow per task, escalating to a stronger model or having a second model critique and revise a result when it improves quality.
 
-## Research Preview: HydraFusion model orchestration (VS Code 1.140+)
+## Delegating to remote agent hosts (VS Code 1.140+, Experimental)
 
-[HydraFusion](https://github.blog/ai-and-ml/github-copilot/project-hydrafusion-frontier-quality-via-multi-model-orchestration/) is an adaptive model-orchestration system you can select from the model picker (when preview features are enabled) instead of manually delegating to a single model. Rather than running every turn through one chosen model, HydraFusion dynamically chooses the models and workflow per task: it can solve with one model, escalate to a stronger model if needed, or have a second model critique and revise the first model's result. This is conceptually related to subagent orchestration — both trade a single monolithic execution for a more specialized, multi-pass approach — but HydraFusion operates across models for a single task rather than across tasks for multiple delegated subagents.
+Enable `setting(chat.remoteAgentHostsEnabled)` and `setting(chat.remoteSessions.tools.enabled)` in the Agents window to let your agent delegate work to connected remote agent hosts without you picking a host from a picker each time. New built-in tools let an agent discover hosts and capacities with `list_agent_hosts`, start a session with `create_remote_session` (specifying a host directly, or letting automatic placement match an operating system, memory, and CPU requirement), check status with `get_remote_session`, and send follow-ups or results back to the originating chat with `send_remote_message`. Keep the coordinating Agents window open for messages to flow — remote agents report back through `send_remote_message`, and their final answers are not forwarded automatically.
+
+This feature is off by default and requires enabling the settings directly in your user-scoped `settings.json`, since they are not yet exposed in the Settings editor.
+
+## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
+
+An experimental **Run and Compare Agents...** action in the Agents window extends the 1.140 "Run Multiple Agents" idea: it runs the same prompt across several agents in isolated worktrees and surfaces a side-by-side comparison so you can pick the best implementation before merging. A new **Chat: Clean Up Agent Worktrees** command helps you review and remove worktrees left behind by delegated sessions that are no longer active, reducing manual `git worktree` bookkeeping after heavy delegation.
 
 ## Common questions
 

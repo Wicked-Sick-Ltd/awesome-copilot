@@ -214,9 +214,10 @@ Some MCP servers require authentication to connect to protected resources. GitHu
 - **Microsoft Entra ID (Azure AD)**: MCP servers that authenticate via Microsoft Entra ID are fully supported. Once you complete the initial login, the CLI caches the authentication and **will not show the consent screen on subsequent connections** — you authenticate once per session rather than every time the server reconnects.
 - **API keys via environment variables**: Pass secrets through the `env` field in the MCP server configuration (see examples above). Never hardcode credentials in `.mcp.json`.
 - **`${input:variableName}` prompts**: VS Code will prompt for these values at runtime, keeping secrets out of committed files.
-- **Scoping your GitHub account auth** *(v1.0.90+)*: By default, your signed-in GitHub account credentials are available to any configured MCP server. Start the CLI with `--mcp-github-auth` to restrict that GitHub auth to only the MCP server origins you explicitly approve — useful when you add third-party or less-trusted MCP servers alongside the official GitHub MCP server.
 
 > **Tip**: If your MCP server uses OAuth with Dynamic Client Registration but hosts its authorization metadata at a non-standard URL (as some enterprise servers like Atlassian Rovo do), Copilot CLI handles this automatically.
+
+> **Scope GitHub auth to approved MCP origins (v1.0.90+)**: Use `--mcp-github-auth` to restrict your signed-in GitHub account credentials so they're only shared with MCP servers whose origins you've explicitly approved, instead of being available to every configured MCP server. This reduces the blast radius if a misconfigured or untrusted MCP server is added to a session.
 
 ## How Agents Use MCP Tools
 
