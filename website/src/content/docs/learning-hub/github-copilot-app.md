@@ -137,6 +137,8 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 
 > **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
 
+> **Branch actions menu (v1.1.26+)**: The Changes view has a branch actions menu for commit, update, pull, push, and rename operations, with short commit SHAs shown in commit navigation.
+
 ## Who is the Copilot app for?
 
 The Copilot app isn't a replacement for existing Copilot experiences—it's another tool in the toolbox. Here's who it serves best:
