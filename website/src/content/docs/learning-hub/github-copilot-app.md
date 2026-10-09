@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-04
+lastUpdated: 2026-10-06
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -76,18 +76,6 @@ This makes it easy to dispatch multiple agents and trust they won't interfere wi
 
 Closing the app's main window keeps it running in the background instead of quitting, with tray (Windows/Linux) or Dock (macOS) support to bring it back. This means scheduled automations and in-progress sessions keep running even when the window isn't open.
 
-### Child Chats and In-Session Terminal Actions
-
-> **Child chats (v1.1.26+)**: Any chat can start a child chat that appears nested beneath its parent in the sidebar, with its own transcript, notifications, and plan review — useful for branching off a focused sub-task without losing the context of the original conversation.
-
-> **Run code snippets in the terminal (v1.1.26+)**: Bash and PowerShell code blocks in a conversation can be run directly in the session's terminal, reusing an existing shell when one is already available, instead of copying the snippet out to run it manually.
-
-> **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or an Agent in the sidebar to attach them to that session's composer.
-
-> **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command, so you can adjust what the agent is allowed to do without leaving the composer.
-
-> **Branch actions menu (v1.1.26+)**: The Changes view has a branch actions menu for commit, update, pull, push, and rename operations, with short commit SHAs shown in commit navigation.
-
 ### Canvases
 
 **Canvases** are interactive work surfaces where you and agents collaborate. Instead of long chat threads, a canvas shows the actual work:
@@ -138,6 +126,18 @@ From the app, you can request a Copilot code review on a pull request—and re-r
 Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer for searching and reusing your previous prompts across all sessions—handy for reusing a well-tuned prompt without hunting back through old conversations.
 
 > **Voice dictation is generally available (v1.1.24+)**: Voice dictation is no longer experimental and is now turned on by default, so you can dictate prompts without enabling it manually first.
+
+### Child Chats and In-Session Terminal Snippets
+
+> **Child chats (v1.1.26+)**: A chat can now start its own **child chat**, nested beneath it in the sidebar with its own transcript, notifications, and plan review — useful for breaking off a focused sub-task without losing the parent conversation's context or cluttering it with unrelated back-and-forth.
+
+> **Run code snippets in the session terminal (v1.1.26+)**: Bash and PowerShell code blocks in a conversation can now be run directly in that session's terminal (reusing an existing shell when one is available), instead of copying the snippet out to run it elsewhere.
+
+> **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer, as an alternative to the file picker.
+
+> **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
+
+> **Branch actions menu (v1.1.26+)**: The Changes view has a branch actions menu for commit, update, pull, push, and rename operations, with short commit SHAs shown in commit navigation.
 
 ## Who is the Copilot app for?
 

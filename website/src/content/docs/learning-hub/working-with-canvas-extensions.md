@@ -3,7 +3,7 @@ title: 'Working with Canvas Extensions'
 description: 'Create and iterate on GitHub Copilot app canvases using /create-canvas, then shape them into reusable project or personal extensions.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-06-17
+lastUpdated: 2026-10-06
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -110,6 +110,8 @@ Reference implementations:
 - SDK docs/source: [`joinSession`](https://github.com/github/copilot-sdk/blob/main/nodejs/docs/extensions.md), [`createCanvas`](https://github.com/github/copilot-sdk/blob/main/nodejs/src/canvas.ts)
 - Repo example: [`extensions/backlog-swipe-triage/extension.mjs`](https://github.com/github/awesome-copilot/blob/main/extensions/backlog-swipe-triage/extension.mjs)
 - Persistent user-scoped path example: [`extensions/chromium-control-canvas/extension.mjs`](https://github.com/github/awesome-copilot/blob/main/extensions/chromium-control-canvas/extension.mjs)
+
+> **Canvas actions can return images (Copilot CLI v1.0.92+)**: A canvas action invoked via `invoke_canvas_action` can now return image content back to the model, not just text or structured JSON. This is useful for canvases that render charts, diagrams, or screenshots — the agent can reason about the rendered image directly instead of only seeing the underlying data.
 
 ## Examples from this repository
 

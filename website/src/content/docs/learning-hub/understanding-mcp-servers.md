@@ -215,7 +215,7 @@ Some MCP servers require authentication to connect to protected resources. GitHu
 
 > **Tip**: If your MCP server uses OAuth with Dynamic Client Registration but hosts its authorization metadata at a non-standard URL (as some enterprise servers like Atlassian Rovo do), Copilot CLI handles this automatically.
 
-> **Scoping GitHub account auth to approved origins (v1.0.90+)**: The `--mcp-github-auth` startup flag restricts your signed-in GitHub account credentials so they are only shared with MCP servers whose origin you've explicitly approved, instead of being available to every configured MCP server by default.
+> **Scope GitHub auth to approved MCP origins (v1.0.90+)**: Use `--mcp-github-auth` to restrict your signed-in GitHub account credentials so they're only shared with MCP servers whose origins you've explicitly approved, instead of being available to every configured MCP server. This reduces the blast radius if a misconfigured or untrusted MCP server is added to a session.
 
 ## How Agents Use MCP Tools
 
