@@ -246,7 +246,13 @@ This release also added **multi-folder sessions (Experimental)** — `setting(ch
 
 For orchestration-heavy workflows, `setting(chat.agentHost.agentOrchestrationLimits)` raises the process-wide limits for agent-created sessions, chats, inter-session messages, and recursive session creation, so large coordinator/worker trees are less likely to stall before the work finishes.
 
-Eligible users with preview features enabled may also see **HydraFusion** (Research Preview) in the model picker — an adaptive model-orchestration system that chooses the model and workflow per task, escalating to a stronger model or having a second model critique and revise a result when it improves quality.
+Eligible users with preview features enabled may also see [**HydraFusion**](https://github.blog/ai-and-ml/github-copilot/project-hydrafusion-frontier-quality-via-multi-model-orchestration/) (Research Preview) in the model picker — an adaptive model-orchestration system that chooses the model and workflow per task, escalating to a stronger model or having a second model critique and revise a result when it improves quality.
+
+## Delegating to remote agent hosts (VS Code 1.140+, Experimental)
+
+Enable `setting(chat.remoteAgentHostsEnabled)` and `setting(chat.remoteSessions.tools.enabled)` in the Agents window to let your agent delegate work to connected remote agent hosts without you picking a host from a picker each time. New built-in tools let an agent discover hosts and capacities with `list_agent_hosts`, start a session with `create_remote_session` (specifying a host directly, or letting automatic placement match an operating system, memory, and CPU requirement), check status with `get_remote_session`, and send follow-ups or results back to the originating chat with `send_remote_message`. Keep the coordinating Agents window open for messages to flow — remote agents report back through `send_remote_message`, and their final answers are not forwarded automatically.
+
+This feature is off by default and requires enabling the settings directly in your user-scoped `settings.json`, since they are not yet exposed in the Settings editor.
 
 ## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
 

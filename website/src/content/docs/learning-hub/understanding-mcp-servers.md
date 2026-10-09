@@ -3,7 +3,7 @@ title: 'Understanding MCP Servers'
 description: 'Learn how Model Context Protocol servers extend GitHub Copilot with access to external tools, databases, and APIs.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-08-28
+lastUpdated: 2026-10-01
 estimatedReadingTime: '8 minutes'
 tags:
   - mcp
@@ -93,6 +93,8 @@ Example `.mcp.json` or `.vscode/mcp.json`:
 ```
 
 > **Protocol update (v1.0.81+)**: GitHub Copilot CLI, the SDK, IDE integrations, and in-memory clients now support the **MCP 2026-07-28 specification**, keeping compatibility current with the latest Model Context Protocol servers as they adopt the new spec revision.
+
+> **Add servers from a guided flow (VS Code 1.140+)**: Use the **MCP: Add Server** command to add a server to a portable configuration file without hand-editing JSON. Choose **Copilot Global** to save it to `$COPILOT_HOME/mcp-config.json` (or `~/.copilot/mcp-config.json` when `COPILOT_HOME` is unset) so the same server is available across compatible Copilot tools, or choose workspace-root `.mcp.json` to save it alongside your repository for shared, repo-scoped configuration. Both destinations supersede the older, tool-specific user settings and `.vscode/mcp.json` locations, which still work but are considered deprecated for new configurations.
 
 ### Installing MCP Servers from the Registry
 
