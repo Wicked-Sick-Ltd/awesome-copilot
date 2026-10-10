@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-10
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -461,7 +461,7 @@ The model picker opens in a **full-screen view** with inline reasoning effort ad
 
 **Auto mode and server-side model routing** (v1.0.43+): When you select **Auto** as your model, the CLI uses server-side model routing for real-time model selection. Instead of locking in a single model at session start, Auto mode evaluates each request and routes it to the most appropriate model dynamically. This means straightforward questions can be handled by a faster model while complex reasoning tasks are automatically escalated — without you needing to switch models manually. In v1.0.87+, organizations can configure **user and managed startup defaults for the Auto routing tier**, including a strict policy that locks the tier or a user-overridable default that individuals can adjust for their own sessions. In v1.0.89+, Auto proactively **suggests a routing tier** for your current task and lets you switch to it with a shortcut or a click, and a lightweight feedback prompt appears if you switch away from Auto to a manually selected model — both changes make it easier to keep Auto's suggestions well-tuned without leaving your session.
 
-**Model family aliases** (v1.0.64+): Instead of typing a full model name, you can use short family aliases in the model setting: `opus`, `sonnet`, `haiku` (Anthropic), and `gpt`, `gemini` (Google/OpenAI). The CLI resolves the alias to the latest available model in that family. This is especially useful in scripts or configuration files where you want to track the best model in a family without hardcoding a version string. Recent models available include **Claude Opus 5** (v1.0.75+), the latest in Anthropic's Opus family for the most demanding tasks, **Grok 4.5** (v1.0.76+) from xAI, and **Gemini 3.7 Flash** (v1.0.81+). **Grok 4.6** (v1.0.81+) also gains support for the `xhigh` reasoning effort level, one step above `high`, for the most demanding reasoning tasks. **GPT-6 Astra** (v1.0.85+) is also available as a model choice, followed by **Claude Opus 5.5** (v1.0.89+), **GPT-6 Sol** and **GPT-6 Luna** (v1.0.89+, where available), and **GPT-6.1 Sol** (v1.0.90+).
+**Model family aliases** (v1.0.64+): Instead of typing a full model name, you can use short family aliases in the model setting: `opus`, `sonnet`, `haiku` (Anthropic), and `gpt`, `gemini` (Google/OpenAI). The CLI resolves the alias to the latest available model in that family. This is especially useful in scripts or configuration files where you want to track the best model in a family without hardcoding a version string. Recent models available include **Claude Opus 5** (v1.0.75+), the latest in Anthropic's Opus family for the most demanding tasks, **Grok 4.5** (v1.0.76+) from xAI, and **Gemini 3.7 Flash** (v1.0.81+). **Grok 4.6** (v1.0.81+) also gains support for the `xhigh` reasoning effort level, one step above `high`, for the most demanding reasoning tasks. **GPT-6 Astra** (v1.0.85+) is also available as a model choice, followed by **Claude Opus 5.5** (v1.0.89+), **GPT-6 Sol** and **GPT-6 Luna** (v1.0.89+, where available), **GPT-6.1 Sol** (v1.0.90+), and **Claude Haiku 5.5** (v1.0.94+) for faster, lighter-weight tasks.
 
 **Plan mode model** *(v1.0.74+)*: When using plan mode (which blocks file mutations and keeps changes in a planning phase), you can assign a *separate* model specifically for planning — different from your regular session model. This lets you use a fast, cost-effective model for plan drafting while keeping a more capable model on standby for the implementation phase:
 
@@ -800,6 +800,14 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **Pre-conversation environment picker (v1.0.92+)**: Press **Ctrl+E** before starting a conversation to choose whether the session runs locally or in a connected cloud environment, instead of having to specify `--connect` or launch a separate remote session.
 
 > **Enterprise network boundary enforcement (v1.0.93+)**: Enterprise administrators can set `permissions.limitTo` to enforce managed-domain boundaries for the CLI's outbound network requests, restricting agent sessions to an approved set of destinations regardless of per-user configuration.
+
+> **Timeline shows who made each permission decision (v1.0.96+)**: The session timeline now shows whether you, Assisted Permissions, enterprise policy, or an unattended fallback approved or denied each tool request, making it easier to audit why a particular action was allowed during a session.
+
+> **Native Entra broker authentication (v1.0.95+)**: On macOS, Microsoft Entra sign-in now uses native broker authentication when available, falling back to the browser flow otherwise — giving a smoother sign-in experience for Entra-managed accounts without leaving the desktop.
+
+> **Sandbox credential `injectHosts` (v1.0.95+)**: `copilot config` supports the sandbox `injectHosts` setting for credential injection, with key completion in Bash, Zsh, and Fish. The interactive `/sandbox` settings dialog also suggests possible environment secrets and lets you add masking hosts before saving (v1.0.96+), so sensitive values aren't inadvertently exposed to sandboxed commands.
+
+> **Case-insensitive model IDs (v1.0.96+)**: Model IDs entered in `/model` and `copilot config model` are now matched case-insensitively, and the canonical (correctly-cased) ID is what gets saved — so a typo in casing no longer results in an unrecognized model.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
