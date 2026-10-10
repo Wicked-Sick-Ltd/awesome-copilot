@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-10
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -136,6 +136,26 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer, as an alternative to the file picker.
 
 > **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
+
+### Resuming and Reviewing Coordinator Agents
+
+> **Resume an interrupted coordinator agent (v1.1.27+)**: If a multi-agent (coordinator) session is interrupted, you can now resume it — along with all of its child sessions — directly from the sidebar, instead of starting a fresh session and losing the coordinator's context.
+
+> **Artifact version history (v1.1.27+)**: The artifact editor now keeps a version history, so you can view and preview previous versions of an edited artifact instead of only seeing the latest draft.
+
+> **Discard file changes from the diff view (v1.1.27+)**: Discard a single file's changes directly from the diff view, with a confirmation dialog before restoring it — no need to drop into a terminal to revert a file.
+
+> **Video attachments in conversations (v1.1.27+)**: Video attachments now appear alongside images in the conversation's media grid, with preview and playback support, and can be added via `@` file mentions in the composer.
+
+### Organization Plugin Marketplace and Agent-Suggested Next Steps
+
+> **"From your organization" plugins tab (v1.1.28+)**: When your enterprise manages a plugin marketplace, Customize shows a dedicated **From your organization** tab listing the plugins your org provides, alongside the public marketplace.
+
+> **Agent-suggested next steps (v1.1.28+)**: Custom agents can now suggest next steps after their final response, letting you switch to another agent with a pre-filled, editable prompt you review before sending — useful for chaining agents (for example, handing off from a planning agent to an implementation agent).
+
+> **Download files from the Files panel (v1.1.28+)**: Download files and folders from the Files panel to your local machine, instead of only viewing or promoting them into the repository.
+
+> **Auto mode explains its model choice (v1.1.28+)**: When Auto mode selects a model for your request, it now shows a brief explanation of why that model was chosen alongside the model name in the conversation.
 
 ## Who is the Copilot app for?
 
