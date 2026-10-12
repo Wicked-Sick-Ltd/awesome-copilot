@@ -3,7 +3,7 @@ title: 'Understanding MCP Servers'
 description: 'Learn how Model Context Protocol servers extend GitHub Copilot with access to external tools, databases, and APIs.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-08-28
+lastUpdated: 2026-10-11
 estimatedReadingTime: '8 minutes'
 tags:
   - mcp
@@ -216,6 +216,10 @@ Some MCP servers require authentication to connect to protected resources. GitHu
 > **Tip**: If your MCP server uses OAuth with Dynamic Client Registration but hosts its authorization metadata at a non-standard URL (as some enterprise servers like Atlassian Rovo do), Copilot CLI handles this automatically.
 
 > **Scope GitHub auth to approved MCP origins (v1.0.90+)**: Use `--mcp-github-auth` to restrict your signed-in GitHub account credentials so they're only shared with MCP servers whose origins you've explicitly approved, instead of being available to every configured MCP server. This reduces the blast radius if a misconfigured or untrusted MCP server is added to a session.
+
+> **Silent credential renewal for Entra-protected servers (v1.0.92+)**: Entra-protected MCP servers can silently renew access-token-only credentials in the background, so a token nearing expiry no longer interrupts your session with a re-authentication prompt.
+
+> **Enable/disable before discovery (v1.0.94+)**: You can now enable or disable an MCP server before the CLI has finished discovering its tools, without triggering an unnecessary server startup — useful for quickly toggling off a server you don't plan to use in the current session.
 
 ## How Agents Use MCP Tools
 
