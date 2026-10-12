@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-11
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -136,6 +136,14 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer, as an alternative to the file picker.
 
 > **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
+
+> **Resumable coordinator agents (v1.1.27+)**: You can resume an interrupted coordinator agent and its child sessions directly from the sidebar, without leaving your current conversation — useful when a multi-agent task gets interrupted partway through.
+
+> **Next-step suggestions from custom agents (v1.1.28+)**: After a custom agent's final response, it can suggest next steps that let you switch to another agent with a pre-filled, editable prompt you review before sending — making it easier to chain specialized agents together without retyping context.
+
+> **Auto mode explanations (v1.1.28+)**: When Auto mode selects a model for your request, the conversation now shows why it chose that model alongside the model name, making Auto's routing decisions more transparent.
+
+> **Organization plugin marketplace tab (v1.1.28+)**: Customize gains a "From your organization" tab that shows plugins your organization provides when your enterprise manages a plugin marketplace, alongside the existing Featured and Installed views.
 
 ## Who is the Copilot app for?
 
