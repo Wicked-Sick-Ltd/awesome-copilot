@@ -475,6 +475,8 @@ When you leave plan mode, the CLI automatically reverts to your session model. T
 
 **Autocomplete model IDs (v1.0.89+)**: The `/model` and `/model plan` argument pickers now autocomplete model IDs as you type, making it faster to jump straight to a specific model without scrolling through the full grouped list.
 
+**Case-insensitive model IDs (v1.0.96+)**: `/model` and `/config model` now match model IDs case-insensitively and save the canonical ID, so typing a model name in the wrong case (for example from a script or copied config) no longer fails to resolve or saves an inconsistent value.
+
 ### CLI Session Commands
 
 The `/settings` command (v1.0.61+) opens an interactive dialog to browse and edit all user settings in one place. Use it to discover available settings, toggle options, and update values without manually editing your config file:
@@ -808,6 +810,12 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **Entra broker authentication on macOS (v1.0.95+)**: The CLI now uses native Microsoft Entra broker authentication on macOS when available, falling back to the browser flow if the broker isn't present — reducing the number of sign-in prompts for Entra-managed accounts.
 
 > **Sandbox credential `injectHosts` (v1.0.95+)**: `copilot config` supports a sandbox `credential.injectHosts` key (with key completion in Bash, Zsh, and Fish) to control which hosts receive injected credentials inside the sandbox.
+
+> **`/add-dir` grants sandbox access (v1.0.96+)**: When the sandbox is enabled, running `/add-dir` to add a directory to the session also grants sandbox access to that directory, so newly added directories work immediately instead of requiring a separate sandbox approval.
+
+> **`/user list` shows authentication source (v1.0.96+)**: The `/user list` command now shows the authentication source (for example GitHub sign-in, Entra, or an environment variable token) for each signed-in account, making it easier to tell accounts apart when you have several configured.
+
+> **Permission decision timeline (v1.0.96+)**: The session timeline now records whether you, Assisted Permissions, managed policy, or unattended fallback made each permission decision — useful for auditing why a tool call was approved or denied after the fact.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
