@@ -86,6 +86,10 @@ Closing the app's main window keeps it running in the background instead of quit
 
 Generated artifacts like Markdown files open in the **Files tab** alongside your repository files, with a switcher between them and an option to promote a generated artifact into the repository.
 
+> **Download files and folders (v1.1.28+)**: You can now download files and folders from the Files panel directly to your local machine, without first promoting them into the repository — useful for grabbing a generated artifact or report to share outside the session.
+
+> **Artifact version history (v1.1.27+)**: The artifact editor now keeps version history, so you can view and preview previous versions of an edited artifact instead of only seeing its current state.
+
 For a hands-on guide to building canvases with `/create-canvas`, see [Working with Canvas Extensions](../working-with-canvas-extensions/).
 
 ### Customize
