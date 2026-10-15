@@ -3,7 +3,7 @@ title: 'Building Custom Agents'
 description: 'Learn how to create specialized GitHub Copilot agents with custom personas, tool integrations, and domain expertise.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-20
+lastUpdated: 2026-10-14
 estimatedReadingTime: '10 minutes'
 tags:
   - agents
@@ -110,6 +110,25 @@ include-custom-instructions: true
 ```
 
 This is useful when you want an agent's specialized persona to still respect team-wide coding conventions defined in repository instructions, rather than operating purely from its own frontmatter and instructions.
+
+**hooks** *(v1.0.97+)*: Declare hooks directly in an agent's frontmatter, scoped to only that agent's sessions. This lets you attach automation (such as a validation script that must run after specific tool calls) to a single agent without affecting every other session in the repository:
+
+```yaml
+---
+name: 'Migration Runner'
+description: 'Applies and validates database schema migrations'
+model: Claude Sonnet 4
+tools: ['codebase', 'terminal']
+hooks:
+  postToolUse:
+    - type: 'command'
+      bash: './scripts/validate-schema.sh'
+      matcher: '^bash$'
+      timeoutSec: 20
+---
+```
+
+Agent-scoped hooks merge with any repository-, project-, or user-level hooks that also apply to the session. See [Automating with Hooks](../automating-with-hooks/) for the full hook event reference and configuration options.
 
 ### Agent Instructions
 
