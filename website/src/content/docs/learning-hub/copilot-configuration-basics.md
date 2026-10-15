@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-14
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -693,7 +693,7 @@ Use `/diagnose` when a session is behaving unexpectedly — it inspects session 
 
 **Shell command history in normal mode** (v1.0.65+): The **↑/↓** arrow keys and **Ctrl+R** reverse search now include past shell commands (commands run with `!`) while you are in normal (non-shell) input mode. Previously you had to type `!` to enter shell mode before history worked. Now you can recall and re-run a shell command without switching modes first — useful for quickly repeating a build, test, or diagnostic command from earlier in the session.
 
-**Inline image rendering** (v1.0.64+): The CLI can display images inline in the terminal when your terminal supports it. If an MCP tool, agent, or attachment returns an image, it is rendered directly in the conversation timeline rather than shown as a file path or URL. This works in terminals with image protocol support (such as iTerm2, Kitty, Wezterm, and tmux with appropriate configuration).
+**Inline image rendering** (v1.0.64+; on by default in v1.0.98+): The CLI can display images inline in the terminal when your terminal supports it. If an MCP tool, agent, or attachment returns an image, it is rendered directly in the conversation timeline rather than shown as a file path or URL. This works in terminals with image protocol support (such as iTerm2, Kitty, Wezterm, and tmux with appropriate configuration). As of v1.0.98, inline images render by default on supported terminals without needing to enable experimental mode first; use `/settings inlineImages false` to turn them off if you prefer the file-path/URL display.
 
 **Voice dictation** *(v1.0.81+)*: Press **Ctrl+Space** to toggle voice dictation on or off, letting you speak a prompt instead of typing it.
 
@@ -729,11 +729,13 @@ The `/context` command shows a visualization of the current conversation's conte
 /context
 ```
 
-The `/usage` command displays session metrics such as the number of tokens consumed, API calls made, and any quota information for the current session. In v1.0.64+, `/usage` also shows per-model token totals when you have used multiple models in a session:
+The `/usage` command displays session metrics such as the number of tokens consumed, API calls made, and any quota information for the current session. In v1.0.64+, `/usage` also shows per-model token totals when you have used multiple models in a session. In v1.0.97+, `/usage` also shows **billed AI Credits** for token-billed sessions, including after a session is resumed, so usage-based billing customers can see spend without switching to a separate dashboard:
 
 ```
 /usage
 ```
+
+**Expand and copy `/ask` answers (v1.0.98+)**: Press **Ctrl+E** to expand an `/ask` answer in place, and **Ctrl+Y** to copy the entire answer to your clipboard. You can also reopen the last completed `/ask` answer in the current session by running `/ask` or `/btw` with no arguments, instead of scrolling back through the transcript to find it.
 
 **`/limits predict`** *(v1.0.76+)*: Usage-based billing users can run `/limits predict` to get a suggested AI-credit limit for the current session, based on the credit consumption of similar past sessions. This helps you set a realistic `sessionLimits` value ahead of a large task instead of guessing:
 
@@ -816,6 +818,10 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **`/user list` shows authentication source (v1.0.96+)**: The `/user list` command now shows the authentication source (for example GitHub sign-in, Entra, or an environment variable token) for each signed-in account, making it easier to tell accounts apart when you have several configured.
 
 > **Permission decision timeline (v1.0.96+)**: The session timeline now records whether you, Assisted Permissions, managed policy, or unattended fallback made each permission decision — useful for auditing why a tool call was approved or denied after the fact.
+
+> **Managed permission rules shown read-only (v1.0.97+)**: In `/config`, permission rules set by your organization are now marked **read-only** and hidden from the editable list unless your organization has set them — making it clear which rules come from managed policy versus your own configuration, and preventing accidental attempts to change settings that are centrally enforced.
+
+> **Agent-scoped declarative hooks (v1.0.97+)**: Custom agents can now declare their own hooks directly, scoped to only that agent's sessions, instead of relying solely on repository- or user-level `hooks.json` files that apply to every session. See [Automating with Hooks](../automating-with-hooks/) for details on hook configuration.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
