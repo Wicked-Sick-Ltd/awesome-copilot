@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-16
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -148,6 +148,14 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Auto mode explanations (v1.1.28+)**: When Auto mode selects a model for your request, the conversation now shows why it chose that model alongside the model name, making Auto's routing decisions more transparent.
 
 > **Organization plugin marketplace tab (v1.1.28+)**: Customize gains a "From your organization" tab that shows plugins your organization provides when your enterprise manages a plugin marketplace, alongside the existing Featured and Installed views.
+
+> **Session subfolders (v1.1.29+)**: Selecting a subfolder of a repository now starts the session in that subfolder instead of always the repository root, so package-specific instructions and skills in a monorepo are applied correctly.
+
+> **Open PRs and issues without cloning (v1.1.29+)**: Opening a pull request or issue link no longer requires cloning its repository first — cloning only happens once you start a new session on it, so you can browse linked work items faster.
+
+> **Background shell task output (v1.1.29+)**: Background shell tasks now continuously stream their latest output into the task detail view for local sessions, instead of showing only a snapshot from when the task started.
+
+> **Cloud automations restored (v1.1.29+)**: Creating cloud automations is back, including repository-event triggers and cloud schedules that keep running even while your computer is off.
 
 ## Who is the Copilot app for?
 

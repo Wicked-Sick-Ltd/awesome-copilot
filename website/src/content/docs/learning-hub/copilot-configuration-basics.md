@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-14
+lastUpdated: 2026-10-16
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -465,6 +465,8 @@ The model picker opens in a **full-screen view** with inline reasoning effort ad
 
 **Model family aliases** (v1.0.64+): Instead of typing a full model name, you can use short family aliases in the model setting: `opus`, `sonnet`, `haiku` (Anthropic), and `gpt`, `gemini` (Google/OpenAI). The CLI resolves the alias to the latest available model in that family. This is especially useful in scripts or configuration files where you want to track the best model in a family without hardcoding a version string. Recent models available include **Claude Opus 5** (v1.0.75+), the latest in Anthropic's Opus family for the most demanding tasks, **Grok 4.5** (v1.0.76+) from xAI, and **Gemini 3.7 Flash** (v1.0.81+). **Grok 4.6** (v1.0.81+) also gains support for the `xhigh` reasoning effort level, one step above `high`, for the most demanding reasoning tasks. **GPT-6 Astra** (v1.0.85+) is also available as a model choice, followed by **Claude Opus 5.5** (v1.0.89+), **GPT-6 Sol** and **GPT-6 Luna** (v1.0.89+, where available), **GPT-6.1 Sol** (v1.0.90+), **Claude Haiku 5.5** (v1.0.94+) as a fast, lower-cost addition, and **Gemini 4 Argon** (v1.0.98+) to the model and `--model` completion lists.
 
+> **Administrator-managed model overrides (v1.0.99+)**: When an organization's managed settings force a specific model, the CLI now shows a clear notice explaining that an administrator-managed setting overrode your selected model, instead of silently switching models with no explanation.
+
 **Plan mode model** *(v1.0.74+)*: When using plan mode (which blocks file mutations and keeps changes in a planning phase), you can assign a *separate* model specifically for planning — different from your regular session model. This lets you use a fast, cost-effective model for plan drafting while keeping a more capable model on standby for the implementation phase:
 
 ```
@@ -739,6 +741,10 @@ The `/usage` command displays session metrics such as the number of tokens consu
 
 **Expand and copy `/ask` answers (v1.0.98+)**: Press **Ctrl+E** to expand an `/ask` answer in place, and **Ctrl+Y** to copy the entire answer to your clipboard. You can also reopen the last completed `/ask` answer in the current session by running `/ask` or `/btw` with no arguments, instead of scrolling back through the transcript to find it.
 
+**`/share` full-screen menu (v1.0.99+)**: Running `/share` with no arguments now opens a full-screen action menu listing every sharing option (URL, HTML export, and other formats) in one place, instead of requiring you to remember and type each `/share <subcommand>` variant individually.
+
+**Enable semantic code search by default (v1.0.99+)**: Online sessions now enable semantic code search by default, so natural-language code searches (in addition to exact-match grep) work out of the box without an opt-in setting.
+
 **`/limits predict`** *(v1.0.76+)*: Usage-based billing users can run `/limits predict` to get a suggested AI-credit limit for the current session, based on the credit consumption of similar past sessions. This helps you set a realistic `sessionLimits` value ahead of a large task instead of guessing:
 
 ```
@@ -910,6 +916,8 @@ copilot sandbox ca trust     # trust the CA on this machine
 copilot sandbox ca rotate    # rotate to a new CA
 copilot sandbox ca remove    # remove CA trust
 ```
+
+> **Session-scoped sandbox toggle and local network access (v1.0.99+)**: `/sandbox` can now enable sandboxing for just the current session without changing your global sandbox setting, which is useful for trying the sandbox on a single task before committing to it everywhere. Sandboxed sessions also allow local network access by default, so commands can reach `localhost` and other private-network services without extra configuration. The CLI now prompts to update the sandbox proxy's certificate authority whenever your masked-host list changes (v1.0.100+).
 
 **`worktreeBaseRef` setting** *(v1.0.79-8+)*: Controls whether `/worktree`, `/worktree new`, and the `--worktree` startup flag create the new worktree from `HEAD` or from the remote default branch. All three now default to `HEAD`; previously `--worktree` defaulted to starting from the remote default branch. Set this in `/settings` if you want worktrees to branch from the remote default instead.
 
