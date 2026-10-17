@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-17
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -148,6 +148,14 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Auto mode explanations (v1.1.28+)**: When Auto mode selects a model for your request, the conversation now shows why it chose that model alongside the model name, making Auto's routing decisions more transparent.
 
 > **Organization plugin marketplace tab (v1.1.28+)**: Customize gains a "From your organization" tab that shows plugins your organization provides when your enterprise manages a plugin marketplace, alongside the existing Featured and Installed views.
+
+> **Restored cloud automations (v1.1.29+)**: Creating cloud automations — including repository-event triggers and schedules that keep running while your computer is off — is available again after being temporarily unavailable.
+
+> **Undo for theme and view changes (v1.1.30+)**: Press **Cmd+Z** (**Ctrl+Z** on Windows and Linux), or use the command palette's **Undo**, to revert your last theme change or view toggle — such as the sidebar, thinking panel, file edits, or wide content mode.
+
+> **Agent Overview dev-server status (v1.1.30+)**: Agent Overview rows now show when a child Agent's dev server or run script is running or has failed, with quick actions to open its preview, view logs, or stop it directly from the overview — useful when coordinating several child agents that each run their own app.
+
+> **"Open in" for files (v1.1.30+)**: Right-click a file in the Files tree to open it in an installed editor or custom app via a new **Open in** submenu, instead of only being able to open it inside the app's built-in editor.
 
 ## Who is the Copilot app for?
 
