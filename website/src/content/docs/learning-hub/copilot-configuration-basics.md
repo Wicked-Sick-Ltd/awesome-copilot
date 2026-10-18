@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-14
+lastUpdated: 2026-10-18
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -549,6 +549,8 @@ With the sidebar open, you can see all running and backgrounded sessions in a sp
 
 > **Unread turn indicator (v1.0.89+)**: A session in the sidebar now shows a blue dot when it has finished a turn you haven't opened yet, making it easier to spot which backgrounded sessions are waiting for your attention when you're juggling several at once.
 
+> **Unified Sessions browser is now the default (v1.0.100+)**: `/sessions`, `/session`, and `/resume` now open the same unified Sessions browser by default, instead of separate pickers with slightly different behavior. Browsing large account histories also caps discovery at 500 records and respects `Retry-After` hints when automatically refreshing the list, so it stays responsive even with a long session history.
+
 The `/rewind` command opens a timeline picker that lets you roll back the conversation to any earlier point in history. You can also trigger it by pressing **double-Esc**:
 
 ```
@@ -824,6 +826,10 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **Managed permission rules shown read-only (v1.0.97+)**: In `/config`, permission rules set by your organization are now marked **read-only** and hidden from the editable list unless your organization has set them — making it clear which rules come from managed policy versus your own configuration, and preventing accidental attempts to change settings that are centrally enforced.
 
 > **Agent-scoped declarative hooks (v1.0.97+)**: Custom agents can now declare their own hooks directly, scoped to only that agent's sessions, instead of relying solely on repository- or user-level `hooks.json` files that apply to every session. See [Automating with Hooks](../automating-with-hooks/) for details on hook configuration.
+
+> **`--trust-folder` for prompt-mode sessions (v1.0.99+)**: One-off sessions started with `-p` or piped stdin can now pass `--trust-folder` to trust the working directory for that run, instead of requiring an interactive trust prompt or a pre-existing trust grant — useful for scripted or CI invocations of the CLI.
+
+> **`--disable-client-telemetry` flag (v1.0.99+)**: Turn off client telemetry uploads entirely with `--disable-client-telemetry`, for environments that need to opt out of telemetry beyond the existing settings-based controls.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 

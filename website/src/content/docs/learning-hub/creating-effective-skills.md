@@ -3,7 +3,7 @@ title: 'Creating Effective Skills'
 description: 'Master the art of writing reusable, shareable skill folders that deliver consistent results across your team.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-22
+lastUpdated: 2026-10-18
 estimatedReadingTime: '9 minutes'
 tags:
   - skills
@@ -386,6 +386,8 @@ You can also run `/skill` (or the existing `/skills`) inside an interactive sess
 > **`--project` flag (v1.0.85+, breaking change)**: `copilot skill add --project` replaces the old `copilot plugins install --skill --scope project`, installing the skill at the repository level (shared with your team) instead of the user level. The `--scope` spelling has been removed.
 
 > **Namespaced skills and ignored directories (v1.0.88+)**: Skill discovery now supports namespaced custom skills (so two plugins or directories can each ship a skill with the same short name without colliding) and lets you mark specific skill directories as ignored so they're excluded from discovery entirely.
+
+> **Install verified skills from GitHub links (v1.0.99+)**: `copilot plugin install "ghapp://air/install?..."` installs verified skills and plugins directly from a GitHub install link, instead of requiring you to locate and type a marketplace package name. This matches the one-click install flow in the GitHub Copilot app's **Customize** panel, which can also install a skill from a folder, ZIP, GitHub skill-folder URL, or HTTPS ZIP link, with a review step before anything is written to disk (GitHub Copilot app v1.1.30+).
 
 **Q: How are skills different from prompts?**
 

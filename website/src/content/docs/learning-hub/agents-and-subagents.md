@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-18
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -251,6 +251,14 @@ Eligible users with preview features enabled may also see **HydraFusion** (Resea
 ## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
 
 An experimental **Run and Compare Agents...** action in the Agents window extends the 1.140 "Run Multiple Agents" idea: it runs the same prompt across several agents in isolated worktrees and surfaces a side-by-side comparison so you can pick the best implementation before merging. A new **Chat: Clean Up Agent Worktrees** command helps you review and remove worktrees left behind by delegated sessions that are no longer active, reducing manual `git worktree` bookkeeping after heavy delegation.
+
+## Copilot harness rollout and moving chats between folders (VS Code 1.142+)
+
+VS Code 1.142 progressively rolls out the Copilot harness as the **default harness for new sessions**, moving it from an opt-in picker choice (1.140+) toward the standard experience. **Ask** returns as a built-in agent inside the Copilot harness for a dedicated read-only mode, and chat titles now display the active harness name (**Copilot** or **Codex**) so you can identify which one a session is using at a glance.
+
+This release also lets you move an active chat to another folder or a new Git worktree **without losing conversation history** — ask the agent with a prompt like "Continue this task in a new Git worktree of the current repository before implementing it," and VS Code finishes the current turn, relocates the chat, and continues automatically. This is available for sessions using the Codex harness or Codex in Interactive mode, with one chat and one local folder; it's a useful complement to the coordinator/worker worktree-isolation patterns described above when you decide mid-task that a change belongs in its own worktree or repository.
+
+Enterprise administrators gained finer-grained control over which permission modes are available: `permissions.disableAssistedPermissionsMode` can now block **Assisted** independently of **Allow All**, and organizations that enforce `sandbox.enabled` or a nonempty `permissions` object now have policy-managed chats automatically moved to the Copilot harness (with a temporary `vscode.temporaryDefaultToLocalHarness` opt-out for administrators who need more migration time).
 
 ## Common questions
 

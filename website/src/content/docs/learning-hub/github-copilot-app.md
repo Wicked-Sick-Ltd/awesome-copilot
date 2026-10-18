@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-11
+lastUpdated: 2026-10-18
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -99,6 +99,8 @@ For a hands-on guide to building canvases with `/create-canvas`, see [Working wi
 - Browse **Featured** integrations (for example Azure DevOps, Figma, or the **Sentry canvas** *(v1.1.23+)* for triaging live Sentry issues) and install them with one click
 - See what's already **Installed**, with consistent icons and source labels across plugin, skill, MCP server, canvas, and connector types
 - Create, edit, or remove your own **personal skills** directly in the app, without hand-authoring a `SKILL.md` file
+- **Install a skill from outside a plugin** *(v1.1.30+)*: Use **Customize > Add > Install skill…** to install a skill from a folder, ZIP, GitHub skill-folder URL, or HTTPS ZIP link, with a review step before anything is written to disk — useful for trying a skill shared by a teammate or found online without packaging it as a plugin first.
+- **Manage marketplaces** *(v1.1.29+)*: The **Manage marketplaces** action moved to the bottom of the Add menu, and Plugins search results can now be filtered by marketplace — handy when your organization has multiple plugin sources and you want results from a specific one.
 
 This makes Customize a good starting point if you want to extend the app's capabilities but don't need the full `copilot plugin` CLI workflow described in [Installing and Using Plugins](../installing-and-using-plugins/).
 
@@ -148,6 +150,14 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Auto mode explanations (v1.1.28+)**: When Auto mode selects a model for your request, the conversation now shows why it chose that model alongside the model name, making Auto's routing decisions more transparent.
 
 > **Organization plugin marketplace tab (v1.1.28+)**: Customize gains a "From your organization" tab that shows plugins your organization provides when your enterprise manages a plugin marketplace, alongside the existing Featured and Installed views.
+
+> **Cloud automations restored (v1.1.29+)**: Creating cloud automations — including repository-event triggers and cloud schedules that run while your computer is off — works again after a temporary regression. See [Using Automations in the GitHub Copilot app](../using-automations-in-copilot-app/) for setup guidance.
+
+> **Undo for theme and view changes (v1.1.30+)**: Press **Cmd+Z** (**Ctrl+Z** on Windows and Linux), or use the command palette's **Undo**, to revert your last theme change or view toggle — such as the sidebar, thinking panel, file edits, or wide content mode.
+
+> **Agent Overview shows child process status (v1.1.30+)**: Agent Overview rows now show when a child agent's dev server or run script is running or has failed, with quick actions to open its preview, view logs, or stop it directly from the overview — useful when coordinating several worker agents that each run their own dev server.
+
+> **Switch model or context size mid-session (v1.1.30+)**: You can now change the model or context size for a local session while it's still working, instead of waiting for the current turn to finish.
 
 ## Who is the Copilot app for?
 
