@@ -3,7 +3,7 @@ title: 'Building Custom Agents'
 description: 'Learn how to create specialized GitHub Copilot agents with custom personas, tool integrations, and domain expertise.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-14
+lastUpdated: 2026-10-19
 estimatedReadingTime: '10 minutes'
 tags:
   - agents
@@ -96,6 +96,8 @@ tools: ['codebase', 'terminal', 'github']
 | `edit` | Modify files in the workspace |
 
 For MCP server tools, reference them by server name (e.g., `postgres`, `docker`). See [Understanding MCP Servers](../understanding-mcp-servers/) for details.
+
+> **Reliable `search`, `web`, and `todo` tool aliases (v1.0.100+)**: Custom agents that declare the documented `search`, `web`, or `todo` tool aliases — or name `github-mcp-server/web_search` directly — now reliably receive the matching tools in the CLI, fixing cases where those aliases were silently dropped.
 
 **include-custom-instructions** *(v1.0.86+)*: By default, a custom agent does not automatically read your repository's instruction files. Set `include-custom-instructions: true` in the frontmatter to have the agent opt into repository instruction files (`AGENTS.md`, `copilot-instructions.md`, `CLAUDE.md`) alongside its own persona:
 
