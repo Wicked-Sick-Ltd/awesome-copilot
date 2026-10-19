@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-14
+lastUpdated: 2026-10-17
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -465,6 +465,8 @@ The model picker opens in a **full-screen view** with inline reasoning effort ad
 
 **Model family aliases** (v1.0.64+): Instead of typing a full model name, you can use short family aliases in the model setting: `opus`, `sonnet`, `haiku` (Anthropic), and `gpt`, `gemini` (Google/OpenAI). The CLI resolves the alias to the latest available model in that family. This is especially useful in scripts or configuration files where you want to track the best model in a family without hardcoding a version string. Recent models available include **Claude Opus 5** (v1.0.75+), the latest in Anthropic's Opus family for the most demanding tasks, **Grok 4.5** (v1.0.76+) from xAI, and **Gemini 3.7 Flash** (v1.0.81+). **Grok 4.6** (v1.0.81+) also gains support for the `xhigh` reasoning effort level, one step above `high`, for the most demanding reasoning tasks. **GPT-6 Astra** (v1.0.85+) is also available as a model choice, followed by **Claude Opus 5.5** (v1.0.89+), **GPT-6 Sol** and **GPT-6 Luna** (v1.0.89+, where available), **GPT-6.1 Sol** (v1.0.90+), **Claude Haiku 5.5** (v1.0.94+) as a fast, lower-cost addition, and **Gemini 4 Argon** (v1.0.98+) to the model and `--model` completion lists.
 
+**Change model or context size mid-session (Copilot app v1.1.30+)**: In the GitHub Copilot app, you can now change the model or context size for a local session while it is still working, instead of waiting for the current turn to finish before switching.
+
 **Plan mode model** *(v1.0.74+)*: When using plan mode (which blocks file mutations and keeps changes in a planning phase), you can assign a *separate* model specifically for planning — different from your regular session model. This lets you use a fast, cost-effective model for plan drafting while keeping a more capable model on standby for the implementation phase:
 
 ```
@@ -536,6 +538,8 @@ The `/session delete` command removes sessions you no longer need:
 You can also press **x** on a highlighted session in the session picker (`--resume`) to delete it directly from the list.
 
 In the session picker, press **`s`** to cycle the sort order: relevance, last used, created, or name. The picker also shows the branch name and idle/in-use status for each session.
+
+**Unified Sessions browser (v1.0.99+)**: `/sessions`, `/session`, and `--resume` now open the same unified Sessions browser by default, instead of each command presenting a slightly different picker. Session browsing also caps account discovery at 500 records and respects `Retry-After` hints when automatically refreshing the list, reducing unnecessary load for accounts with large session histories.
 
 **Sessions Sidebar and Tab** *(v1.0.76+)*: The Sessions Sidebar is a persistent panel for managing multiple concurrent sessions — switch between them, spawn new ones, and see their status at a glance, all without leaving your current session. As of v1.0.79, the Sessions Sidebar has graduated from experimental and is available by default alongside a dedicated **Sessions tab**. Enable or customize it in `/settings`:
 
@@ -856,6 +860,21 @@ The `-C <directory>` flag changes the working directory before starting, similar
 ```bash
 copilot -C ~/projects/my-repo          # start in a different directory
 copilot -C ~/projects/my-repo -p "..."  # combine with prompt mode
+```
+
+**`--trust-folder` for one-off prompt-mode sessions (v1.0.99+)**: Pass `--trust-folder` to a prompt-mode session started with `-p` or piped stdin to trust the current folder for that single invocation, without needing to trust it interactively first or permanently add it to your trusted-folders list:
+
+```bash
+copilot -p "Run the test suite" --trust-folder
+echo "Summarize this diff" | copilot -p --trust-folder
+```
+
+This is useful in scripts and CI jobs that run against a fresh checkout on every invocation, where interactively confirming folder trust isn't possible.
+
+**`--disable-client-telemetry` flag (v1.0.99+)**: Turns off client telemetry uploads from the CLI for the current invocation:
+
+```bash
+copilot --disable-client-telemetry
 ```
 
 The `--mode` flag (along with its aliases `--autopilot` and `--plan`) lets you launch the CLI directly in a specific agent mode without waiting for the interactive session to start:
