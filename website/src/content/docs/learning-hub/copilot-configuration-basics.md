@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-20
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -832,6 +832,8 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 > **Managed permission rules shown read-only (v1.0.97+)**: In `/config`, permission rules set by your organization are now marked **read-only** and hidden from the editable list unless your organization has set them — making it clear which rules come from managed policy versus your own configuration, and preventing accidental attempts to change settings that are centrally enforced.
 
 > **Agent-scoped declarative hooks (v1.0.97+)**: Custom agents can now declare their own hooks directly, scoped to only that agent's sessions, instead of relying solely on repository- or user-level `hooks.json` files that apply to every session. See [Automating with Hooks](../automating-with-hooks/) for details on hook configuration.
+
+> **`assistedApprovalInstructions` setting (v1.0.101+)**: Add an `assistedApprovalInstructions` string to your configuration to give the Assisted Permissions judge (`/allow-all auto`) extra guidance for its confirmation decisions — for example, telling it to always require manual approval for destructive database commands even if it would otherwise judge them safe. Extension capability requests, by contrast, now always require explicit approval rather than going through the Assisted judge.
 
 The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
