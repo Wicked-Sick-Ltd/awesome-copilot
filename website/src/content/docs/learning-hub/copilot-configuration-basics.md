@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-17
+lastUpdated: 2026-10-19
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -663,6 +663,8 @@ The `/share html` command exports the current session — including conversation
 
 The exported file contains everything needed to view the session without a network connection and can be shared with teammates or stored for later reference. This complements `/share` (which shares via URL) for cases where an offline or attached format is preferred.
 
+> **Full-screen share menu (v1.0.100+)**: Running `/share` with no arguments now opens a full-screen action menu listing every way to share the current session (URL, HTML export, and more), instead of requiring you to already know the specific `/share` subcommand you want.
+
 > **Session and memory import (v1.0.85+)**: New import commands accept the semantic JSONL interchange format, letting you bring session transcripts or memory records generated outside the CLI (or exported from another tool) back into a Copilot CLI session for reference or continuation.
 
 The `/chronicle` command opens an interactive timeline of everything the agent has done in the current session. It shows file changes, tool calls, and conversation turns in chronological order, letting you review the full arc of the session at a glance:
@@ -817,6 +819,8 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 
 > **Entra broker authentication on macOS (v1.0.95+)**: The CLI now uses native Microsoft Entra broker authentication on macOS when available, falling back to the browser flow if the broker isn't present — reducing the number of sign-in prompts for Entra-managed accounts.
 
+> **Choose a cached Entra account at `/login` (v1.0.100+)**: `/login` for Microsoft Entra now lets you pick from a previously signed-in cached account or explicitly sign in with a different one, instead of always re-running the full sign-in flow. Your selected account also stays pinned during sign-in and token renewal, so switching accounts doesn't lose track of which one you meant to use.
+
 > **Sandbox credential `injectHosts` (v1.0.95+)**: `copilot config` supports a sandbox `credential.injectHosts` key (with key completion in Bash, Zsh, and Fish) to control which hosts receive injected credentials inside the sandbox.
 
 > **`/add-dir` grants sandbox access (v1.0.96+)**: When the sandbox is enabled, running `/add-dir` to add a directory to the session also grants sandbox access to that directory, so newly added directories work immediately instead of requiring a separate sandbox approval.
@@ -852,6 +856,8 @@ Grep searches in large monorepos use an **indexed search engine** for significan
 **Glob filtering and file listings (v1.0.88+)**: Indexed search now supports glob filtering and `--files` listings, so you can narrow a search to a specific file pattern (e.g., `**/*.test.ts`) or list matching files directly, with accurate fallback behavior if the index can't service a particular query.
 
 Indexed search keeps refreshing automatically as files change — including on Linux, where it now recovers gracefully when the OS's native file-watch limit is exhausted (v1.0.87+) — and supports explicit cloud-sync overrides for repositories stored in synced folders (e.g., OneDrive, Dropbox) where native file events may be unreliable. On Windows, index updates no longer leak disk space over long sessions (v1.0.86+).
+
+> **Semantic code search enabled by default (v1.0.100+)**: Online sessions now use semantic code search by default, letting queries match on meaning and related concepts in addition to exact text, without needing to opt in manually.
 
 ### CLI Startup Flags
 
@@ -929,6 +935,8 @@ copilot sandbox ca trust     # trust the CA on this machine
 copilot sandbox ca rotate    # rotate to a new CA
 copilot sandbox ca remove    # remove CA trust
 ```
+
+> **Sandbox allows local network access by default (v1.0.100+)**: The sandbox now permits access to localhost and private-network services (such as a local database or dev server) out of the box, instead of requiring an explicit allow rule for every local destination. Sandboxed git operations on github.com can also use your configured `GITHUB_TOKEN` from `credentials.envVars`, and `/sandbox` can enable sandboxing for just the current session without changing your global setting.
 
 **`worktreeBaseRef` setting** *(v1.0.79-8+)*: Controls whether `/worktree`, `/worktree new`, and the `--worktree` startup flag create the new worktree from `HEAD` or from the remote default branch. All three now default to `HEAD`; previously `--worktree` defaulted to starting from the remote default branch. Set this in `/settings` if you want worktrees to branch from the remote default instead.
 
