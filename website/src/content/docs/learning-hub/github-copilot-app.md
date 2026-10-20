@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-17
+lastUpdated: 2026-10-19
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -154,6 +154,10 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Undo for theme and view changes (v1.1.30+)**: Press **Cmd+Z** (**Ctrl+Z** on Windows and Linux), or use the command palette's **Undo**, to revert your last theme change or view toggle — such as the sidebar, thinking panel, file edits, or wide content mode.
 
 > **Agent Overview dev-server status (v1.1.30+)**: Agent Overview rows now show when a child Agent's dev server or run script is running or has failed, with quick actions to open its preview, view logs, or stop it directly from the overview — useful when coordinating several child agents that each run their own app.
+
+> **Change model or context mid-session (v1.1.30+)**: You can now change the model or context size for a local session while it's still actively working, instead of waiting for the current turn to finish before switching.
+
+> **Install Skills from folder, ZIP, or URL (v1.1.30+)**: Use **Customize > Add > Install skill…** to install a Skill from a local folder, a ZIP file, a GitHub skill-folder URL, or an HTTPS ZIP link, with a review step that shows what will be written before anything is installed.
 
 > **"Open in" for files (v1.1.30+)**: Right-click a file in the Files tree to open it in an installed editor or custom app via a new **Open in** submenu, instead of only being able to open it inside the app's built-in editor.
 

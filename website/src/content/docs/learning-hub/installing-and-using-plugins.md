@@ -3,7 +3,7 @@ title: 'Installing and Using Plugins'
 description: 'Learn how to find, install, and manage plugins that extend GitHub Copilot CLI with reusable agents, skills, hooks, and integrations.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-17
+lastUpdated: 2026-10-19
 relatedArticles:
   - ./building-custom-agents.md
   - ./creating-effective-skills.md
@@ -264,6 +264,10 @@ This opens an interactive list where each installed plugin and its components ar
 > **CLI command reorganization (v1.0.85+, breaking change)**: The cross-kind `copilot plugins` commands are being retired in favor of per-kind subcommands. `copilot instruction list` and `copilot lsp list` replace `copilot plugins list --kind instruction` and `copilot plugins list --kind lsp`. `copilot plugin enable`/`copilot plugin disable`, `copilot mcp enable`/`copilot mcp disable`, and `copilot skill enable`/`copilot skill disable` replace `copilot plugins enable`/`copilot plugins disable --plugin|--mcp|--skill`. The cross-kind `--kind`, `--scope`, `--mcp`, and `--skill` flags have been removed from `copilot plugins`; use the dedicated `copilot mcp` and `copilot skill` subcommands instead. `copilot plugins list --json` now emits a flat array of plugins rather than the old `{ plugins, errors }` object, and `copilot plugins list` is now simply an alias for `copilot plugin list` — it reports only plugins, not MCP servers, skills, instructions, or LSP servers. Scripts that parsed the old cross-kind output will need to be updated.
 
 > **`copilot skill add --scope project` renamed (v1.0.85+, breaking change)**: `copilot plugins install --skill [--scope project]` has been replaced by `copilot skill add [--project]`. The `--scope` spelling is gone; use the `--project` flag to add a skill at the repository level instead.
+
+> **Trusted repository plugins auto-install (v1.0.100+)**: Plugins declared by a trusted repository (via `.github/copilot/settings.json`) now install and update automatically before chat runs, instead of requiring a manual `copilot plugin install` step the first time you work in that repository.
+
+> **Built-in browser plugin renamed to `browser-use` (v1.0.100+)**: The CLI's built-in browser plugin is now named `browser-use`. Existing preferences for the old `browser` plugin name are preserved automatically after upgrading, so no manual migration is needed.
 
 ### Loading Plugins from a Local Directory
 
