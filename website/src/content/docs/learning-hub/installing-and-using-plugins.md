@@ -3,7 +3,7 @@ title: 'Installing and Using Plugins'
 description: 'Learn how to find, install, and manage plugins that extend GitHub Copilot CLI with reusable agents, skills, hooks, and integrations.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-20
 relatedArticles:
   - ./building-custom-agents.md
   - ./creating-effective-skills.md
@@ -268,6 +268,10 @@ This opens an interactive list where each installed plugin and its components ar
 > **Trusted repository plugins auto-install (v1.0.100+)**: Plugins declared by a trusted repository (via `.github/copilot/settings.json`) now install and update automatically before chat runs, instead of requiring a manual `copilot plugin install` step the first time you work in that repository.
 
 > **Built-in browser plugin renamed to `browser-use` (v1.0.100+)**: The CLI's built-in browser plugin is now named `browser-use`. Existing preferences for the old `browser` plugin name are preserved automatically after upgrading, so no manual migration is needed.
+
+> **Team-assigned plugins from Team-defined marketplaces (v1.0.101+)**: Organizations can now assign plugins to a team through a Team-defined GitHub marketplace, and members install the assigned plugins directly — complementing the existing `extraKnownMarketplaces` repository-level sharing described above with a Team-scoped distribution path.
+
+> **Extension capability approvals (v1.0.101+)**: Requests from extensions for new capabilities now go through explicit approval instead of being evaluated by the Assisted Permissions judge, giving you a clearer, deliberate confirmation step before an extension gains additional access.
 
 ### Loading Plugins from a Local Directory
 
