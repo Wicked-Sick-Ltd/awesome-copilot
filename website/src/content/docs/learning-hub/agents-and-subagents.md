@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-20
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -163,6 +163,8 @@ Because it runs as a sub-agent layer rather than replacing your primary model, y
 
 Run `/settings` and opt in to **context management tools** to let orchestrator agents and their subagents actively manage their own context windows during long delegated runs — for example, summarising or trimming earlier tool output before it crowds out room for new work. This is particularly useful for `/fleet`-style sessions that spawn many subagents in sequence, since each subagent otherwise accumulates its own context independently and can run out of room on long chains of delegated turns.
 
+> **Native structured output for dynamic workflow subagents (v1.0.101+)**: On supported models, `/fleet`-style dynamic workflow subagents can now return native structured output instead of free-form text that the orchestrator has to parse. This makes it more reliable for a coordinator to consume a worker's result programmatically (for example, feeding a subagent's findings directly into the next step of the workflow) without brittle text parsing.
+
 ## Orchestration patterns that work well
 
 ### Coordinator and worker
@@ -251,6 +253,18 @@ Eligible users with preview features enabled may also see **HydraFusion** (Resea
 ## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
 
 An experimental **Run and Compare Agents...** action in the Agents window extends the 1.140 "Run Multiple Agents" idea: it runs the same prompt across several agents in isolated worktrees and surfaces a side-by-side comparison so you can pick the best implementation before merging. A new **Chat: Clean Up Agent Worktrees** command helps you review and remove worktrees left behind by delegated sessions that are no longer active, reducing manual `git worktree` bookkeeping after heavy delegation.
+
+## Moving chats between folders and worktrees (VS Code 1.142+)
+
+Previously, if you started investigating a task in one folder and then needed to implement it in a Git worktree or a different repository, you had to start a new chat and rebuild the context from scratch. In the Agents window, you can now ask the agent in natural language to move the current chat to another folder or into a new Git worktree — for example:
+
+```text
+Continue this task in a new Git worktree of the current repository before implementing it.
+```
+
+The agent finishes its current turn, moves the chat, and keeps the full conversation history intact while continuing automatically in the new location. This is available for sessions using the Codex harness or Codex in Interactive mode, for chats with one chat and one local folder.
+
+Administrators also gained more granular control over delegated-session permissions in 1.142: `permissions.disableAssistedPermissionsMode` lets an organization permit **Assisted** permissions while still blocking **Allow All**, so delegated worker agents can get assisted approvals without bypassing permission checks entirely.
 
 ## Common questions
 
