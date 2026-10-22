@@ -3,7 +3,7 @@ title: 'Installing and Using Plugins'
 description: 'Learn how to find, install, and manage plugins that extend GitHub Copilot CLI with reusable agents, skills, hooks, and integrations.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-21
 relatedArticles:
   - ./building-custom-agents.md
   - ./creating-effective-skills.md
@@ -196,6 +196,8 @@ Pinning to a SHA guarantees that everyone on the team installs plugins from exac
 - **Stability** — prevent breaking changes in upstream marketplaces from impacting your team without notice
 
 > **Automatic auth retry for private marketplaces (v1.0.97+)**: If a remote plugin marketplace or plugin fetch over HTTPS fails authentication (for example, a private `my-org/internal-plugins` repository), the CLI now automatically retries once using your signed-in GitHub token before giving up. This reduces spurious failures for private marketplaces where the initial request didn't carry credentials.
+
+> **Marketplace sources in a repository subdirectory (v1.0.102+)**: The `source` field now accepts a git-subdir reference, so a marketplace can live in a subfolder of a larger repository instead of requiring its own dedicated repo — for example, `"source": "my-org/monorepo/path/to/marketplace"`. Long plugin descriptions are also preserved in full instead of being truncated when listed.
 
 ## Installing Plugins
 

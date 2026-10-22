@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-21
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -387,6 +387,10 @@ Settings file: `.vscode/settings.json` or global user settings
   "editor.inlineSuggest.enabled": true
 }
 ```
+
+> **Installing GitHub Copilot CLI from the VS Code installer (VS Code 1.143+)**: You no longer need a separate install step to get the CLI alongside VS Code. On Windows, the VS Code installer offers an option to install GitHub Copilot CLI (hidden automatically if it's already installed). On Linux, the VS Code installers add a `copilot` executable to your `PATH` that prompts you to install the CLI the first time you run it. On macOS, you're prompted to install the CLI when you add VS Code to `$PATH` via the Command Palette. Organizations can disable this option through [Managed AI Settings](https://code.visualstudio.com/docs/enterprise/manage-ai-settings#_enable-or-disable-the-copilot-command).
+
+> **Run Copilot models on your device (VS Code 1.143+, Experimental)**: On hardware with a capable NVIDIA GPU (96 GB+ of GPU memory, such as the Surface Laptop Ultra's RTX Spark), you can download and run a coding model locally from the new **On This Device** tab in the model picker (for example, MAI Code 1.1 Flash). VS Code manages the model download for you; responses that run on-device are labeled **On-device** and don't consume AI credits. To get started, install a [llama.cpp build](https://github.com/ggml-org/llama.cpp/releases) that supports the model, set `setting(chat.copilot.localModel.llamaServerPath)` to its `llama-server` executable, and enable `setting(chat.copilot.localModel.enabled)`. Turn on **Use in Auto** on the model's details page to let Auto route suitable requests to the on-device model with cloud fallback. On-device models require GitHub sign-in.
 
 ### Visual Studio
 
