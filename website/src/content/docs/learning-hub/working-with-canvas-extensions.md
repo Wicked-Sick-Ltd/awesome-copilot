@@ -3,7 +3,7 @@ title: 'Working with Canvas Extensions'
 description: 'Create and iterate on GitHub Copilot app canvases using /create-canvas, then shape them into reusable project or personal extensions.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-21
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -23,6 +23,8 @@ Canvas extensions give you shared, interactive work surfaces inside the GitHub C
 This guide explains what canvases can do, how to create one with `/create-canvas`, and how to use patterns from this repository as reference implementations.
 
 > **Canvases now also available in VS Code (VS Code 1.142+, Preview)**: Enable `setting(chat.canvases.enabled)` and start a new session with the Copilot harness to use canvases directly in VS Code — in both the editor window and the Agents window. The same canvas extensions you create or install for the GitHub Copilot app work in VS Code: run `/create-canvas` to generate one in your workspace, or install a chat plugin that bundles a canvas extension through the Copilot app and then open it from the Agents window's **Add Tab (+)** > **Canvas** menu. See [VS Code's canvas documentation](https://code.visualstudio.com/docs/agents/run/agent-harnesses#_use-canvases-with-the-copilot-harness) for setup details.
+>
+> **Open canvases from the chat menu (VS Code 1.143+)**: In the editor window, you can now open an available canvas directly from **New Chat (+)** > **Canvas**, without asking Copilot to open it for you. The submenu lists every canvas your installed extensions provide (for example, a diagram explorer or a game board) and appears after your first message in a Copilot harness session. You can also reach the same list from the `+` menu in the Agents window.
 
 ## What canvases can do
 

@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-20
+lastUpdated: 2026-10-21
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -253,6 +253,14 @@ Eligible users with preview features enabled may also see **HydraFusion** (Resea
 ## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
 
 An experimental **Run and Compare Agents...** action in the Agents window extends the 1.140 "Run Multiple Agents" idea: it runs the same prompt across several agents in isolated worktrees and surfaces a side-by-side comparison so you can pick the best implementation before merging. A new **Chat: Clean Up Agent Worktrees** command helps you review and remove worktrees left behind by delegated sessions that are no longer active, reducing manual `git worktree` bookkeeping after heavy delegation.
+
+## Comparing model results with a judge and synthesis (VS Code 1.143+, Preview)
+
+The 1.141 "Run and Compare Agents" idea is now a full **Compare Models** workflow in the Agents window. Enable `setting(sessions.chat.compareAgents.enabled)`, then select **Compare Models** in the model picker to run a single prompt across two or more models and harnesses at once — you can mix Copilot, Claude, and Codex harnesses and give each attempt its own reasoning effort level.
+
+Each attempt runs in its own isolated session so you can follow progress side by side and open any attempt's worktree or changes at any time. Optionally select a **Judge model** to evaluate the attempts once they finish: its scorecard reports time and token usage per attempt, with expandable rationale and validation evidence, plus links back to each attempt. From there you can select **Synthesize** to build a new solution that combines the recommended attempt with ideas pulled from the others — synthesis only starts when you explicitly request it, so you stay in control of which approach lands.
+
+This is a useful orchestration pattern in its own right: instead of delegating subtasks to different workers, you delegate the *same* task to multiple candidate approaches and let a judge agent help you pick (or merge) the best one, rather than reviewing every diff yourself.
 
 ## Moving chats between folders and worktrees (VS Code 1.142+)
 
