@@ -3,7 +3,7 @@ title: 'Using the Copilot Coding Agent'
 description: 'Learn how to use GitHub Copilot coding agent to autonomously work on issues, generate pull requests, and automate development tasks.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-05-13
+lastUpdated: 2026-10-24
 estimatedReadingTime: '12 minutes'
 tags:
   - coding-agent
@@ -340,13 +340,7 @@ You can connect to and steer a running coding agent session from a local Copilot
 
 ### Starting a Remote-Controlled Session
 
-Launch a session that registers with GitHub for remote access:
-
-```bash
-copilot --remote
-```
-
-Or open a remote control tab from inside an existing session, and check or toggle its state:
+Use the `/remote` slash command from inside an interactive session to check or toggle remote control:
 
 ```
 /remote             # show current remote control status
@@ -354,7 +348,9 @@ Or open a remote control tab from inside an existing session, and check or toggl
 /remote off         # disable remote control for this session
 ```
 
-The **Remote** tab in the CLI shows all active coding agent tasks from the repository. Select a task to connect and begin sending steering messages.
+> **`--remote`/`--no-remote` startup flags retired (CLI v1.0.103+)**: The CLI no longer supports launching with `copilot --remote`. Enable remote control from inside a session with `/remote on`, or configure every interactive session to be remotely accessible by default by setting `"remoteSessions": true` in your Copilot settings file (typically `~/.copilot/settings.json`).
+
+When enabled, the CLI displays a link and QR code for accessing the session on GitHub.com or GitHub Mobile under your recent agent sessions. If you started the session inside a GitHub repository, it also appears on that repository's **Agents** tab.
 
 ### Resuming from the Session Picker
 

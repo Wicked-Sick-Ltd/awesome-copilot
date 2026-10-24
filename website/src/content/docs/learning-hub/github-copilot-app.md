@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-19
+lastUpdated: 2026-10-24
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -160,6 +160,12 @@ Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer fo
 > **Install Skills from folder, ZIP, or URL (v1.1.30+)**: Use **Customize > Add > Install skill…** to install a Skill from a local folder, a ZIP file, a GitHub skill-folder URL, or an HTTPS ZIP link, with a review step that shows what will be written before anything is installed.
 
 > **"Open in" for files (v1.1.30+)**: Right-click a file in the Files tree to open it in an installed editor or custom app via a new **Open in** submenu, instead of only being able to open it inside the app's built-in editor.
+
+> **Assisted approvals generally available (v1.1.31+)**: Assisted mode — which automatically approves tool requests an automatic safety check deems safe and prompts you for anything else — is now available to everyone and can be turned off in Settings if you prefer manual approval for every request.
+
+> **"Persistent Agents" renamed to "Projects" (v1.1.31+)**: What were previously called Persistent Agents are now called **Projects** throughout the sidebar, Settings, menus, and commands. The former "projects" concept (a connected repository, folder, or collection) is now referred to as repositories, folders, and collections respectively. If you see "Persistent Agent" in older documentation or community content, it refers to what the app now calls a Project.
+
+> **Native runtime by default (v1.1.31+)**: Sessions now run on the app's native runtime by default for everyone, with an option in Settings to switch back if needed (applies after a restart).
 
 ## Who is the Copilot app for?
 

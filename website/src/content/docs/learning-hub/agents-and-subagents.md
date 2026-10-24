@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-24
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -242,7 +242,9 @@ A few smaller changes round out delegated-session bookkeeping in 1.140: marking 
 
 ## The Copilot harness and multi-folder sessions (VS Code 1.140+)
 
-VS Code 1.140 introduced the **Copilot harness**, a new default option in the chat input's harness picker. It's powered by the Copilot SDK, so delegation behavior (how subagents are launched, tracked, and reported back to the coordinator) is now consistent across VS Code, the standalone GitHub Copilot app, and Copilot CLI. The harness runs in a dedicated **agent host** process based on the **Agent Host Protocol (AHP)**, which means you can connect to the same running agent session from multiple VS Code windows instead of being tied to the window that started it.
+VS Code 1.140 introduced the **Copilot harness**, a new option in the chat input's harness picker. It's powered by the Copilot SDK, so delegation behavior (how subagents are launched, tracked, and reported back to the coordinator) is now consistent across VS Code, the standalone GitHub Copilot app, and Copilot CLI. The harness runs in a dedicated **agent host** process based on the **Agent Host Protocol (AHP)**, which means you can connect to the same running agent session from multiple VS Code windows instead of being tied to the window that started it.
+
+> **Copilot harness is now the default (VS Code 1.143+)**: New sessions use the Copilot harness by default. The harness picker shows **Copilot** to indicate a session is using it, and these sessions can keep running in the background and stay accessible from both the editor window and the Agents window.
 
 This release also added **multi-folder sessions (Experimental)** — `setting(chat.agentHost.copilotAgent.multiRootEnabled)` (plus equivalent settings for the Claude and Codex agent hosts). Previously, every chat in a multi-chat session shared the same folder and checkout; now each coordinator or worker chat can use its own folder or worktree without changes leaking between them. This is useful for delegation patterns that span repositories (ask a worker chat to implement a change in a second repository while the coordinator stays in the first) or that compare worktree-isolated approaches to the same repository side by side. Related to this, **Archive chats in a session** lets you select **Mark as Done** on a single finished peer chat without ending the rest of the session — handy when a worker has completed its task but the coordinator (or other workers) are still active.
 
