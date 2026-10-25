@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-23
+lastUpdated: 2026-10-25
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -280,7 +280,15 @@ The Copilot harness introduced in 1.140 is now **the default for new sessions** 
 
 ## Running Copilot models on-device (VS Code 1.143+, Experimental)
 
-On hardware with enough GPU memory (for example, a Surface Laptop Ultra with NVIDIA RTX Spark), you can download a local coding model — **MAI Code 1.1 Flash** — from the new **On This Device** tab in the model picker and use it in Copilot harness sessions, with inference running entirely on your machine instead of calling a hosted model. To try it, set `setting(chat.copilot.localModel.llamaServerPath)` to your `llama-server` executable and enable `setting(chat.copilot.localModel.enabled)`.
+On hardware with enough GPU memory (for example, a Surface Laptop Ultra with NVIDIA RTX Spark), you can download a local coding model — **MAI Code 1.1 Flash** — from the new **On This Device** tab in the model picker and use it in Copilot harness sessions, with inference running entirely on your machine instead of calling a hosted model.
+
+On-device models require:
+
+- GitHub sign-in
+- An NVIDIA GPU with 96 GB or more of GPU memory
+- A llama.cpp build that supports the model
+
+To try it, install that llama.cpp build, set `setting(chat.copilot.localModel.llamaServerPath)` to its `llama-server` executable, and enable `setting(chat.copilot.localModel.enabled)`.
 
 ## Common questions
 
