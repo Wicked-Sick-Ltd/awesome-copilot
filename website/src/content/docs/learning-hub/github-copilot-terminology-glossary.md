@@ -3,7 +3,7 @@ title: 'GitHub Copilot Terminology Glossary'
 description: 'A quick reference guide defining common GitHub Copilot and platform-specific terms.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-02
+lastUpdated: 2026-10-22
 estimatedReadingTime: '8 minutes'
 tags:
   - glossary
@@ -230,6 +230,20 @@ The autonomous GitHub Copilot agent that works on issues in a cloud environment 
 **Learn more**: [Using the Copilot Coding Agent](../using-copilot-coding-agent/)
 
 **Related terms**: [Agent](#agent), [Hook](#hook)
+
+---
+
+### Canvas / Canvas Extension
+
+An interactive, bidirectional work surface inside the GitHub Copilot app (and VS Code's Copilot harness sessions, Preview) that both people and agents can update — for example a triage board, planning document, or live browser-assisted workflow. A **canvas extension** is the reusable package (`extension.mjs` plus optional UI/assets) that defines a canvas's capabilities and UI; you can generate one with `/create-canvas` or install a chat plugin that bundles one.
+
+**Example**: A release checklist canvas with `add_item`, `assign_owner`, and `mark_done` capabilities that the agent calls while you track progress visually.
+
+**When to use**: For workflows where visibility and steering matter more than a chat transcript, or where you want to reuse the same interactive surface across sessions.
+
+**Learn more**: [Working with Canvas Extensions](../working-with-canvas-extensions/)
+
+**Related terms**: [Agent](#agent), [Plugin](#plugin)
 
 ---
 
