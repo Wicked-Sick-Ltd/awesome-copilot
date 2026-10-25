@@ -3,7 +3,7 @@ title: 'Using the Copilot Coding Agent'
 description: 'Learn how to use GitHub Copilot coding agent to autonomously work on issues, generate pull requests, and automate development tasks.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-05-13
+lastUpdated: 2026-10-22
 estimatedReadingTime: '12 minutes'
 tags:
   - coding-agent
@@ -340,21 +340,30 @@ You can connect to and steer a running coding agent session from a local Copilot
 
 ### Starting a Remote-Controlled Session
 
-Launch a session that registers with GitHub for remote access:
+> **Flag rename (v1.0.103+)**: The legacy `--remote`/`--no-remote` startup flags have been retired in favor of clearer hosting/connection flags. Use `--sync-session[=on|off]` to enable or disable read-only account history sync for the current run (without a value, sync is enabled but incoming control is not). Headless hosting now goes through `--host-environment <name>` (starts a headless Mission Control environment) and `--host-compute-id <id>` (a stable environment compute identity override). The in-session `/remote` slash command and the **Remote** tab are unaffected by this rename.
+
+Account-history sync and remote control are separate steps. `--sync-session` enables read-only account-history sync for the current run. Incoming remote control stays off until you run `/remote on` inside the session, so the startup command alone cannot send the steering messages in this section.
+
+Start the CLI with history sync:
 
 ```bash
-copilot --remote
+copilot --sync-session
 ```
 
-Or open a remote control tab from inside an existing session, and check or toggle its state:
+Then enable remote control in that session. This follow-up is required before you connect or send a steering message. If the CLI is already running, stay in that session and run the same command:
+
+```
+/remote on          # enable remote control and register with GitHub
+```
+
+Check the state, or turn remote control off, with:
 
 ```
 /remote             # show current remote control status
-/remote on          # enable remote control and register with GitHub
 /remote off         # disable remote control for this session
 ```
 
-The **Remote** tab in the CLI shows all active coding agent tasks from the repository. Select a task to connect and begin sending steering messages.
+The **Remote** tab in the CLI shows all active coding agent tasks from the repository. After `/remote on`, select a task to connect and begin sending steering messages.
 
 ### Resuming from the Session Picker
 
