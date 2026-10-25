@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-10-21
+lastUpdated: 2026-10-25
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -273,6 +273,22 @@ Continue this task in a new Git worktree of the current repository before implem
 The agent finishes its current turn, moves the chat, and keeps the full conversation history intact while continuing automatically in the new location. This is available for sessions using the Codex harness or Codex in Interactive mode, for chats with one chat and one local folder.
 
 Administrators also gained more granular control over delegated-session permissions in 1.142: `permissions.disableAssistedPermissionsMode` lets an organization permit **Assisted** permissions while still blocking **Allow All**, so delegated worker agents can get assisted approvals without bypassing permission checks entirely.
+
+## The Copilot harness becomes the default (VS Code 1.143+)
+
+The Copilot harness introduced in 1.140 is now **the default for new sessions** in VS Code. Starting a new session shows **Copilot** selected in the harness picker, and sessions keep running through the Agent Host whether you access them from the editor window or the Agents window. If your organization requires the Copilot harness via managed `permissions.deny` rules or `sandbox.enabled: true`, the **Local** harness stays visible but disabled in the picker with a **Learn why** link; existing Claude and Codex sessions remain visible and usable, but you can't start new ones while that policy applies.
+
+## Running Copilot models on-device (VS Code 1.143+, Experimental)
+
+On hardware with enough GPU memory (for example, a Surface Laptop Ultra with NVIDIA RTX Spark), you can download a local coding model — **MAI Code 1.1 Flash** — from the new **On This Device** tab in the model picker and use it in Copilot harness sessions, with inference running entirely on your machine instead of calling a hosted model.
+
+On-device models require:
+
+- GitHub sign-in
+- An NVIDIA GPU with 96 GB or more of GPU memory
+- A llama.cpp build that supports the model
+
+To try it, install that llama.cpp build, set `setting(chat.copilot.localModel.llamaServerPath)` to its `llama-server` executable, and enable `setting(chat.copilot.localModel.enabled)`.
 
 ## Common questions
 
