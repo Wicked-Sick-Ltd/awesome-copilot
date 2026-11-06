@@ -3,7 +3,7 @@ title: 'Automating with Hooks'
 description: 'Learn how to use hooks to automate lifecycle events like formatting, linting, and governance checks during Copilot agent sessions.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-22
+lastUpdated: 2026-10-14
 estimatedReadingTime: '8 minutes'
 tags:
   - hooks
@@ -646,6 +646,27 @@ echo "Pre-commit checks passed ✅"
 - **Test locally first**: Run hook scripts manually before relying on them in agent sessions.
 - **Layer hooks, don't overload**: Use multiple hook entries for independent checks rather than one monolithic script.
 
+### Agent-Scoped Hooks (v1.0.97+)
+
+In addition to repository-, project-, and user-level hooks that apply to every session, **custom agents can now declare their own hooks directly in frontmatter**, scoped to only that agent's sessions. This is useful when a specific agent needs guardrails or automation that shouldn't apply globally — for example, a database-migration agent that always runs a schema validator in `postToolUse`, without forcing every other agent and session to run that same check.
+
+```yaml
+---
+name: 'Migration Runner'
+description: 'Applies and validates database schema migrations'
+model: Claude Sonnet 4
+tools: ['codebase', 'terminal']
+hooks:
+  postToolUse:
+    - type: 'command'
+      bash: './scripts/validate-schema.sh'
+      matcher: '^bash$'
+      timeoutSec: 20
+---
+```
+
+Agent-scoped hooks are merged with any repository-, project-, or user-level hooks that also apply to the session — they add to the existing set rather than replacing it. See [Building Custom Agents](../building-custom-agents/) for more on agent frontmatter fields.
+
 ## Compatibility and Migration Notes
 
 This section collects behavior changes from past releases that may explain historical bugs or inconsistent-looking output — everything above describes current behavior.
@@ -659,6 +680,7 @@ This section collects behavior changes from past releases that may explain histo
 
 A: There are several supported locations, loaded in order of precedence:
 
+- **Agent-scoped** (v1.0.97+): A `hooks` field in a custom agent's frontmatter — applies only to sessions running that agent
 - **Repository-level** (shared with team): `.github/hooks/*.json` in your repository — all JSON files in this folder are loaded automatically
 - **Claude/Copilot project settings**: `.claude/settings.json` and `.claude/settings.local.json` — hooks defined here are applied to the current repository without committing them to `.github/`
 - **Global settings**: `settings.json` or `settings.local.json` (user-level CLI config)

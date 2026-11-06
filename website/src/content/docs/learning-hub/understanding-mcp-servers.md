@@ -3,7 +3,7 @@ title: 'Understanding MCP Servers'
 description: 'Learn how Model Context Protocol servers extend GitHub Copilot with access to external tools, databases, and APIs.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-22
+lastUpdated: 2026-10-11
 estimatedReadingTime: '8 minutes'
 tags:
   - mcp
@@ -215,6 +215,12 @@ Some MCP servers require authentication to connect to protected resources. GitHu
 
 > **Tip**: If your MCP server uses OAuth with Dynamic Client Registration but hosts its authorization metadata at a non-standard URL (as some enterprise servers like Atlassian Rovo do), Copilot CLI handles this automatically.
 
+> **Scope GitHub auth to approved MCP origins (v1.0.90+)**: Use `--mcp-github-auth` to restrict your signed-in GitHub account credentials so they're only shared with MCP servers whose origins you've explicitly approved, instead of being available to every configured MCP server. This reduces the blast radius if a misconfigured or untrusted MCP server is added to a session.
+
+> **Silent credential renewal for Entra-protected servers (v1.0.92+)**: Entra-protected MCP servers can silently renew access-token-only credentials in the background, so a token nearing expiry no longer interrupts your session with a re-authentication prompt.
+
+> **Enable/disable before discovery (v1.0.94+)**: You can now enable or disable an MCP server before the CLI has finished discovering its tools, without triggering an unnecessary server startup — useful for quickly toggling off a server you don't plan to use in the current session.
+
 Copilot CLI can sign in to MCP servers using a **Client ID Metadata Document (CIMD)** for OAuth, an alternative to Dynamic Client Registration where the client's identity is published as a metadata document at a URL instead of being registered ahead of time with the authorization server.
 
 ## How Agents Use MCP Tools
@@ -319,7 +325,9 @@ For example, a PostgreSQL server that can't connect because `DATABASE_URL` is no
 
 You can also open the `/mcp` manager while the agent is working to toggle servers on or off mid-turn. Add, edit, delete, and re-auth actions wait until the turn finishes, but enabling or disabling a server takes effect immediately.
 
-**Toggling servers on and off**: From the `/mcp` list view, you can **enable or disable individual MCP servers** without editing your config file. Select a server in the list and toggle it — disabled servers won't start in future sessions and their tools won't be available to agents. This is useful for temporarily disabling a server that's causing slowdowns or errors without removing it from your configuration entirely.
+**`copilot mcp list` and `copilot mcp get` show the built-in GitHub server** *(v1.0.87+)*: When you're signed in, these CLI commands now report the built-in `github-mcp-server` alongside your other configured servers, instead of it only appearing in the interactive `/mcp` view.
+
+**Toggling servers on and off** (v1.0.66+): From the `/mcp` list view, you can **enable or disable individual MCP servers** without editing your config file. Select a server in the list and toggle it — disabled servers won't start in future sessions and their tools won't be available to agents. This is useful for temporarily disabling a server that's causing slowdowns or errors without removing it from your configuration entirely.
 
 **Common causes and fixes**:
 

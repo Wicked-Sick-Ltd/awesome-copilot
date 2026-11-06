@@ -3,7 +3,7 @@ title: 'Copilot Configuration Basics'
 description: 'Learn how to configure GitHub Copilot at user, workspace, and repository levels to optimize your AI-assisted development experience.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-22
+lastUpdated: 2026-10-18
 estimatedReadingTime: '10 minutes'
 tags:
   - configuration
@@ -438,6 +438,10 @@ If the CLI is interrupted unexpectedly — a crash or a machine restart — star
 
 Use `copilot login --with-token` to read an authentication token from stdin instead of going through the interactive browser or device-code flow — useful for scripted or containerized setups where a token is already available in the environment.
 
+> **Config sidebar (v1.0.85+)**: Run `/config` to open a sidebar configuration screen without leaving your session, instead of editing `config.json` by hand or hunting through individual slash commands.
+
+> **Vim mode (v1.0.85+)**: Turn on modal editing in the composer with `/vim`, or set `editorMode` to `vim` in your configuration. The current mode (insert or normal) is shown while you type, matching the modal editing experience from Vim.
+
 In addition to the main config file, GitHub Copilot CLI reads two optional per-project files for repository-specific overrides:
 
 - `.claude/settings.json` — committed project settings
@@ -447,15 +451,17 @@ These files follow the same format as `config.json` and are loaded after the glo
 
 > **Note**: Custom agents, skills, and commands placed in `~/.claude/` (the Claude Code user directory) are **not** loaded by GitHub Copilot CLI. Only `~/.claude/settings.json` is read for configuration. Store personal agents and skills in the supported locations instead: `~/.copilot/agents/` for user-level agents, `~/.copilot/skills/` or `~/.agents/skills/` for personal skills, or `.github/agents/` and `.github/skills/` in your repositories for project-level customizations. See [Compatibility and Migration Notes](#compatibility-and-migration-notes) if you previously relied on `~/.claude/` being loaded.
 
+> **Breaking change (v1.0.93)**: User-setting keys are now read **only** from `~/.copilot/settings.json`. Any user-setting keys still present in `~/.copilot/config.json` are ignored. If your personal settings stopped applying after upgrading, move them from `config.json` to `settings.json`.
+
 ### Model Picker
 
 The model picker opens in a **full-screen view** with inline reasoning effort adjustment. Use the **← / →** arrow keys to change the reasoning effort level (`low`, `medium`, `high`) directly from the picker without leaving the session. The current reasoning effort level is also displayed in the model header (e.g., `claude-sonnet-4.6 (high)`) so you always know which level is active. Models are grouped into **Recent**, **Recommended**, **New**, and other sections instead of a single flat list, making it faster to find the model you want — press **Shift+Tab** to switch between grouping views.
 
 `/model` changes the model for the **current session only** by default. Use `/config model` to set the default model for future sessions.
 
-**Auto mode and server-side model routing**: When you select **Auto** as your model, the CLI uses server-side model routing for real-time model selection. Instead of locking in a single model at session start, Auto mode evaluates each request and routes it to the most appropriate model dynamically. This means straightforward questions can be handled by a faster model while complex reasoning tasks are automatically escalated — without you needing to switch models manually.
+**Auto mode and server-side model routing** (v1.0.43+): When you select **Auto** as your model, the CLI uses server-side model routing for real-time model selection. Instead of locking in a single model at session start, Auto mode evaluates each request and routes it to the most appropriate model dynamically. This means straightforward questions can be handled by a faster model while complex reasoning tasks are automatically escalated — without you needing to switch models manually. In v1.0.87+, organizations can configure **user and managed startup defaults for the Auto routing tier**, including a strict policy that locks the tier or a user-overridable default that individuals can adjust for their own sessions. In v1.0.89+, Auto proactively **suggests a routing tier** for your current task and lets you switch to it with a shortcut or a click, and a lightweight feedback prompt appears if you switch away from Auto to a manually selected model — both changes make it easier to keep Auto's suggestions well-tuned without leaving your session.
 
-**Model family aliases**: Instead of typing a full model name, you can use short family aliases in the model setting: `opus`, `sonnet`, `haiku` (Anthropic), and `gpt`, `gemini` (Google/OpenAI). The CLI resolves the alias to the latest available model in that family. This is especially useful in scripts or configuration files where you want to track the best model in a family without hardcoding a version string. Current models include **Claude Opus 5** and **Claude Fable 5.1** (Anthropic), **Grok 4.5** and **Grok 4.6** (xAI, with `xhigh` reasoning effort support), **Gemini 3.7 Flash** (Google), and **GPT-6 Astra** (OpenAI). The model picker also periodically retires older models no longer worth recommending, so don't be surprised if a model you previously pinned disappears from the list — check [Compatibility and Migration Notes](#compatibility-and-migration-notes) if that happens.
+**Model family aliases** (v1.0.64+): Instead of typing a full model name, you can use short family aliases in the model setting: `opus`, `sonnet`, `haiku` (Anthropic), and `gpt`, `gemini` (Google/OpenAI). The CLI resolves the alias to the latest available model in that family. This is especially useful in scripts or configuration files where you want to track the best model in a family without hardcoding a version string. Recent models available include **Claude Opus 5** (v1.0.75+), the latest in Anthropic's Opus family for the most demanding tasks, **Claude Fable 5.1**, **Grok 4.5** (v1.0.76+) from xAI, and **Gemini 3.7 Flash** (v1.0.81+). **Grok 4.6** (v1.0.81+) also gains support for the `xhigh` reasoning effort level, one step above `high`, for the most demanding reasoning tasks. **GPT-6 Astra** (v1.0.85+) is also available as a model choice, followed by **Claude Opus 5.5** (v1.0.89+), **GPT-6 Sol** and **GPT-6 Luna** (v1.0.89+, where available), **GPT-6.1 Sol** (v1.0.90+), **Claude Haiku 5.5** (v1.0.94+) as a fast, lower-cost addition, and **Gemini 4 Argon** (v1.0.98+) to the model and `--model` completion lists. The model picker also periodically retires older models no longer worth recommending, so don't be surprised if a model you previously pinned disappears from the list — check [Compatibility and Migration Notes](#compatibility-and-migration-notes) if that happens.
 
 **Model fallback lists**: Custom agents can set `model` to a list of several models instead of a single name. Copilot tries each one in order until it finds one available to your account — useful when your preferred model is temporarily rate-limited or not enrolled. Pair this with `model-policy: required` to keep the agent restricted to that list even if you try to switch models mid-session. See [Building Custom Agents](../building-custom-agents/) for the frontmatter syntax.
 
@@ -468,6 +474,10 @@ The model picker opens in a **full-screen view** with inline reasoning effort ad
 ```
 
 When you leave plan mode, the CLI automatically reverts to your session model. This pairing works well with repository model pinning — you can enforce a high-quality model for implementation while allowing a lighter model during exploration and planning.
+
+**Autocomplete model IDs (v1.0.89+)**: The `/model` and `/model plan` argument pickers now autocomplete model IDs as you type, making it faster to jump straight to a specific model without scrolling through the full grouped list.
+
+**Case-insensitive model IDs (v1.0.96+)**: `/model` and `/config model` now match model IDs case-insensitively and save the canonical ID, so typing a model name in the wrong case (for example from a script or copied config) no longer fails to resolve or saves an inconsistent value.
 
 ### CLI Session Commands
 
@@ -535,6 +545,12 @@ In the session picker, press **`s`** to cycle the sort order: relevance, last us
 
 With the sidebar open, you can see all running and backgrounded sessions in a split-view panel alongside your active conversation. Sessions are listed with their name, working directory, and running status. Click or keyboard-navigate (arrow keys, **n** to spawn, **x** twice to close) to switch sessions instantly. Use this when you regularly juggle several parallel workstreams and want a persistent view of all your sessions rather than accessing them through the `/resume` picker.
 
+> **Clearer dismiss confirmation (v1.0.88+)**: In the Sessions tab, pressing **x** on a dismissible row now requires **x** again to confirm, and the footer tells you what that second press will do — permanently delete a local session, or just close a server-backed session (leaving its conversation intact on the server). Rows that can't be dismissed no longer show the **x** hint at all.
+
+> **Unread turn indicator (v1.0.89+)**: A session in the sidebar now shows a blue dot when it has finished a turn you haven't opened yet, making it easier to spot which backgrounded sessions are waiting for your attention when you're juggling several at once.
+
+> **Unified Sessions browser is now the default (v1.0.100+)**: `/sessions`, `/session`, and `/resume` now open the same unified Sessions browser by default, instead of separate pickers with slightly different behavior. Browsing large account histories also caps discovery at 500 records and respects `Retry-After` hints when automatically refreshing the list, so it stays responsive even with a long session history.
+
 **Sidebar sort order**: The split Sessions sidebar supports **Recent**, **Created**, **Name**, and classic **None** sorting so you can order the list the way that fits your workflow. Your chosen order is remembered across CLI restarts.
 
 **Windows 11 taskbar status**: On Windows 11, running Copilot CLI sessions appear in the taskbar with live hover status cards, so you can check on a background session's progress without switching back to its terminal window.
@@ -567,7 +583,9 @@ The `/fork` command copies the current session into a **new independent session*
 
 After forking, the new session is immediately active. Both sessions share the same history up to the fork point but accumulate changes independently from that moment forward. Use `/fork` to experiment with a risky refactor without abandoning your current working session. Forked sessions display their **origin session** name in the sessions dialog, making it easy to trace which session a fork came from.
 
-The `/cd` command changes the working directory for the current session. The working directory **persists when you resume a session** — if you restart the CLI and resume, you return to the same directory automatically. Changing directory also triggers discovery of custom agents in the new location, so switching to a different project loads its agents without a restart:
+> **Fork during an active turn (v1.0.88+)**: You can now run `/fork` while a turn is still in progress — the branch happens immediately instead of requiring you to wait for the current response to finish.
+
+The `/cd` command changes the working directory for the current session. Since v1.0.65, the working directory **persists when you resume a session** — if you restart the CLI and resume, you return to the same directory automatically. Changing directory also triggers discovery of custom agents in the new location, so switching to a different project loads its agents without a restart:
 
 ```
 /cd ~/projects/my-other-repo
@@ -637,6 +655,8 @@ The `/delegate` command creates a **delegate PR** — a pull request that the co
 
 This is useful when you want to hand off a task to the coding agent on a specific branch — for example, backporting a fix to an older release branch or targeting a long-lived feature branch for automated work.
 
+> **PR templates honored automatically (v1.0.89+)**: When the CLI creates a pull request (via `/pr`, `/delegate`, or `/fleet`), it now follows any repository pull request template, preserving its required sections and checklist structure instead of generating a freeform description. Keep your `.github/PULL_REQUEST_TEMPLATE.md` (or `.github/PULL_REQUEST_TEMPLATE/` folder) up to date to ensure agent-authored PRs match your team's review conventions.
+
 The `/share html` command exports the current session — including conversation history and any research reports — as a **self-contained interactive HTML file**:
 
 ```
@@ -644,6 +664,8 @@ The `/share html` command exports the current session — including conversation
 ```
 
 The exported file contains everything needed to view the session without a network connection and can be shared with teammates or stored for later reference. This complements `/share` (which shares via URL) for cases where an offline or attached format is preferred.
+
+> **Session and memory import (v1.0.85+)**: New import commands accept the semantic JSONL interchange format, letting you bring session transcripts or memory records generated outside the CLI (or exported from another tool) back into a Copilot CLI session for reference or continuation.
 
 The `/chronicle` command opens an interactive timeline of everything the agent has done in the current session. It shows file changes, tool calls, and conversation turns in chronological order, letting you review the full arc of the session at a glance:
 
@@ -677,9 +699,13 @@ Use `/diagnose` when a session is behaving unexpectedly — it inspects session 
 
 **Shell command history in normal mode**: The **↑/↓** arrow keys and **Ctrl+R** reverse search include past shell commands (commands run with `!`) while you are in normal (non-shell) input mode, so you can recall and re-run a shell command without switching into shell mode first — useful for quickly repeating a build, test, or diagnostic command from earlier in the session.
 
-**Inline image rendering**: The CLI can display images inline in the terminal when your terminal supports it. If an MCP tool, agent, or attachment returns an image, it is rendered directly in the conversation timeline rather than shown as a file path or URL. This works in terminals with image protocol support (such as iTerm2, Kitty, Wezterm, and tmux with appropriate configuration).
+**Inline image rendering** (v1.0.64+; on by default in v1.0.98+): The CLI can display images inline in the terminal when your terminal supports it. If an MCP tool, agent, or attachment returns an image, it is rendered directly in the conversation timeline rather than shown as a file path or URL. This works in terminals with image protocol support (such as iTerm2, Kitty, Wezterm, and tmux with appropriate configuration). As of v1.0.98, inline images render by default on supported terminals without needing to enable experimental mode first; use `/settings inlineImages false` to turn them off if you prefer the file-path/URL display.
 
 **Voice dictation**: Press **Ctrl+Space** to toggle voice dictation on or off, letting you speak a prompt instead of typing it.
+
+**Steering prompt recall** *(v1.0.87+)*: Consecutive steering prompts sent in the same mode combine into a single pending message. Press **Up** in an empty chat input to recall that pending message back into the composer for editing — including any pasted text and attachments — with a recall hint shown alongside it. **Ctrl+C** stops the running turn instead of removing queued prompts one at a time, while **Ctrl+Q** queued prompts remain separate from steering prompts. Use **Ctrl+P** to browse prompt history without withdrawing pending prompts. This is available for local sessions; prompts already being processed cannot be recalled.
+
+**Take back an unstarted prompt (v1.0.89+)**: Press **Esc Esc** in an empty chat input to pull back a queued prompt whose turn the model hasn't started answering yet, removing it from the conversation so you can edit and resend it (or decide not to send it at all). This complements steering prompt recall by letting you retract a prompt entirely rather than just editing it in place.
 
 The `/ask` command lets you ask a quick question without affecting your conversation history. The current session context is preserved, so you can use it for one-off lookups without derailing an ongoing task. Responses are rendered as full markdown, including tables and formatted links:
 
@@ -707,13 +733,15 @@ The `/context` command shows a visualization of the current conversation's conte
 /context
 ```
 
-The `/usage` command displays session metrics such as the number of tokens consumed, API calls made, and any quota information for the current session, including per-model token totals when you have used multiple models in a session:
+The `/usage` command displays session metrics such as the number of tokens consumed, API calls made, and any quota information for the current session. In v1.0.64+, `/usage` also shows per-model token totals when you have used multiple models in a session. In v1.0.97+, `/usage` also shows **billed AI Credits** for token-billed sessions, including after a session is resumed, so usage-based billing customers can see spend without switching to a separate dashboard:
 
 ```
 /usage
 ```
 
-**`/limits predict`**: Usage-based billing users can run `/limits predict` to get a suggested AI-credit limit for the current session, based on the credit consumption of similar past sessions. This helps you set a realistic `sessionLimits` value ahead of a large task instead of guessing:
+**Expand and copy `/ask` answers (v1.0.98+)**: Press **Ctrl+E** to expand an `/ask` answer in place, and **Ctrl+Y** to copy the entire answer to your clipboard. You can also reopen the last completed `/ask` answer in the current session by running `/ask` or `/btw` with no arguments, instead of scrolling back through the transcript to find it.
+
+**`/limits predict`** *(v1.0.76+)*: Usage-based billing users can run `/limits predict` to get a suggested AI-credit limit for the current session, based on the credit consumption of similar past sessions. This helps you set a realistic `sessionLimits` value ahead of a large task instead of guessing:
 
 ```
 /limits predict
@@ -769,7 +797,39 @@ Use `/autopilot` when you want to flip between supervised and unsupervised opera
 
 > **Read-only `gh` CLI commands**: Read-only `gh` commands — such as `gh issue list`, `gh pr view`, `gh run status`, and other commands that don't write to GitHub — are **automatically approved** without a permission prompt. Only commands that write to GitHub (like creating issues, merging PRs) still require explicit approval. This reduces friction during exploratory sessions where you frequently check issue or PR status.
 
-The `/permissions` command opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
+> **Session-scoped read-only directory approvals (v1.0.90+)**: Path access prompts now let you grant **read-only access to a directory for the rest of the session**, instead of only choosing between a one-off approval and a persistent read/write grant. This gives you a middle ground when an agent needs to browse a directory it hasn't touched before but shouldn't be allowed to write there. `/list-dirs` shows exact-path grants (including those created for missing paths without granting the parent directory), and `/reset-allowed-tools` clears them.
+
+> **Complete read-only shell pipelines reviewed automatically (v1.0.91+)**: Shell pipelines that are complete, statically analyzable, and entirely read-only can now go through automatic execution-evidence review instead of requiring a manual approval prompt. Incomplete or unbound pipelines (for example, ones using command substitution the CLI can't fully analyze ahead of time) still require explicit approval.
+
+> **`copilot config` subcommands (v1.0.92+)**: Manage settings directly from the command line with `copilot config list`, `copilot config get <key>`, `copilot config set <key> <value>`, and `copilot config remove <key>` — useful for scripting configuration changes or auditing settings without opening `/config` or editing `config.json` by hand.
+
+> **Pre-conversation environment picker (v1.0.92+)**: Press **Ctrl+E** before starting a conversation to choose whether the session runs locally or in a connected cloud environment, instead of having to specify `--connect` or launch a separate remote session.
+
+> **Enterprise network boundary enforcement (v1.0.93+)**: Enterprise administrators can set `permissions.limitTo` to enforce managed-domain boundaries for the CLI's outbound network requests, restricting agent sessions to an approved set of destinations regardless of per-user configuration.
+
+> **Assisted Permissions judge sees shell code (v1.0.94+)**: The auto allow-all judge (enabled with `/allow-all auto`) now evaluates the visible shell code behind a tool request instead of requiring a manual approval for commands it could otherwise judge automatically, reducing unnecessary interruptions during assisted sessions. Managed policy can also disable Assisted Permissions entirely and keep sessions locked to **Manual Approval** mode.
+
+> **MCP enable/disable before server discovery (v1.0.94+)**: You can now enable or disable MCP servers before the CLI has finished discovering their tools, without triggering an unnecessary server startup — useful when quickly toggling a server you don't plan to use in the current session.
+
+> **Entra broker authentication on macOS (v1.0.95+)**: The CLI now uses native Microsoft Entra broker authentication on macOS when available, falling back to the browser flow if the broker isn't present — reducing the number of sign-in prompts for Entra-managed accounts.
+
+> **Sandbox credential `injectHosts` (v1.0.95+)**: `copilot config` supports a sandbox `credential.injectHosts` key (with key completion in Bash, Zsh, and Fish) to control which hosts receive injected credentials inside the sandbox.
+
+> **`/add-dir` grants sandbox access (v1.0.96+)**: When the sandbox is enabled, running `/add-dir` to add a directory to the session also grants sandbox access to that directory, so newly added directories work immediately instead of requiring a separate sandbox approval.
+
+> **`/user list` shows authentication source (v1.0.96+)**: The `/user list` command now shows the authentication source (for example GitHub sign-in, Entra, or an environment variable token) for each signed-in account, making it easier to tell accounts apart when you have several configured.
+
+> **Permission decision timeline (v1.0.96+)**: The session timeline now records whether you, Assisted Permissions, managed policy, or unattended fallback made each permission decision — useful for auditing why a tool call was approved or denied after the fact.
+
+> **Managed permission rules shown read-only (v1.0.97+)**: In `/config`, permission rules set by your organization are now marked **read-only** and hidden from the editable list unless your organization has set them — making it clear which rules come from managed policy versus your own configuration, and preventing accidental attempts to change settings that are centrally enforced.
+
+> **Agent-scoped declarative hooks (v1.0.97+)**: Custom agents can now declare their own hooks directly, scoped to only that agent's sessions, instead of relying solely on repository- or user-level `hooks.json` files that apply to every session. See [Automating with Hooks](../automating-with-hooks/) for details on hook configuration.
+
+> **`--trust-folder` for prompt-mode sessions (v1.0.99+)**: One-off sessions started with `-p` or piped stdin can now pass `--trust-folder` to trust the working directory for that run, instead of requiring an interactive trust prompt or a pre-existing trust grant — useful for scripted or CI invocations of the CLI.
+
+> **`--disable-client-telemetry` flag (v1.0.99+)**: Turn off client telemetry uploads entirely with `--disable-client-telemetry`, for environments that need to opt out of telemetry beyond the existing settings-based controls.
+
+The `/permissions` command *(v1.0.78+)* opens an interactive picker for switching between approval modes mid-session. Instead of typing `/allow-all on` or `/autopilot`, `/permissions` gives you a visual overview of available modes — interactive, autopilot, auto (LLM-judged), and plan — and lets you switch with a single keypress:
 
 ```
 /permissions
@@ -784,6 +844,14 @@ gh copilot --effort high "Refactor the authentication module"
 ```
 
 Accepted values are `low`, `medium`, and `high`. You can also set a default via the `effortLevel` config setting.
+
+### Indexed Search
+
+Grep searches in large monorepos use an **indexed search engine** for significantly faster results instead of scanning every file on each query. The index status is visible in the CLI so you know when indexing is active, and it works across platforms — including Windows ReFS volumes — with a reliable fallback to standard ripgrep search if indexing is unavailable.
+
+**Glob filtering and file listings (v1.0.88+)**: Indexed search now supports glob filtering and `--files` listings, so you can narrow a search to a specific file pattern (e.g., `**/*.test.ts`) or list matching files directly, with accurate fallback behavior if the index can't service a particular query.
+
+Indexed search keeps refreshing automatically as files change — including on Linux, where it now recovers gracefully when the OS's native file-watch limit is exhausted (v1.0.87+) — and supports explicit cloud-sync overrides for repositories stored in synced folders (e.g., OneDrive, Dropbox) where native file events may be unreliable. On Windows, index updates no longer leak disk space over long sessions (v1.0.86+).
 
 ### CLI Startup Flags
 
@@ -835,7 +903,23 @@ These flags apply only to the current invocation — your persisted sandbox pref
 
 **`worktreeBaseRef` setting**: Controls whether `/worktree`, `/worktree new`, and the `--worktree` startup flag create the new worktree from `HEAD` or from the remote default branch. All three default to `HEAD`. Set this in `/settings` if you want worktrees to branch from the remote default instead.
 
+**Sandbox network host allow/deny rules** *(v1.0.85+)*: Add network host allow/deny rules from `/sandbox` without replacing your configured upstream proxy, so you can permit or block specific hosts while still routing traffic through your organization's proxy. `/sandbox policy` also now reports local-network access according to your configured setting (v1.0.86+). Sandbox proxies now work correctly on Windows, and a proxy configured with a username and password works on every platform (v1.0.87+).
+
+**`copilot sandbox ca` commands** *(v1.0.91+)*: Manage the sandbox proxy's certificate authority trust directly from the CLI with `copilot sandbox ca check`, `create`, `trust`, `rotate`, and `remove`, including unattended setup on Windows. The previous `/sandbox ca install` subcommand is now split into separate `create` and `trust` steps:
+
+```bash
+copilot sandbox ca check     # check current CA trust status
+copilot sandbox ca create    # generate a new sandbox proxy CA
+copilot sandbox ca trust     # trust the CA on this machine
+copilot sandbox ca rotate    # rotate to a new CA
+copilot sandbox ca remove    # remove CA trust
+```
+
+**`worktreeBaseRef` setting** *(v1.0.79-8+)*: Controls whether `/worktree`, `/worktree new`, and the `--worktree` startup flag create the new worktree from `HEAD` or from the remote default branch. All three now default to `HEAD`; previously `--worktree` defaulted to starting from the remote default branch. Set this in `/settings` if you want worktrees to branch from the remote default instead.
+
 **Sandbox network isolation**: On macOS and Linux, sandboxed commands cannot reach services running on your own machine, including a server the sandboxed command itself starts on `127.0.0.1`. This means test suites that bind a local port will fail inside the sandbox. Turn on **Allow local network** in `/sandbox` to restore access to localhost. On Linux, sandboxing also requires `slirp4netns`, `nsenter`, `iptables`, `ip6tables`, `iptables-restore`, and `ip6tables-restore` on `PATH` — install these if sandboxed commands start failing to launch. Additionally, Linux sandboxes restrict network egress to the configured HTTP(S) proxy when one is set; this proxy mode requires `slirp4netns`, `util-linux` 2.35+, `iptables`, and `/dev/net/tun` access.
+
+**`worktreePathTemplate` setting** *(v1.0.87+)*: Controls where `/worktree`, `/move`, `/new`, and the `--worktree` startup flag create new worktrees. Set a template such as `~/src/worktrees/{repo}/{branch}` using the placeholders `{repoPath}`, `{repo}`, `{branch}`, and `{branchSlug}`. Leaving it unset keeps the existing layout — a `<repo>.worktrees/` folder alongside the repo, with slashes in the branch name flattened to dashes.
 
 The `--attachment` flag (available in prompt mode, `-p`) lets you attach files — images or native documents — to the initial prompt in non-interactive mode:
 
@@ -893,6 +977,8 @@ echo 'source ~/.copilot-completion.bash' >> ~/.bashrc
 ```
 
 > **Tip**: Reload your shell (`source ~/.bashrc` or open a new terminal) after adding the completion script for changes to take effect.
+
+> **Terminal notifications (v1.0.88+)**: Enable optional OSC 777 terminal notifications so Ghostty and WezTerm sessions can surface a native desktop notification when the agent finishes a turn — useful when you switch away from the terminal during long-running tasks.
 
 ### Vim Mode
 

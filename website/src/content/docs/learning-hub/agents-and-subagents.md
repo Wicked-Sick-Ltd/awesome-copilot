@@ -3,7 +3,7 @@ title: 'Agents and Subagents'
 description: 'Learn how delegated subagents differ from primary agents, when to use them, and how to launch them in VS Code and Copilot CLI.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-12
+lastUpdated: 2026-10-18
 estimatedReadingTime: '9 minutes'
 tags:
   - agents
@@ -155,7 +155,13 @@ The **complementary model strategy** lets you specify that the rubber-duck agent
 
 Because it runs as a sub-agent layer rather than replacing your primary model, you keep your current session model and context while the rubber-duck analysis runs in the background.
 
+**Broader availability** *(v1.0.87+)*: The rubber-duck agent is now enabled for every model family, not just GPT-powered sessions, and for low-cost-tier session models — so you can use it regardless of which model you've selected. Note that the `/rubber-duck` command is automatically hidden if a model refresh removes its compatible critic model.
+
 > **Note**: This is an experimental feature and may change. Provide feedback via `/feedback` if you find it useful.
+
+### Context management for agents and subagents (v1.0.85+)
+
+Run `/settings` and opt in to **context management tools** to let orchestrator agents and their subagents actively manage their own context windows during long delegated runs — for example, summarising or trimming earlier tool output before it crowds out room for new work. This is particularly useful for `/fleet`-style sessions that spawn many subagents in sequence, since each subagent otherwise accumulates its own context independently and can run out of room on long chains of delegated turns.
 
 ## Orchestration patterns that work well
 
@@ -194,6 +200,20 @@ That means you should think about delegation features in product-specific terms:
 
 If you share agent files across surfaces, document those differences so users know which behaviors are portable and which are editor-specific.
 
+## Running worker agents in Dev Containers and with Codex (VS Code 1.138+)
+
+`setting(chat.agentHost.devContainer.enabled)` lets a subagent run inside a local folder's Dev Container instead of your local machine, so a worker task uses the project's configured toolchain and dependencies rather than whatever happens to be installed locally. When enabled, folders with a supported Dev Container configuration show a **Use Dev Container** action in the folder menu; Docker must be installed on your machine. (Remote hosts — SSH, Tunnel, and WSL — gained the same Dev Container support in VS Code 1.139, covered below.)
+
+The agent host's **Codex** harness was also expanded: you can choose between a GitHub Copilot subscription or a ChatGPT subscription for Codex-backed models, continue the same Codex session across the ChatGPT app and VS Code, reuse ChatGPT computer-use setup to interact with desktop apps, and give Codex access to the full set of VS Code tools (built-in, extension, and MCP) — useful if you want to delegate a subtask to Codex specifically rather than your default agent.
+
+Separately, the Claude and Codex agents rely on an SDK that VS Code downloads on first use; the download prompt now appears consistently whenever the SDK is missing, instead of only during signed-out account setup.
+
+## Creating pull requests directly from agent sessions (VS Code 1.138+)
+
+**Setting**: `setting(chat.agentMerge.enabled)` (experimental, for Agent Merge only)
+
+Once a coordinator or worker session in the Agents window has produced changes, you can create the pull request from the same form used to review and edit the generated title and description, choose draft status, and configure merge options — without leaving the session. This complements the Copilot app's [Agent Merge](../github-copilot-app/#agent-merge) feature for teams that prefer to stay in VS Code for the whole delegated workflow.
+
 ## Tracking delegated work in VS Code (v1.136+)
 
 When an agent delegates work to multiple chats, VS Code's **Agents window** now shows those chats as children of their parent session in the sessions list, so you can see which chats belong together instead of managing a flat list of unrelated sessions. Each chat row shows its own title, status, and pending approvals. A delegated request also includes a source link (for example **Sent by another session**) so you can jump straight back to whichever session or chat initiated it.
@@ -201,6 +221,46 @@ When an agent delegates work to multiple chats, VS Code's **Agents window** now 
 This pairs with **improved workspace resolution**: agents can resolve a workspace by project name (for example, "run this in the vscode workspace") in addition to absolute paths, which simplifies prompts that hand off work across multiple repositories.
 
 **Shareable session links** *(VS Code 1.138+)*: Agent Host sessions and chats now provide browser-addressable links, so you can reopen or share a specific Agents window session directly from another app, a GitHub issue, or terminal output — useful when handing off a delegated subagent's work to a teammate for review. You can also start a new session beside the current one in one step, keeping the current work visible while a second session starts.
+
+## Model routing for orchestrated work (VS Code 1.139+)
+
+When you rely on the **Auto** model across many delegated subagent turns, VS Code now exposes an **Optimize for** control alongside the Auto model, with **Efficiency**, **Balance**, and **Intelligence** options for balancing model capability, speed, and cost in Copilot Chat and Copilot SDK agent sessions. This is useful when orchestrating several subagents at once — you can bias routing toward cheaper/faster models for simple worker tasks and reserve higher-capability routing for the coordinator or for steps that need deeper reasoning. Multi-turn context routing was also improved so Auto model selection stays more consistent across a long chain of delegated turns.
+
+The model picker additionally gained separate controls for a model's **Thinking Effort** and, when the model offers it, a longer **Context Size** — useful for tuning subagent workers that process large amounts of delegated context without needing the same reasoning depth as the coordinator.
+
+## Managing many delegated sessions (VS Code 1.139+)
+
+Coordinator-and-worker patterns can quickly produce large numbers of sessions and chats. VS Code 1.139 speeds up loading and refreshing large session lists in the Agents window — the sessions list now reads from a lightweight catalog instead of opening every conversation database, which is measurably faster the more sessions you accumulate. A new **Compact View** in the sessions list fits more delegated sessions and chats on screen at once, expanding a row automatically when it needs your input or approval. You can also rename a session or a nested chat directly from the sessions list (double-click the title, or use the **Rename** context menu action), which helps keep a large tree of coordinator and worker sessions identifiable at a glance.
+
+Remote Dev Container support (`setting(chat.agentHost.devContainer.enabled)`) also extends to SSH, Tunnel, and WSL hosts, so a delegated worker agent can build and test inside your project's Dev Container on a remote machine instead of duplicating toolchain setup locally.
+
+## Comparing parallel attempts and cleaner session bookkeeping (VS Code 1.140+)
+
+Use **Run Multiple Agents...** to send the same prompt to several agents at once, each running in its own isolated worktree, and have a judge agent review the results and recommend the best implementation. This is a fast way to compare candidate approaches — for example, different models or agent configurations — without manually setting up parallel worktrees or reviewing every diff yourself.
+
+A few smaller changes round out delegated-session bookkeeping in 1.140: marking an active agent session as **Done** now actually stops it, instead of letting it keep consuming tokens in the background; sessions started outside VS Code (for example, from the CLI or another tool) are now clearly labeled as **external** in the sessions list, so you can tell at a glance which sessions originated elsewhere; and the cross-posting affordance shows contextual guidance (for example, when a new model becomes available or when work could run in parallel) instead of a generic prompt.
+
+## The Copilot harness and multi-folder sessions (VS Code 1.140+)
+
+VS Code 1.140 introduced the **Copilot harness**, a new default option in the chat input's harness picker. It's powered by the Copilot SDK, so delegation behavior (how subagents are launched, tracked, and reported back to the coordinator) is now consistent across VS Code, the standalone GitHub Copilot app, and Copilot CLI. The harness runs in a dedicated **agent host** process based on the **Agent Host Protocol (AHP)**, which means you can connect to the same running agent session from multiple VS Code windows instead of being tied to the window that started it.
+
+This release also added **multi-folder sessions (Experimental)** — `setting(chat.agentHost.copilotAgent.multiRootEnabled)` (plus equivalent settings for the Claude and Codex agent hosts). Previously, every chat in a multi-chat session shared the same folder and checkout; now each coordinator or worker chat can use its own folder or worktree without changes leaking between them. This is useful for delegation patterns that span repositories (ask a worker chat to implement a change in a second repository while the coordinator stays in the first) or that compare worktree-isolated approaches to the same repository side by side. Related to this, **Archive chats in a session** lets you select **Mark as Done** on a single finished peer chat without ending the rest of the session — handy when a worker has completed its task but the coordinator (or other workers) are still active.
+
+For orchestration-heavy workflows, `setting(chat.agentHost.agentOrchestrationLimits)` raises the process-wide limits for agent-created sessions, chats, inter-session messages, and recursive session creation, so large coordinator/worker trees are less likely to stall before the work finishes.
+
+Eligible users with preview features enabled may also see **HydraFusion** (Research Preview) in the model picker — an adaptive model-orchestration system that chooses the model and workflow per task, escalating to a stronger model or having a second model critique and revise a result when it improves quality.
+
+## Comparing agents and managing worktrees (VS Code 1.141+, Insiders)
+
+An experimental **Run and Compare Agents...** action in the Agents window extends the 1.140 "Run Multiple Agents" idea: it runs the same prompt across several agents in isolated worktrees and surfaces a side-by-side comparison so you can pick the best implementation before merging. A new **Chat: Clean Up Agent Worktrees** command helps you review and remove worktrees left behind by delegated sessions that are no longer active, reducing manual `git worktree` bookkeeping after heavy delegation.
+
+## Copilot harness rollout and moving chats between folders (VS Code 1.142+)
+
+VS Code 1.142 progressively rolls out the Copilot harness as the **default harness for new sessions**, moving it from an opt-in picker choice (1.140+) toward the standard experience. **Ask** returns as a built-in agent inside the Copilot harness for a dedicated read-only mode, and chat titles now display the active harness name (**Copilot** or **Codex**) so you can identify which one a session is using at a glance.
+
+This release also lets you move an active chat to another folder or a new Git worktree **without losing conversation history** — ask the agent with a prompt like "Continue this task in a new Git worktree of the current repository before implementing it," and VS Code finishes the current turn, relocates the chat, and continues automatically. This is available for sessions using the Codex harness or Codex in Interactive mode, with one chat and one local folder; it's a useful complement to the coordinator/worker worktree-isolation patterns described above when you decide mid-task that a change belongs in its own worktree or repository.
+
+Enterprise administrators gained finer-grained control over which permission modes are available: `permissions.disableAssistedPermissionsMode` can now block **Assisted** independently of **Allow All**, and organizations that enforce `sandbox.enabled` or a nonempty `permissions` object now have policy-managed chats automatically moved to the Copilot harness (with a temporary `vscode.temporaryDefaultToLocalHarness` opt-out for administrators who need more migration time).
 
 ## Common questions
 

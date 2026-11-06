@@ -3,7 +3,7 @@ title: 'Working with Canvas Extensions'
 description: 'Create and iterate on GitHub Copilot app canvases using /create-canvas, then shape them into reusable project or personal extensions.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-06-17
+lastUpdated: 2026-10-18
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -36,6 +36,8 @@ This makes canvases especially useful for workflows where visibility and steerin
 - Planning documents
 - Live browser-assisted workflows
 - Release coordination surfaces
+
+> **Canvases in VS Code (Preview, VS Code 1.142+)**: Canvases are no longer limited to the GitHub Copilot app — VS Code's desktop app now supports canvases in Preview for local sessions that use the [Copilot harness](../agents-and-subagents/#copilot-harness-rollout-and-moving-chats-between-folders-vs-code-1142). Enable `setting(chat.canvases.enabled)`, start a new session with the Copilot harness, and use `/create-canvas` exactly as described below, or install a chat plugin that bundles a canvas extension through the GitHub Copilot app and open it from **Add Tab (+) > Canvas** in the Agents window. Extensions built for the Copilot app work in both surfaces without changes.
 
 ## Create a canvas with `/create-canvas`
 
@@ -110,6 +112,8 @@ Reference implementations:
 - SDK docs/source: [`joinSession`](https://github.com/github/copilot-sdk/blob/main/nodejs/docs/extensions.md), [`createCanvas`](https://github.com/github/copilot-sdk/blob/main/nodejs/src/canvas.ts)
 - Repo example: [`extensions/backlog-swipe-triage/extension.mjs`](https://github.com/github/awesome-copilot/blob/main/extensions/backlog-swipe-triage/extension.mjs)
 - Persistent user-scoped path example: [`extensions/chromium-control-canvas/extension.mjs`](https://github.com/github/awesome-copilot/blob/main/extensions/chromium-control-canvas/extension.mjs)
+
+> **Canvas actions can return images (Copilot CLI v1.0.92+)**: A canvas action invoked via `invoke_canvas_action` can now return image content back to the model, not just text or structured JSON. This is useful for canvases that render charts, diagrams, or screenshots — the agent can reason about the rendered image directly instead of only seeing the underlying data.
 
 ## Examples from this repository
 

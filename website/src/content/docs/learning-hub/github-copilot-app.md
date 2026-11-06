@@ -3,7 +3,7 @@ title: 'Getting Started with the GitHub Copilot app'
 description: 'Learn about the GitHub Copilot app, a desktop experience built for agent-native development. Understand its key features and who it''s for.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-12
+lastUpdated: 2026-10-18
 estimatedReadingTime: '8 minutes'
 tags:
   - copilot-app
@@ -52,6 +52,8 @@ The central hub of the Copilot app is the **My Work** view. This dashboard shows
 
 Instead of checking GitHub, your CLI, and VS Code for updates, everything is in one place.
 
+> **AI-generated filters (v1.1.23+)**: In My Work's Add filter menu, describe the results you want in plain language (for example, "PRs I authored that are waiting on review") and Copilot generates a filter you can inspect, edit, or revert before applying it. My Work also separates **Issues** and **Pull requests** into their own sidebar sections, and repositories can be browsed as dedicated pages.
+
 ### Automations
 
 The Copilot app includes built-in automations that can run scheduled tasks for you using the same agentic technology. You can use templates out of the box or create your own.
@@ -70,6 +72,8 @@ Each session the Copilot app creates runs in its own **git worktree**—a real, 
 
 This makes it easy to dispatch multiple agents and trust they won't interfere with each other.
 
+> **Local sandbox for shell commands (v1.1.23+)**: A new project setting and `/sandbox` command let the agent's shell commands run in a local sandbox restricted to the session's workspace, so commands can't read or write files outside the current project.
+
 ### Running in the Background
 
 Closing the app's main window keeps it running in the background instead of quitting, with tray (Windows/Linux) or Dock (macOS) support to bring it back. This means scheduled automations and in-progress sessions keep running even when the window isn't open.
@@ -82,15 +86,23 @@ Closing the app's main window keeps it running in the background instead of quit
 - Agents update the canvas as they work, and you can edit, approve, or redirect changes on the same surface
 - This makes it easy to see exactly what an agent is doing and step in when needed
 
+Generated artifacts like Markdown files open in the **Files tab** alongside your repository files, with a switcher between them and an option to promote a generated artifact into the repository.
+
+> **Download files and folders (v1.1.28+)**: You can now download files and folders from the Files panel directly to your local machine, without first promoting them into the repository — useful for grabbing a generated artifact or report to share outside the session.
+
+> **Artifact version history (v1.1.27+)**: The artifact editor now keeps version history, so you can view and preview previous versions of an edited artifact instead of only seeing its current state.
+
 For a hands-on guide to building canvases with `/create-canvas`, see [Working with Canvas Extensions](../working-with-canvas-extensions/).
 
 ### Customize
 
 **Customize** *(v1.1.13+)* is a single place in the Copilot app to browse and manage everything that extends your agents: plugins, skills, MCP servers, and canvases. Instead of hunting through separate settings pages, open **Customize** to:
 
-- Browse **Featured** integrations (for example Azure DevOps or Figma) and install them with one click
+- Browse **Featured** integrations (for example Azure DevOps, Figma, or the **Sentry canvas** *(v1.1.23+)* for triaging live Sentry issues) and install them with one click
 - See what's already **Installed**, with consistent icons and source labels across plugin, skill, MCP server, canvas, and connector types
 - Create, edit, or remove your own **personal skills** directly in the app, without hand-authoring a `SKILL.md` file
+- **Install a skill from outside a plugin** *(v1.1.30+)*: Use **Customize > Add > Install skill…** to install a skill from a folder, ZIP, GitHub skill-folder URL, or HTTPS ZIP link, with a review step before anything is written to disk — useful for trying a skill shared by a teammate or found online without packaging it as a plugin first.
+- **Manage marketplaces** *(v1.1.29+)*: The **Manage marketplaces** action moved to the bottom of the Add menu, and Plugins search results can now be filtered by marketplace — handy when your organization has multiple plugin sources and you want results from a specific one.
 
 This makes Customize a good starting point if you want to extend the app's capabilities but don't need the full `copilot plugin` CLI workflow described in [Installing and Using Plugins](../installing-and-using-plugins/).
 
@@ -111,6 +123,8 @@ Agent Merge also understands **stacked pull requests**: it shows a stack summary
 
 From the app, you can request a Copilot code review on a pull request—and re-request a review even from reviewers who already responded—without leaving the session. This keeps the review loop inside the same workspace where the change was made.
 
+> **Reply in review threads (v1.1.24+)**: The agent can now reply inside an existing inline pull request review thread without resolving it, so follow-up discussion on a specific line of code stays attached to that thread instead of becoming a new top-level comment.
+
 ### Setting a Persistent Goal for Autopilot
 
 **`/goal`** *(v1.1.15+)* sets a persistent objective for autopilot to work toward in local sessions, the same way `/autopilot <objective>` does in Copilot CLI (see [Agents and Subagents](../agents-and-subagents/)). Once set, the Goal pill in the composer shows live status—Active, Paused, or Done—and expands to show the objective, a completion summary, the pause reason (if paused), turn count, and AI Credits usage, so you can track long-running autonomous work without re-reading the whole transcript.
@@ -128,6 +142,42 @@ Open app settings directly from the message composer with **`/settings`** *(v1.1
 *(v1.1.20+)* If two installed plugins each ship a custom agent with the same display name, the agent picker now distinguishes them by their owning plugin, so you can tell at a glance which agent you're selecting when names collide.
 
 > **Terminology note (v1.1.20+)**: The "Start from scratch" option in session creation menus and project pickers has been renamed to **"Chat"**.
+
+### Retrying Agent Responses
+
+**Retry** *(v1.1.24+)* lets you resend the same request with a different model, reasoning effort, or context tier directly from an agent response, without retyping your prompt. This is useful when a response comes back lower quality than expected, or when you want to compare how a stronger (or cheaper) model handles the same task.
+
+### Searching Your Prompt History
+
+Press **Ctrl+R** (**Cmd+R** on macOS) *(v1.1.24+)* to open a focused composer for searching and reusing your previous prompts across all sessions—handy for reusing a well-tuned prompt without hunting back through old conversations.
+
+> **Voice dictation is generally available (v1.1.24+)**: Voice dictation is no longer experimental and is now turned on by default, so you can dictate prompts without enabling it manually first.
+
+### Child Chats and In-Session Terminal Snippets
+
+> **Child chats (v1.1.26+)**: A chat can now start its own **child chat**, nested beneath it in the sidebar with its own transcript, notifications, and plan review — useful for breaking off a focused sub-task without losing the parent conversation's context or cluttering it with unrelated back-and-forth.
+
+> **Run code snippets in the session terminal (v1.1.26+)**: Bash and PowerShell code blocks in a conversation can now be run directly in that session's terminal (reusing an existing shell when one is available), instead of copying the snippet out to run it elsewhere.
+
+> **Drag and drop file attachments (v1.1.26+)**: Drag files from your computer and drop them onto a session or Agent in the sidebar to attach them to that session's composer, as an alternative to the file picker.
+
+> **Composer tool permissions (v1.1.26+)**: Set tool permissions directly from the composer's mode menu, in addition to the `/permissions` slash command — handy for adjusting what an agent is allowed to do without interrupting your prompt to switch to a slash command.
+
+> **Resumable coordinator agents (v1.1.27+)**: You can resume an interrupted coordinator agent and its child sessions directly from the sidebar, without leaving your current conversation — useful when a multi-agent task gets interrupted partway through.
+
+> **Next-step suggestions from custom agents (v1.1.28+)**: After a custom agent's final response, it can suggest next steps that let you switch to another agent with a pre-filled, editable prompt you review before sending — making it easier to chain specialized agents together without retyping context.
+
+> **Auto mode explanations (v1.1.28+)**: When Auto mode selects a model for your request, the conversation now shows why it chose that model alongside the model name, making Auto's routing decisions more transparent.
+
+> **Organization plugin marketplace tab (v1.1.28+)**: Customize gains a "From your organization" tab that shows plugins your organization provides when your enterprise manages a plugin marketplace, alongside the existing Featured and Installed views.
+
+> **Cloud automations restored (v1.1.29+)**: Creating cloud automations — including repository-event triggers and cloud schedules that run while your computer is off — works again after a temporary regression. See [Using Automations in the GitHub Copilot app](../using-automations-in-copilot-app/) for setup guidance.
+
+> **Undo for theme and view changes (v1.1.30+)**: Press **Cmd+Z** (**Ctrl+Z** on Windows and Linux), or use the command palette's **Undo**, to revert your last theme change or view toggle — such as the sidebar, thinking panel, file edits, or wide content mode.
+
+> **Agent Overview shows child process status (v1.1.30+)**: Agent Overview rows now show when a child agent's dev server or run script is running or has failed, with quick actions to open its preview, view logs, or stop it directly from the overview — useful when coordinating several worker agents that each run their own dev server.
+
+> **Switch model or context size mid-session (v1.1.30+)**: You can now change the model or context size for a local session while it's still working, instead of waiting for the current turn to finish.
 
 ## Who is the Copilot app for?
 
@@ -186,6 +236,8 @@ Once installed, you can create a session by:
 3. **From your inbox**: The app syncs your GitHub inbox—click an issue and start a session for it
 
 Each session runs in its own worktree with its own isolated environment. You can run multiple sessions in parallel.
+
+> **Restarting a session (v1.1.23+)**: Use the `/restart-session` command to restart a chat or side chat conversation while preserving its history — useful when a session gets stuck without losing the context you've already built up. Note: the session-creation entry previously labeled "Start from scratch" is now labeled **Chat** *(v1.1.21+)*.
 
 ### Launching Sessions from the Terminal with Deep Links
 
