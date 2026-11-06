@@ -3,7 +3,7 @@ title: 'Installing and Using Plugins'
 description: 'Learn how to find, install, and manage plugins that extend GitHub Copilot CLI with reusable agents, skills, hooks, and integrations.'
 authors:
   - GitHub Copilot Learning Hub Team
-lastUpdated: 2026-09-22
+lastUpdated: 2026-10-14
 relatedArticles:
   - ./building-custom-agents.md
   - ./creating-effective-skills.md
@@ -195,6 +195,8 @@ Pinning to a SHA guarantees that everyone on the team installs plugins from exac
 - **Change control** — review and approve plugin updates before rolling them out team-wide
 - **Stability** — prevent breaking changes in upstream marketplaces from impacting your team without notice
 
+> **Automatic auth retry for private marketplaces (v1.0.97+)**: If a remote plugin marketplace or plugin fetch over HTTPS fails authentication (for example, a private `my-org/internal-plugins` repository), the CLI now automatically retries once using your signed-in GitHub token before giving up. This reduces spurious failures for private marketplaces where the initial request didn't carry credentials.
+
 ## Installing Plugins
 
 ### From Copilot CLI
@@ -253,6 +255,10 @@ This opens an interactive list where each installed plugin and its components ar
 
 The plugins dashboard (`/plugin`, `/mcp`, and `/skills`) is on for all users by default; `/skills`, bare `/mcp`, and `/mcp show` (with no server name) open the dashboard, and `/mcp config` opens the dedicated MCP wizard. See [Compatibility and Migration Notes](#compatibility-and-migration-notes) for the history of the retired `/plugins` command and its dashboard opt-out.
 
+> **CLI command reorganization (v1.0.85+, breaking change)**: The cross-kind `copilot plugins` commands are being retired in favor of per-kind subcommands. `copilot instruction list` and `copilot lsp list` replace `copilot plugins list --kind instruction` and `copilot plugins list --kind lsp`. `copilot plugin enable`/`copilot plugin disable`, `copilot mcp enable`/`copilot mcp disable`, and `copilot skill enable`/`copilot skill disable` replace `copilot plugins enable`/`copilot plugins disable --plugin|--mcp|--skill`. The cross-kind `--kind`, `--scope`, `--mcp`, and `--skill` flags have been removed from `copilot plugins`; use the dedicated `copilot mcp` and `copilot skill` subcommands instead. `copilot plugins list --json` now emits a flat array of plugins rather than the old `{ plugins, errors }` object, and `copilot plugins list` is now simply an alias for `copilot plugin list` — it reports only plugins, not MCP servers, skills, instructions, or LSP servers. Scripts that parsed the old cross-kind output will need to be updated.
+
+> **`copilot skill add --scope project` renamed (v1.0.85+, breaking change)**: `copilot plugins install --skill [--scope project]` has been replaced by `copilot skill add [--project]`. The `--scope` spelling is gone; use the `--project` flag to add a skill at the repository level instead.
+
 ### Loading Plugins from a Local Directory
 
 You can load plugins directly from a local directory without installing them from a marketplace, using the `--plugin-dir` flag when starting Copilot:
@@ -262,6 +268,8 @@ copilot --plugin-dir /path/to/my-plugin
 ```
 
 Plugins loaded this way appear in `/plugin list` under a separate **External Plugins** section, clearly distinguished from marketplace-installed plugins. This is useful for testing local plugins in development or loading private plugins that aren't published to any marketplace.
+
+> **Enable/disable direct plugin installs (v1.0.89+)**: Plugins installed directly (not via a marketplace) can now be enabled and disabled like any other plugin. A direct install previously recorded as disabled now correctly stops loading, and you can re-enable it with `copilot plugin enable`.
 
 ### Where Plugins Are Stored
 
