@@ -547,10 +547,13 @@ function escapeTablePipes(text) {
   let out = "";
   for (let index = 0; index < text.length;) {
     if (text[index] === "`") {
-      const close = text.indexOf("`", index + 1);
+      const opener = backtickRunLength(text, index);
+      const close = findBacktickCloser(text, index + opener, opener);
       if (close !== -1) {
-        out += `\`${escapePipesInCodeSpan(text.slice(index + 1, close))}\``;
-        index = close + 1;
+        out += text.slice(index, index + opener);
+        out += escapePipesInCodeSpan(text.slice(index + opener, close));
+        out += text.slice(close, close + opener);
+        index = close + opener;
         continue;
       }
     }
@@ -559,6 +562,25 @@ function escapeTablePipes(text) {
     index += 1;
   }
   return out;
+}
+
+function backtickRunLength(text, index) {
+  let end = index;
+  while (end < text.length && text[end] === "`") end += 1;
+  return end - index;
+}
+
+function findBacktickCloser(text, from, length) {
+  for (let index = from; index < text.length;) {
+    if (text[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    const run = backtickRunLength(text, index);
+    if (run === length) return index;
+    index += run;
+  }
+  return -1;
 }
 
 function escapePipesInCodeSpan(span) {

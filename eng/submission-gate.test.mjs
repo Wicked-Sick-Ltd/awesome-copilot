@@ -410,6 +410,7 @@ test("sanitize neutralizes mentions, HTML, and table breaks", () => {
   assert.equal(sanitize("pre\\|post"), "pre\\\\\\|post");
   assert.equal(sanitize("a\\b\n<c>|"), "a\\\\b &lt;c&gt;\\|");
   assert.equal(sanitize("Failed step: `Build C:\\src`"), "Failed step: `Build C:\\src`");
+  assert.equal(sanitize("see ``C:\\src``"), "see ``C:\\src``");
   assert.equal(sanitize("x `a\\|b` y"), "x `a\\\\\\|b` y");
   assert.equal(sanitize("a".repeat(10), 5).length, 5);
 });
