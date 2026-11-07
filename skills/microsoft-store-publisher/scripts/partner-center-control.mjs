@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
+import { isPartnerCenterUrl } from "./partner-center-url.mjs";
 
 const writeCommands = new Set([
   "add-combo-token",
@@ -88,11 +89,7 @@ async function activePage(browser) {
     return page;
   }
 
-  const preferred = pages.filter(
-    (page) =>
-      page.url().includes("partner.microsoft.com") ||
-      page.url().includes("storedeveloper.microsoft.com"),
-  );
+  const preferred = pages.filter((page) => isPartnerCenterUrl(page.url()));
   const page =
     preferred.at(-1) ??
     pages.filter((candidate) => !candidate.url().startsWith("edge://")).at(-1) ??

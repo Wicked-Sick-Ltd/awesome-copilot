@@ -649,6 +649,55 @@ test("the comment stripper treats a slash after a postfix update as division", (
   assert.deepEqual(findRequireSpecifiers('const re = ++i, m = /require("hidden")/;'), []);
 });
 
+test("markdown report escapes backslashes before table and emphasis characters", () => {
+  const markdown = renderMarkdownReport({
+    status: "pass",
+    error_count: 0,
+    warning_count: 0,
+    min_preview: { width: 400, height: 160 },
+    extensions: [],
+    plugins: [{
+      directory: "demo",
+      name: "demo",
+      version: "1.0.0",
+      description: "a\\|b *c*",
+      author: null,
+      license: "MIT",
+      keywords: [],
+      extensions: [],
+      errors: [],
+      warnings: [],
+      changed_files: [],
+    }],
+    removed_extensions: [],
+    smoke: { materialize: {}, install: {}, installStatus: "skipped" },
+  });
+  const description = markdown.split("\n").find((line) => line.startsWith("| Description |"));
+  assert.equal(description, "| Description | a\\\\\\|b \\*c\\* |");
+  assert.equal(splitMarkdownRow(description).length, 4);
+});
+
+function splitMarkdownRow(line) {
+  const cells = [];
+  let current = "";
+  for (let index = 0; index < line.length; index++) {
+    if (line[index] !== "|") {
+      current += line[index];
+      continue;
+    }
+    let slashes = 0;
+    for (let lookbehind = index - 1; lookbehind >= 0 && line[lookbehind] === "\\"; lookbehind--) slashes++;
+    if (slashes % 2 === 1) {
+      current += "|";
+      continue;
+    }
+    cells.push(current);
+    current = "";
+  }
+  cells.push(current);
+  return cells;
+}
+
 test("unsafe extension references in plugin manifests are rejected and never materialized", async () => {
   assert.equal(isSafeExtensionId("orb"), true);
   for (const id of ["..", "../x", "a/b", "", ".hidden"]) assert.equal(isSafeExtensionId(id), false, id);

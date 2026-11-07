@@ -407,6 +407,13 @@ test("canRunPrCommand allows the author and writers only", () => {
 
 test("sanitize neutralizes mentions, HTML, and table breaks", () => {
   assert.equal(sanitize("@team <b>|x"), "@\u200bteam &lt;b&gt;\\|x");
+  assert.equal(sanitize("pre\\|post"), "pre\\\\\\|post");
+  assert.equal(sanitize("a\\b\n<c>|"), "a\\\\b &lt;c&gt;\\|");
+  assert.equal(sanitize("Failed step: `Build C:\\src`"), "Failed step: `Build C:\\src`");
+  assert.equal(sanitize("see ``C:\\src``"), "see ``C:\\src``");
+  assert.equal(sanitize("`` `C:\\src`"), "`` `C:\\src`");
+  assert.equal(sanitize("`".repeat(32) + "C:\\src"), "`".repeat(32) + "C:\\\\src");
+  assert.equal(sanitize("x `a\\|b` y"), "x `a\\\\\\|b` y");
   assert.equal(sanitize("a".repeat(10), 5).length, 5);
 });
 

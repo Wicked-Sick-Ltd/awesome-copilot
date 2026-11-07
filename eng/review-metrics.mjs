@@ -296,7 +296,65 @@ function formatPercent(value) {
 }
 
 function escapeCell(value) {
-  return String(value ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ").replace(/@(?=[A-Za-z0-9])/g, "@\u200b");
+  const text = String(value ?? "")
+    .replace(/\r?\n/g, " ")
+    .replace(/@(?=[A-Za-z0-9])/g, "@\u200b");
+  return escapeTablePipes(text);
+}
+
+/**
+ * Escape `|` so a cell cannot break the table. Backslashes outside a closed
+ * code span are escaped first; otherwise `\|` renders as an escaped backslash
+ * plus a raw pipe. Inside a closed span, backslashes stay literal (code spans
+ * show them as written) except for the run that precedes a pipe.
+ */
+function escapeTablePipes(text) {
+  let out = "";
+  for (let index = 0; index < text.length;) {
+    if (text[index] === "`") {
+      const opener = backtickRunLength(text, index);
+      const close = findBacktickCloser(text, index + opener, opener);
+      if (close !== -1) {
+        out += text.slice(index, index + opener);
+        out += escapePipesInCodeSpan(text.slice(index + opener, close));
+        out += text.slice(close, close + opener);
+        index = close + opener;
+        continue;
+      }
+      // An unmatched run is literal text. Consuming it whole stops a shorter
+      // span after the run from being paired with a leftover opener backtick.
+      out += text.slice(index, index + opener);
+      index += opener;
+      continue;
+    }
+    const char = text[index];
+    out += char === "\\" ? "\\\\" : char === "|" ? "\\|" : char;
+    index += 1;
+  }
+  return out;
+}
+
+function backtickRunLength(text, index) {
+  let end = index;
+  while (end < text.length && text[end] === "`") end += 1;
+  return end - index;
+}
+
+function findBacktickCloser(text, from, length) {
+  for (let index = from; index < text.length;) {
+    if (text[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    const run = backtickRunLength(text, index);
+    if (run === length) return index;
+    index += run;
+  }
+  return -1;
+}
+
+function escapePipesInCodeSpan(span) {
+  return span.replace(/(\\*)\|/g, (_, slashes) => `${"\\".repeat(slashes.length * 2)}\\|`);
 }
 
 function countsTable(title, counts) {
