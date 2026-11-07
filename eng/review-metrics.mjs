@@ -296,7 +296,12 @@ function formatPercent(value) {
 }
 
 function escapeCell(value) {
-  return String(value ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ").replace(/@(?=[A-Za-z0-9])/g, "@\u200b");
+  return String(value ?? "")
+    // Escape backslashes first so a leading "\" cannot cancel the pipe escape.
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, " ")
+    .replace(/@(?=[A-Za-z0-9])/g, "@\u200b");
 }
 
 function countsTable(title, counts) {

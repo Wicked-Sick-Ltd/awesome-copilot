@@ -248,6 +248,38 @@ test("handles an empty repository without errors", () => {
   assert.match(report, /n\/a/);
 });
 
+test("table cells escape backslashes before pipes", () => {
+  const data = fixture();
+  data.openPrs[0].title = "keep\\|break";
+  data.workflowRuns.push({ file: "error.yml", found: true, runs: [], error: "pipe\\|here" });
+  const report = renderReport(computeMetrics(data, config, { now }), {});
+  const title = report.split("\n").find((line) => line.includes("[#1]"));
+  assert.equal(title, "| PR [#1](u1) | 5 | keep\\\\\\|break |");
+  assert.match(report, /collection error: pipe\\\\\\|here \|/);
+  assert.equal(splitMarkdownRow(title).length, 5);
+});
+
+function splitMarkdownRow(line) {
+  const cells = [];
+  let current = "";
+  for (let index = 0; index < line.length; index++) {
+    if (line[index] !== "|") {
+      current += line[index];
+      continue;
+    }
+    let slashes = 0;
+    for (let lookbehind = index - 1; lookbehind >= 0 && line[lookbehind] === "\\"; lookbehind--) slashes++;
+    if (slashes % 2 === 1) {
+      current += "|";
+      continue;
+    }
+    cells.push(current);
+    current = "";
+  }
+  cells.push(current);
+  return cells;
+}
+
 test("renders a report and tracking issue body", () => {
   const metrics = computeMetrics(fixture(), config, { now });
   const report = renderReport(metrics, { repository: "o/r", runUrl: "https://example.test/run" });

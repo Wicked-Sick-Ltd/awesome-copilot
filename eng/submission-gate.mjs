@@ -530,6 +530,8 @@ export function sanitize(text, maxLength = 300) {
   let value = String(text ?? "")
     .replace(/@/g, "@\u200b")
     .replace(/[<>]/g, (char) => (char === "<" ? "&lt;" : "&gt;"))
+    // Escape backslashes first so a leading "\" cannot cancel the pipe escape.
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\r?\n/g, " ");
   if (value.length > maxLength) value = `${value.slice(0, maxLength - 1)}…`;
