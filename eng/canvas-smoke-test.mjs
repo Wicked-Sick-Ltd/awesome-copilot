@@ -1618,6 +1618,8 @@ function escapeMarkdown(value) {
   return String(value ?? "")
     .replace(/[\r\n]+/g, " ")
     .replace(/[<>]/g, (char) => (char === "<" ? "&lt;" : "&gt;"))
+    // Escape backslashes first so a leading "\" cannot cancel the escape added below.
+    .replace(/\\/g, "\\\\")
     .replace(/([|`*_[\]])/g, "\\$1")
     .slice(0, 300);
 }

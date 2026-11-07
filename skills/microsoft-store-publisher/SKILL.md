@@ -49,7 +49,10 @@ Treat Partner Center as a production publishing system.
 - `references/worked-example.md` - concrete lessons from a successful
   full-trust desktop app submission.
 - `scripts/partner-center-control.mjs` - Playwright controller for a dedicated
-  Edge profile.
+  Edge profile. It uses `scripts/partner-center-url.mjs` to prefer a page whose
+  hostname is `partner.microsoft.com` or `storedeveloper.microsoft.com`.
+- `scripts/partner-center-url.mjs` - hostname check used by that controller.
+- `scripts/partner-center-url.test.mjs` - tests for the hostname check.
 - `scripts/inspect-msix.ps1` - unpack and inspect an MSIX before upload.
 - `scripts/invoke-wack.ps1` - run WACK, then find, verify, and save its XML and
   HTML reports.
