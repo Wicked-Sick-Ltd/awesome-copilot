@@ -556,6 +556,11 @@ function escapeTablePipes(text) {
         index = close + opener;
         continue;
       }
+      // An unmatched run is literal text. Consuming it whole stops a shorter
+      // span after the run from being paired with a leftover opener backtick.
+      out += text.slice(index, index + opener);
+      index += opener;
+      continue;
     }
     const char = text[index];
     out += char === "\\" ? "\\\\" : char === "|" ? "\\|" : char;
