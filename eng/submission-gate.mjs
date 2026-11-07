@@ -530,12 +530,39 @@ export function sanitize(text, maxLength = 300) {
   let value = String(text ?? "")
     .replace(/@/g, "@\u200b")
     .replace(/[<>]/g, (char) => (char === "<" ? "&lt;" : "&gt;"))
-    // Escape backslashes first so a leading "\" cannot cancel the pipe escape.
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
     .replace(/\r?\n/g, " ");
+  value = escapeTablePipes(value);
   if (value.length > maxLength) value = `${value.slice(0, maxLength - 1)}…`;
   return value;
+}
+
+/**
+ * Escape `|` so a cell cannot break the table. Backslashes outside a closed
+ * code span are escaped first; otherwise `\|` renders as an escaped backslash
+ * plus a raw pipe. Inside a closed span, backslashes stay literal (callers wrap
+ * step names and paths in spans before sanitizing) except for the run that
+ * precedes a pipe.
+ */
+function escapeTablePipes(text) {
+  let out = "";
+  for (let index = 0; index < text.length;) {
+    if (text[index] === "`") {
+      const close = text.indexOf("`", index + 1);
+      if (close !== -1) {
+        out += `\`${escapePipesInCodeSpan(text.slice(index + 1, close))}\``;
+        index = close + 1;
+        continue;
+      }
+    }
+    const char = text[index];
+    out += char === "\\" ? "\\\\" : char === "|" ? "\\|" : char;
+    index += 1;
+  }
+  return out;
+}
+
+function escapePipesInCodeSpan(span) {
+  return span.replace(/(\\*)\|/g, (_, slashes) => `${"\\".repeat(slashes.length * 2)}\\|`);
 }
 
 function outcomeCell(result) {

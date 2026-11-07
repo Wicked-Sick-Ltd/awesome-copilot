@@ -257,6 +257,12 @@ test("table cells escape backslashes before pipes", () => {
   assert.equal(title, "| PR [#1](u1) | 5 | keep\\\\\\|break |");
   assert.match(report, /collection error: pipe\\\\\\|here \|/);
   assert.equal(splitMarkdownRow(title).length, 5);
+
+  data.openPrs[0].title = "use `C:\\src`";
+  const spanned = renderReport(computeMetrics(data, config, { now }), {});
+  const spannedTitle = spanned.split("\n").find((line) => line.includes("[#1]"));
+  assert.equal(spannedTitle, "| PR [#1](u1) | 5 | use `C:\\src` |");
+  assert.equal(splitMarkdownRow(spannedTitle).length, 5);
 });
 
 function splitMarkdownRow(line) {
