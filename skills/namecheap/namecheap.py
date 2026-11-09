@@ -144,15 +144,34 @@ def _keyring_get(account):
 
 
 def _keyring_set(account, api_key):
-    """Store the API key in the first OS keyring that accepts it."""
+    """Store the API key where a later lookup will actually find it.
+
+    If a trusted backend already returns a key, only that backend is updated.
+    Writing a replacement into a later backend would leave lookup returning
+    the old key. When nothing is stored yet, the first backend that accepts
+    the write is used, and success requires lookup to return the same value.
+    """
     if not account or not api_key:
         return False
-    for backend in _secure_keyrings():
+    backends = _secure_keyrings()
+    for backend in backends:
         try:
-            backend.set_password(_KEYRING_SERVICE, account, api_key)
-            return True
+            existing = backend.get_password(_KEYRING_SERVICE, account) or None
         except Exception:
             continue
+        if not existing:
+            continue
+        try:
+            backend.set_password(_KEYRING_SERVICE, account, api_key)
+        except Exception:
+            return False
+        return _keyring_get(account) == api_key
+    for backend in backends:
+        try:
+            backend.set_password(_KEYRING_SERVICE, account, api_key)
+        except Exception:
+            continue
+        return _keyring_get(account) == api_key
     return False
 
 

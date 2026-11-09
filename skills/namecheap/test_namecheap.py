@@ -19,6 +19,7 @@ def _backend_type(module, name):
 
         def set_password(self, service, account, secret):
             self.saved = (service, account, secret)
+            self.stored = secret
 
         def get_password(self, service, account):
             return self.stored
@@ -97,6 +98,24 @@ class CredentialStorageTests(unittest.TestCase):
         self.assertFalse(stored)
         with open(self.path, encoding="utf-8") as fh:
             self.assertNotIn("super-secret", fh.read())
+
+    def test_does_not_claim_success_when_the_owning_backend_rejects_the_update(self):
+        owner = _backend_type("keyring.backends.SecretService", "Keyring")()
+        owner.stored = "old-key"
+
+        def reject(service, account, secret):
+            raise OSError("read-only")
+
+        owner.set_password = reject
+        later = _backend_type("keyring.backends.kwallet", "DBusKeyring")()
+        fake = _keyring_module(_Chainer([owner, later]))
+        with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
+            stored = namecheap.save_config("alice", "super-secret")
+        self.assertFalse(stored)
+        self.assertIsNone(later.saved)
+        with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
+            _user, key = namecheap.load_config()
+        self.assertEqual(key, "old-key")
 
     def test_get_continues_to_a_later_os_backend(self):
         empty = _backend_type("keyring.backends.SecretService", "Keyring")()
