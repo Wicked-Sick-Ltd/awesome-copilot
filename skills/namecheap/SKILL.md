@@ -19,7 +19,7 @@ Before executing any API commands, verify credentials are configured:
 2. If not configured, guide the user through setup:
    a. **Show public IP** — run `python3 namecheap.py public-ip` to display the user's public IP
    b. **Instruct IP whitelisting** — tell the user to go to https://ap.www.namecheap.com/settings/tools/apiaccess/, enable API (select ON), and whitelist the displayed IP
-   c. **Have the user run setup themselves** — ask the user to run `python3 namecheap.py setup` directly **in their own terminal**. The script prompts for the username and reads the API key with a hidden prompt (`getpass`). It writes only the username to `~/.namecheap-api` with mode `600`. The API key is stored in the OS keyring when the optional `keyring` package is installed; otherwise it is not persisted and the user must export `NAMECHEAP_API_KEY` in their own shell. **Never ask the user to paste their API key into the chat, and never log, echo, or display the API key value. Never write the API key into `~/.namecheap-api` or any other file.**
+   c. **Have the user run setup themselves** — ask the user to run `python3 namecheap.py setup` directly **in their own terminal**. The script prompts for the username and reads the API key with a hidden prompt (`getpass`). It writes only the username to `~/.namecheap-api` with mode `600`. The API key is stored only when the optional `keyring` package resolves to an OS backend (macOS Keychain, Windows Credential Manager, Secret Service, or KWallet). A plaintext file backend is refused. Otherwise the key is not persisted; in bash the user reads it with `read -rs NAMECHEAP_API_KEY` and then `export NAMECHEAP_API_KEY`, so the secret is not part of the command text. **Never ask the user to paste their API key into the chat, and never log, echo, or display the API key value. Never write the API key into `~/.namecheap-api`, shell history, or any other file.**
    d. **Confirm** — once the user reports setup succeeded, proceed with DNS operations.
 
 ### DNS Operations
@@ -117,11 +117,12 @@ python3 namecheap.py domains.ns.update --domain example.com --nameserver ns1.exa
 NAMECHEAP_API_USER="username"
 ```
 
-The API key is never written to that file or any other file. `setup` stores it in the OS keyring when the optional Python package `keyring` is installed. Otherwise export it in the shell that will run the script:
+The API key is never written to that file or any other file. `setup` stores it only when the optional Python package `keyring` resolves to an OS backend (macOS Keychain, Windows Credential Manager, Secret Service, or KWallet). Plaintext file backends are not used. Otherwise, in bash, read the key from a hidden prompt so the secret is not saved in shell history:
 
 ```bash
-export NAMECHEAP_API_USER="username"
-export NAMECHEAP_API_KEY="..."
+read -rs NAMECHEAP_API_USER
+read -rs NAMECHEAP_API_KEY
+export NAMECHEAP_API_USER NAMECHEAP_API_KEY
 ```
 
 Environment variables take precedence over the username file and the keyring. If an older config file still contains `NAMECHEAP_API_KEY`, the script ignores that line and warns. Delete the line after the key is available from the environment or the keyring.

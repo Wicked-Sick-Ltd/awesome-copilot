@@ -11,6 +11,42 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import namecheap
 
 
+def _backend_type(module, name):
+    class Backend:
+        def __init__(self):
+            self.saved = None
+            self.stored = "from-keyring"
+
+        def set_password(self, service, account, secret):
+            self.saved = (service, account, secret)
+
+        def get_password(self, service, account):
+            return self.stored
+
+    Backend.__name__ = name
+    Backend.__qualname__ = name
+    Backend.__module__ = module
+    return Backend
+
+
+_SecretServiceKeyring = _backend_type("keyring.backends.SecretService", "Keyring")
+_PlaintextKeyring = _backend_type("keyrings.alt.file", "PlaintextKeyring")
+
+
+class _Chainer:
+    def __init__(self, backends):
+        self.backends = backends
+
+
+_Chainer.__module__ = "keyring.backends.chainer"
+
+
+def _keyring_module(backend):
+    fake = unittest.mock.Mock()
+    fake.get_keyring.return_value = backend
+    return fake
+
+
 class CredentialStorageTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -42,20 +78,39 @@ class CredentialStorageTests(unittest.TestCase):
         mode = stat.S_IMODE(os.stat(self.path).st_mode)
         self.assertEqual(mode & 0o077, 0)
 
-    def test_save_uses_keyring_and_still_omits_the_key_from_disk(self):
-        fake = unittest.mock.Mock()
+    def test_save_uses_an_os_keyring_and_still_omits_the_key_from_disk(self):
+        backend = _SecretServiceKeyring()
+        fake = _keyring_module(backend)
         with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
             stored = namecheap.save_config("alice", "super-secret")
         self.assertTrue(stored)
-        fake.set_password.assert_called_once_with("namecheap-api", "alice", "super-secret")
+        self.assertEqual(backend.saved, ("namecheap-api", "alice", "super-secret"))
         with open(self.path, encoding="utf-8") as fh:
             text = fh.read()
         self.assertNotIn("super-secret", text)
         self.assertNotIn("NAMECHEAP_API_KEY", text)
 
+    def test_plaintext_keyring_is_not_used(self):
+        fake = _keyring_module(_PlaintextKeyring())
+        with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
+            stored = namecheap.save_config("alice", "super-secret")
+        self.assertFalse(stored)
+        with open(self.path, encoding="utf-8") as fh:
+            self.assertNotIn("super-secret", fh.read())
+
+    def test_chainer_skips_plaintext_and_uses_the_os_backend(self):
+        secure = _SecretServiceKeyring()
+        chainer = _Chainer([_PlaintextKeyring(), secure])
+        fake = _keyring_module(chainer)
+        with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
+            stored = namecheap.save_config("alice", "super-secret")
+        self.assertTrue(stored)
+        self.assertEqual(secure.saved, ("namecheap-api", "alice", "super-secret"))
+
     def test_keyring_failure_does_not_fall_back_to_the_file(self):
-        fake = unittest.mock.Mock()
-        fake.set_password.side_effect = OSError("locked")
+        backend = _SecretServiceKeyring()
+        backend.set_password = unittest.mock.Mock(side_effect=OSError("locked"))
+        fake = _keyring_module(backend)
         with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
             stored = namecheap.save_config("alice", "super-secret")
         self.assertFalse(stored)
@@ -66,22 +121,20 @@ class CredentialStorageTests(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write('NAMECHEAP_API_USER="alice"\nNAMECHEAP_API_KEY="legacy"\n')
         os.environ["NAMECHEAP_API_KEY"] = "from-env"
-        fake = unittest.mock.Mock()
-        fake.get_password.return_value = "from-keyring"
+        fake = _keyring_module(_SecretServiceKeyring())
         with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
             user, key = namecheap.load_config()
         self.assertEqual((user, key), ("alice", "from-env"))
-        fake.get_password.assert_not_called()
+        fake.get_keyring.assert_not_called()
 
     def test_load_uses_keyring_when_env_is_unset(self):
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write('NAMECHEAP_API_USER="alice"\n')
-        fake = unittest.mock.Mock()
-        fake.get_password.return_value = "from-keyring"
+        backend = _SecretServiceKeyring()
+        fake = _keyring_module(backend)
         with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
             user, key = namecheap.load_config()
         self.assertEqual((user, key), ("alice", "from-keyring"))
-        fake.get_password.assert_called_once_with("namecheap-api", "alice")
 
     def test_load_does_not_return_a_key_that_exists_only_in_the_file(self):
         with open(self.path, "w", encoding="utf-8") as fh:
@@ -90,6 +143,14 @@ class CredentialStorageTests(unittest.TestCase):
             user, key = namecheap.load_config()
         self.assertEqual(user, "alice")
         self.assertIsNone(key)
+
+    def test_env_credentials_do_not_read_a_corrupt_config_file(self):
+        with open(self.path, "wb") as fh:
+            fh.write(b"\xff")
+        os.environ["NAMECHEAP_API_USER"] = "alice"
+        os.environ["NAMECHEAP_API_KEY"] = "from-env"
+        user, key = namecheap.load_config()
+        self.assertEqual((user, key), ("alice", "from-env"))
 
 
 if __name__ == "__main__":

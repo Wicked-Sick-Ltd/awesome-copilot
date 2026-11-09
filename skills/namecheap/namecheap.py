@@ -6,8 +6,10 @@ it is installed; nothing is required from pip.
 
 The API username may be stored in ``~/.namecheap-api`` (mode ``0600``). The API
 key is never written to that file or any other file. It is read from the
-``NAMECHEAP_API_KEY`` environment variable, or from the OS keyring when
-``keyring`` is available. Credentials are never passed on the command line, so
+``NAMECHEAP_API_KEY`` environment variable, or from an OS keyring backend
+(macOS Keychain, Windows Credential Manager, Secret Service, or KWallet)
+when ``keyring`` resolves to one. Plaintext file backends are not used.
+Credentials are never passed on the command line, so
 they cannot leak via ``ps`` or shell history.
 """
 
@@ -81,43 +83,74 @@ class NamecheapError(Exception):
 # --- Configuration --------------------------------------------------------
 
 _KEYRING_SERVICE = "namecheap-api"
+# OS stores only. File and fail backends (including keyrings.alt plaintext)
+# are rejected even when a Chainer lists them first.
+_SECURE_KEYRING_TYPES = frozenset({
+    "keyring.backends.macOS.Keyring",
+    "keyring.backends.Windows.WinVaultKeyring",
+    "keyring.backends.SecretService.Keyring",
+    "keyring.backends.kwallet.DBusKeyring",
+})
 
 
 def _read_config_file():
     """Return the username file as a dict. Does not treat any value as a secret."""
     if not os.path.isfile(CONFIG_FILE):
         return {}
-    with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
-        content = fh.read()
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+            content = fh.read()
+    except (OSError, UnicodeError):
+        warn("Could not read ~/.namecheap-api; ignoring it.")
+        return {}
     # File uses shell-style KEY="value" lines for backward compatibility.
     pattern = re.compile(r'^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$', re.MULTILINE)
     return {m.group(1): m.group(2) for m in pattern.finditer(content)}
 
 
-def _keyring_get(account):
-    """Return the API key from the OS keyring, or None when unavailable."""
-    if not account:
-        return None
+def _keyring_qualname(backend):
+    return f"{type(backend).__module__}.{type(backend).__name__}"
+
+
+def _secure_keyring():
+    """Return an OS keyring backend, or None when only file/fail backends exist."""
     try:
         import keyring
     except ImportError:
         return None
     try:
-        return keyring.get_password(_KEYRING_SERVICE, account) or None
+        backend = keyring.get_keyring()
+    except Exception:
+        return None
+    candidates = list(getattr(backend, "backends", None) or [backend])
+    for candidate in candidates:
+        if _keyring_qualname(candidate) in _SECURE_KEYRING_TYPES:
+            return candidate
+    return None
+
+
+def _keyring_get(account):
+    """Return the API key from an OS keyring, or None when unavailable."""
+    if not account:
+        return None
+    backend = _secure_keyring()
+    if backend is None:
+        return None
+    try:
+        return backend.get_password(_KEYRING_SERVICE, account) or None
     except Exception:
         return None
 
 
 def _keyring_set(account, api_key):
-    """Store the API key in the OS keyring. Never writes it to a file."""
+    """Store the API key in an OS keyring. Never writes it to a file."""
     if not account or not api_key:
         return False
-    try:
-        import keyring
-    except ImportError:
+    backend = _secure_keyring()
+    if backend is None:
         return False
     try:
-        keyring.set_password(_KEYRING_SERVICE, account, api_key)
+        backend.set_password(_KEYRING_SERVICE, account, api_key)
         return True
     except Exception:
         return False
@@ -126,20 +159,23 @@ def _keyring_set(account, api_key):
 def load_config():
     """Return (api_user, api_key).
 
-    The username comes from ``NAMECHEAP_API_USER`` or ``~/.namecheap-api``.
-    The API key comes from ``NAMECHEAP_API_KEY`` or the OS keyring. A key left
-    in the username file by an older version is ignored.
+    Environment variables win and are used without opening the config file.
+    Otherwise the username comes from ``~/.namecheap-api`` and the API key
+    comes from an OS keyring backend. A key left in the username file by an
+    older version is ignored.
     """
     api_user = os.environ.get("NAMECHEAP_API_USER")
     api_key = os.environ.get("NAMECHEAP_API_KEY")
+    if api_user and api_key:
+        return api_user, api_key
     values = _read_config_file()
     api_user = api_user or values.get("NAMECHEAP_API_USER")
     if values.get("NAMECHEAP_API_KEY"):
         warn(
             "Ignoring NAMECHEAP_API_KEY in ~/.namecheap-api. "
-            "The API key is not read from disk. Export NAMECHEAP_API_KEY, "
-            "or install the optional 'keyring' package and run setup again, "
-            "then delete that line from the file."
+            "The API key is not read from disk. Set NAMECHEAP_API_KEY with "
+            "`read -rs` in bash, or install keyring with an OS backend and "
+            "run setup again, then delete that line from the file."
         )
     if not api_key:
         api_key = _keyring_get(api_user)
@@ -320,9 +356,12 @@ def cmd_setup(_args):
     else:
         success(f"Username saved to {CONFIG_FILE}.")
         warn("The API key was not saved. It is never written to disk.")
-        print("Export it in this shell and in future shells (do not paste it into chat):")
-        print('  export NAMECHEAP_API_KEY="..."')
-        print("Or install the optional 'keyring' package and run setup again.")
+        print("In bash, read it without putting the secret in shell history:")
+        print("  read -rs NAMECHEAP_API_KEY")
+        print("  export NAMECHEAP_API_KEY")
+        print("Or install the optional 'keyring' package with an OS backend")
+        print("(macOS Keychain, Windows Credential Manager, Secret Service, or KWallet)")
+        print("and run setup again. A plaintext file backend is not used.")
     print("\nTesting API connection...")
     try:
         # Use the just-entered credentials directly for the validation call.
