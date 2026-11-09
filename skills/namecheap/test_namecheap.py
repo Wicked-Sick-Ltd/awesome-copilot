@@ -98,6 +98,18 @@ class CredentialStorageTests(unittest.TestCase):
         with open(self.path, encoding="utf-8") as fh:
             self.assertNotIn("super-secret", fh.read())
 
+    def test_get_continues_to_a_later_os_backend(self):
+        empty = _backend_type("keyring.backends.SecretService", "Keyring")()
+        empty.stored = None
+        kwallet = _backend_type("keyring.backends.kwallet", "DBusKeyring")()
+        kwallet.stored = "from-kwallet"
+        fake = _keyring_module(_Chainer([empty, kwallet]))
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write('NAMECHEAP_API_USER="alice"\n')
+        with unittest.mock.patch.dict(sys.modules, {"keyring": fake}):
+            user, key = namecheap.load_config()
+        self.assertEqual((user, key), ("alice", "from-kwallet"))
+
     def test_chainer_skips_plaintext_and_uses_the_os_backend(self):
         secure = _SecretServiceKeyring()
         chainer = _Chainer([_PlaintextKeyring(), secure])

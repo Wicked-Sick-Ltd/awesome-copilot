@@ -112,48 +112,48 @@ def _keyring_qualname(backend):
     return f"{type(backend).__module__}.{type(backend).__name__}"
 
 
-def _secure_keyring():
-    """Return an OS keyring backend, or None when only file/fail backends exist."""
+def _secure_keyrings():
+    """Return OS keyring backends in priority order, skipping file/fail backends."""
     try:
         import keyring
     except ImportError:
-        return None
+        return []
     try:
         backend = keyring.get_keyring()
     except Exception:
-        return None
+        return []
     candidates = list(getattr(backend, "backends", None) or [backend])
-    for candidate in candidates:
-        if _keyring_qualname(candidate) in _SECURE_KEYRING_TYPES:
-            return candidate
-    return None
+    return [
+        candidate for candidate in candidates
+        if _keyring_qualname(candidate) in _SECURE_KEYRING_TYPES
+    ]
 
 
 def _keyring_get(account):
-    """Return the API key from an OS keyring, or None when unavailable."""
+    """Return the API key from the first OS keyring that has one."""
     if not account:
         return None
-    backend = _secure_keyring()
-    if backend is None:
-        return None
-    try:
-        return backend.get_password(_KEYRING_SERVICE, account) or None
-    except Exception:
-        return None
+    for backend in _secure_keyrings():
+        try:
+            secret = backend.get_password(_KEYRING_SERVICE, account) or None
+        except Exception:
+            continue
+        if secret:
+            return secret
+    return None
 
 
 def _keyring_set(account, api_key):
-    """Store the API key in an OS keyring. Never writes it to a file."""
+    """Store the API key in the first OS keyring that accepts it."""
     if not account or not api_key:
         return False
-    backend = _secure_keyring()
-    if backend is None:
-        return False
-    try:
-        backend.set_password(_KEYRING_SERVICE, account, api_key)
-        return True
-    except Exception:
-        return False
+    for backend in _secure_keyrings():
+        try:
+            backend.set_password(_KEYRING_SERVICE, account, api_key)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def load_config():
