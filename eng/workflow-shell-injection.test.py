@@ -69,10 +69,12 @@ def run_scripts(text):
 
 
 def untrusted_hits(script):
+    """Return untrusted contexts used anywhere inside a ${{ }} expression."""
     hits = []
-    for context in UNTRUSTED_CONTEXTS:
-        if re.search(r"\$\{\{\s*" + re.escape(context) + r"\b", script):
-            hits.append(context)
+    for expression in re.findall(r"\$\{\{(.*?)\}\}", script, flags=re.DOTALL):
+        for context in UNTRUSTED_CONTEXTS:
+            if re.search(r"\b" + re.escape(context) + r"\b", expression):
+                hits.append(context)
     return hits
 
 
@@ -102,6 +104,11 @@ class WorkflowShellInjectionTests(unittest.TestCase):
         scripts = list(run_scripts(sample))
         self.assertEqual(untrusted_hits(scripts[0]), [])
         self.assertNotIn("github.base_ref", scripts[0])
+
+    def test_wrapped_context_is_a_hit(self):
+        sample = "- run: echo \"${{ format('origin/{0}', github.head_ref) }}\"\n"
+        scripts = list(run_scripts(sample))
+        self.assertEqual(untrusted_hits(scripts[0]), ["github.head_ref"])
 
     def test_env_indirection_is_not_a_hit(self):
         sample = "env:\n  BASE_REF: ${{ github.base_ref }}\nrun: |\n  git diff \"origin/${BASE_REF}...HEAD\"\n"
