@@ -40,13 +40,15 @@ def run_scripts(text):
     lines = text.splitlines()
     index = 0
     while index < len(lines):
-        match = re.match(r"^(\s*)run:\s*(.*)$", lines[index])
+        match = re.match(r"^(\s*)(?:-\s*)?run:\s*(.*)$", lines[index])
         if not match:
             index += 1
             continue
         indent = len(match.group(1))
         rest = match.group(2).strip()
-        if rest in {"|", ">", "|-", ">-", "|+", ">+"}:
+        # `run: | # note` is a block header; the comment is not the script.
+        header = re.sub(r"\s+#.*$", "", rest).strip()
+        if header in {"|", ">", "|-", ">-", "|+", ">+"}:
             index += 1
             body = []
             while index < len(lines):
@@ -79,6 +81,16 @@ class WorkflowShellInjectionTests(unittest.TestCase):
         sample = "run: |\n  git diff origin/${{ github.base_ref }}...HEAD\n"
         scripts = list(run_scripts(sample))
         self.assertEqual(untrusted_hits(scripts[0]), ["github.base_ref"])
+
+    def test_list_item_run_is_scanned(self):
+        sample = '- run: echo "${{ github.base_ref }}"\n'
+        scripts = list(run_scripts(sample))
+        self.assertEqual(untrusted_hits(scripts[0]), ["github.base_ref"])
+
+    def test_block_header_comment_does_not_hide_the_script(self):
+        sample = "run: | # comment\n  echo \"${{ github.head_ref }}\"\n"
+        scripts = list(run_scripts(sample))
+        self.assertEqual(untrusted_hits(scripts[0]), ["github.head_ref"])
 
     def test_env_indirection_is_not_a_hit(self):
         sample = "env:\n  BASE_REF: ${{ github.base_ref }}\nrun: |\n  git diff \"origin/${BASE_REF}...HEAD\"\n"

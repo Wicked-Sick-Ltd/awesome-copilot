@@ -90,6 +90,8 @@ Install required packages before running:
 pip install mssql-python pyarrow pandas
 ```
 
+Extraction runs static T-SQL that needs **SQL Server 2017 or newer** (`STRING_AGG`) and a database **compatibility level of 130 or higher** (`OPENJSON`). Azure SQL Database and SQL Server 2017+ at their default compatibility level meet this. A database left at level 120 fails extraction. The script does not fall back to formatting identifiers in Python.
+
 ## Comparison Rules
 
 - **Normalize types before comparing**: cast decimals to same precision, trim strings, normalize datetime to UTC

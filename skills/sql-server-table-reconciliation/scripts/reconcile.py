@@ -70,6 +70,9 @@ def identifier_json(names):
 # Static T-SQL. Schema, table, and column lists are bound parameters.
 # Identifiers are QUOTENAME'd server-side. The statement is assembled with
 # CONCAT so Python never formats SQL and T-SQL never uses '+' on SQL text.
+# Requires SQL Server 2017+ (STRING_AGG) and database compatibility level 130+
+# (OPENJSON). QUOTENAME results are cast to nvarchar(max) before STRING_AGG so
+# a wide column list is not truncated at 8,000 bytes.
 EXTRACT_TABLE_SQL = """
 SET NOCOUNT ON;
 DECLARE @schema sysname = ?;
@@ -80,7 +83,7 @@ DECLARE @quoted_schema nvarchar(258);
 DECLARE @quoted_table nvarchar(258);
 DECLARE @sql nvarchar(max);
 
-SELECT @order = STRING_AGG(QUOTENAME(j.[value]), N', ')
+SELECT @order = STRING_AGG(CAST(QUOTENAME(j.[value]) AS nvarchar(max)), N', ')
                 WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@pk_json) AS j;
 
@@ -108,11 +111,11 @@ DECLARE @quoted_schema nvarchar(258);
 DECLARE @quoted_table nvarchar(258);
 DECLARE @sql nvarchar(max);
 
-SELECT @pk_select = STRING_AGG(QUOTENAME(j.[value]), N', ')
+SELECT @pk_select = STRING_AGG(CAST(QUOTENAME(j.[value]) AS nvarchar(max)), N', ')
                     WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@pk_json) AS j;
 
-SELECT @col_concat = STRING_AGG(QUOTENAME(j.[value]), N', ')
+SELECT @col_concat = STRING_AGG(CAST(QUOTENAME(j.[value]) AS nvarchar(max)), N', ')
                      WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@cols_json) AS j;
 
