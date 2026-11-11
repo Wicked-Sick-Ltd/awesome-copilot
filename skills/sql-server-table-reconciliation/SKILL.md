@@ -102,9 +102,11 @@ pip install mssql-python pyarrow pandas
 When table has >1M rows, generate a hash pre-check:
 
 ```sql
-SELECT {pk_cols},
-       HASHBYTES('SHA2_256', CONCAT_WS('|', col1, col2, ...)) AS row_hash
-FROM {table}
+-- The script binds schema, table, and column lists and quotes them with
+-- QUOTENAME on the server. It does not format this statement in Python.
+SELECT <pk columns>,
+       HASHBYTES('SHA2_256', CONCAT_WS('|', <compare columns>)) AS row_hash
+FROM <schema>.<table>
 ```
 
 Compare hashes first; only fetch full rows for mismatched hashes. This reduces data transfer significantly.

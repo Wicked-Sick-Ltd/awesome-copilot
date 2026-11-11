@@ -22,6 +22,7 @@ Environment variables for credentials (when --auth sql):
 """
 
 import argparse
+import json
 import os
 import sys
 from getpass import getpass
@@ -30,6 +31,106 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 from mssql_python import connect as mssql_connect
+
+
+def quote_identifier(identifier):
+    """Return a SQL Server identifier safely delimited with brackets."""
+    if not isinstance(identifier, str) or not identifier or "\x00" in identifier:
+        raise ValueError("SQL identifiers must be non-empty strings without NUL bytes")
+    if len(identifier) > 128:
+        raise ValueError("SQL identifiers must be 128 characters or fewer")
+    return f"[{identifier.replace(']', ']]')}]"
+
+
+def split_qualified_table(table):
+    """Return (schema, table) for a name that contains exactly one separator."""
+    parts = table.split(".")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"Expected schema.table, got {table!r}")
+    for part in parts:
+        quote_identifier(part)
+    return parts[0], parts[1]
+
+
+def quote_qualified_table(table):
+    """Quote a table name that contains exactly one schema and table component."""
+    schema, table_name = split_qualified_table(table)
+    return f"{quote_identifier(schema)}.{quote_identifier(table_name)}"
+
+
+def identifier_json(names):
+    """Serialize identifiers as a JSON array after validating each name."""
+    if not names:
+        raise ValueError("Expected at least one SQL identifier")
+    for name in names:
+        quote_identifier(name)
+    return json.dumps(list(names), ensure_ascii=False)
+
+
+# Static T-SQL. Schema, table, and column lists are bound parameters.
+# Identifiers are QUOTENAME'd server-side. The statement is assembled with
+# CONCAT so Python never formats SQL and T-SQL never uses '+' on SQL text.
+EXTRACT_TABLE_SQL = """
+SET NOCOUNT ON;
+DECLARE @schema sysname = ?;
+DECLARE @table sysname = ?;
+DECLARE @pk_json nvarchar(max) = ?;
+DECLARE @order nvarchar(max);
+DECLARE @quoted_schema nvarchar(258);
+DECLARE @quoted_table nvarchar(258);
+DECLARE @sql nvarchar(max);
+
+SELECT @order = STRING_AGG(QUOTENAME(j.[value]), N', ')
+                WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
+FROM OPENJSON(@pk_json) AS j;
+
+SET @quoted_schema = QUOTENAME(@schema);
+SET @quoted_table = QUOTENAME(@table);
+IF @quoted_schema IS NULL OR @quoted_table IS NULL
+    THROW 50000, N'Invalid schema or table identifier.', 1;
+
+SET @sql = CONCAT(N'SELECT * FROM ', @quoted_schema, N'.', @quoted_table);
+IF @order IS NOT NULL AND @order <> N''
+    SET @sql = CONCAT(@sql, N' ORDER BY ', @order);
+
+EXEC sp_executesql @sql;
+"""
+
+EXTRACT_HASHES_SQL = """
+SET NOCOUNT ON;
+DECLARE @schema sysname = ?;
+DECLARE @table sysname = ?;
+DECLARE @pk_json nvarchar(max) = ?;
+DECLARE @cols_json nvarchar(max) = ?;
+DECLARE @pk_select nvarchar(max);
+DECLARE @col_concat nvarchar(max);
+DECLARE @quoted_schema nvarchar(258);
+DECLARE @quoted_table nvarchar(258);
+DECLARE @sql nvarchar(max);
+
+SELECT @pk_select = STRING_AGG(QUOTENAME(j.[value]), N', ')
+                    WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
+FROM OPENJSON(@pk_json) AS j;
+
+SELECT @col_concat = STRING_AGG(QUOTENAME(j.[value]), N', ')
+                     WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
+FROM OPENJSON(@cols_json) AS j;
+
+SET @quoted_schema = QUOTENAME(@schema);
+SET @quoted_table = QUOTENAME(@table);
+IF @quoted_schema IS NULL OR @quoted_table IS NULL
+   OR @pk_select IS NULL OR @pk_select = N''
+   OR @col_concat IS NULL OR @col_concat = N''
+    THROW 50000, N'Invalid identifier list for row-hash extraction.', 1;
+
+SET @sql = CONCAT(
+    N'SELECT ', @pk_select,
+    N', HASHBYTES(''SHA2_256'', CONCAT_WS(''|'', ', @col_concat,
+    N')) AS row_hash FROM ', @quoted_schema, N'.', @quoted_table,
+    N' ORDER BY ', @pk_select
+);
+EXEC sp_executesql @sql;
+"""
 
 
 # --- Connection Setup ---
@@ -150,27 +251,26 @@ def detect_primary_key(conn, table):
 
 # --- Data Extraction (Arrow) ---
 def extract_table(conn, table, pk_cols, chunk_size=100000):
-    """Extract table data as Arrow Table, using Arrow columnar transfer."""
-    pk_order = ", ".join(pk_cols)
-    query = f"SELECT * FROM {table} ORDER BY {pk_order}"
+    """Extract table data as Arrow Table, using Arrow columnar transfer.
+
+    ``chunk_size`` is accepted for callers and is unused: the driver returns
+    the table as one Arrow batch.
+    """
+    schema, table_name = split_qualified_table(table)
     cur = conn.cursor()
-    cur.execute(query)
+    cur.execute(EXTRACT_TABLE_SQL, [schema, table_name, identifier_json(pk_cols)])
     return cur.arrow()
 
 
 # --- Hash Pre-check (for large tables) ---
 def extract_hashes(conn, table, pk_cols, compare_cols):
     """Extract PK + row hash for large table optimization."""
-    pk_select = ", ".join(pk_cols)
-    col_concat = ", ".join(compare_cols)
-    query = f"""
-    SELECT {pk_select},
-           HASHBYTES('SHA2_256', CONCAT_WS('|', {col_concat})) AS row_hash
-    FROM {table}
-    ORDER BY {pk_select}
-    """
+    schema, table_name = split_qualified_table(table)
     cur = conn.cursor()
-    cur.execute(query)
+    cur.execute(
+        EXTRACT_HASHES_SQL,
+        [schema, table_name, identifier_json(pk_cols), identifier_json(compare_cols)],
+    )
     return cur.arrow()
 
 
