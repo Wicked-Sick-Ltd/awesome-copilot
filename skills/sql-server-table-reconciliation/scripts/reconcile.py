@@ -80,7 +80,7 @@ DECLARE @quoted_schema nvarchar(258);
 DECLARE @quoted_table nvarchar(258);
 DECLARE @sql nvarchar(max);
 
-SELECT @order = STRING_AGG(QUOTENAME(j.[value]), N', ')
+SELECT @order = STRING_AGG(CAST(QUOTENAME(j.[value]) AS nvarchar(max)), N', ')
                 WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@pk_json) AS j;
 
@@ -108,11 +108,11 @@ DECLARE @quoted_schema nvarchar(258);
 DECLARE @quoted_table nvarchar(258);
 DECLARE @sql nvarchar(max);
 
-SELECT @pk_select = STRING_AGG(QUOTENAME(j.[value]), N', ')
+SELECT @pk_select = STRING_AGG(CAST(QUOTENAME(j.[value]) AS nvarchar(max)), N', ')
                     WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@pk_json) AS j;
 
-SELECT @col_concat = STRING_AGG(QUOTENAME(j.[value]), N', ')
+SELECT @col_concat = STRING_AGG(CAST(QUOTENAME(j.[value]) AS nvarchar(max)), N', ')
                      WITHIN GROUP (ORDER BY TRY_CAST(j.[key] AS int))
 FROM OPENJSON(@cols_json) AS j;
 
