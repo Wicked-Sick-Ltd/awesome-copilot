@@ -44,7 +44,7 @@ def run_scripts(text):
         if not match:
             index += 1
             continue
-        indent = len(match.group(1))
+        indent = lines[index].index("run:")
         rest = match.group(2).strip()
         # `run: | # note` is a block header; the comment is not the script.
         header = re.sub(r"\s+#.*$", "", rest).strip()
@@ -91,6 +91,17 @@ class WorkflowShellInjectionTests(unittest.TestCase):
         sample = "run: | # comment\n  echo \"${{ github.head_ref }}\"\n"
         scripts = list(run_scripts(sample))
         self.assertEqual(untrusted_hits(scripts[0]), ["github.head_ref"])
+
+    def test_sibling_env_is_not_part_of_the_script(self):
+        sample = (
+            "- run: |\n"
+            '    echo "$BASE_REF"\n'
+            "  env:\n"
+            "    BASE_REF: ${{ github.base_ref }}\n"
+        )
+        scripts = list(run_scripts(sample))
+        self.assertEqual(untrusted_hits(scripts[0]), [])
+        self.assertNotIn("github.base_ref", scripts[0])
 
     def test_env_indirection_is_not_a_hit(self):
         sample = "env:\n  BASE_REF: ${{ github.base_ref }}\nrun: |\n  git diff \"origin/${BASE_REF}...HEAD\"\n"

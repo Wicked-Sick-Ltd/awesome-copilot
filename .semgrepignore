@@ -2,14 +2,12 @@
 # reviewers can recognise them. They are not executed.
 #
 # skill-sql-string-formatting (generic, HIGH) matches those examples. A path
-# exclude is used instead of rewriting the examples. Executable scripts under
-# skills/**/scripts, eng/, extensions/, and website/ stay in the scan.
-#
-# fs-express only applies to Express handlers. This repository does not ship
-# an Express app; node:http canvas servers are not excluded here.
+# exclude is used instead of rewriting the examples. Executable scripts,
+# including skills/**/examples/*.py and *.mjs, stay in the scan.
+# fs-express applies to Express handlers. This repository does not ship an
+# Express app, so those servers are not excluded here.
 
 agents/**/*.md
 instructions/**/*.md
 skills/**/*.md
-skills/**/examples/**
 cookbook/**/*.md
