@@ -102,6 +102,27 @@ function loadOpenPRs() {
 	return loadPRsPromise;
 }
 
+// Exceptions thrown from request stream listeners are not caught by the HTTP
+// server and terminate the process, so malformed bodies must be answered here.
+function readJsonObject(req, res, handle) {
+	let body = "";
+	req.on("data", (chunk) => (body += chunk));
+	req.on("end", () => {
+		let payload = null;
+		try {
+			payload = JSON.parse(body);
+		} catch {
+			// Fall through to the 400 below.
+		}
+		if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ ok: false, error: "Request body must be a JSON object." }));
+			return;
+		}
+		handle(payload);
+	});
+}
+
 // --- Loopback HTTP server for the iframe ---
 const server = http.createServer((req, res) => {
 	if (req.method === "GET" && req.url === "/") {
@@ -137,10 +158,7 @@ const server = http.createServer((req, res) => {
 	}
 
 	if (req.method === "POST" && req.url === "/select-pr") {
-		let body = "";
-		req.on("data", (chunk) => (body += chunk));
-		req.on("end", () => {
-			const { number } = JSON.parse(body);
+		readJsonObject(req, res, ({ number }) => {
 			const pr = prList.find((p) => p.number === number);
 			if (pr) {
 				currentPR = pr;
@@ -155,19 +173,23 @@ const server = http.createServer((req, res) => {
 	}
 
 	if (req.method === "POST" && req.url === "/gesture-decision") {
-		let body = "";
-		req.on("data", (chunk) => (body += chunk));
-		req.on("end", () => {
-			const { decision } = JSON.parse(body);
+		readJsonObject(req, res, ({ decision }) => {
 			gestureState = decision; // "approved" or "rejected"
 			lastDecision = { decision, pr: currentPR, timestamp: Date.now() };
 			broadcast("state", { state: gestureState });
 
 			if (session && currentPR) {
 				const action = decision === "approved" ? "approve" : "reject";
-				session.send({
-					prompt: `The user gave a thumbs ${decision === "approved" ? "up" : "down"} gesture to ${action} PR #${currentPR.number} ("${currentPR.title}" by ${currentPR.author}). Please ${action} this pull request accordingly.`,
-				});
+				session
+					.send({
+						prompt: `The user gave a thumbs ${decision === "approved" ? "up" : "down"} gesture to ${action} PR #${currentPR.number} ("${currentPR.title}" by ${currentPR.author}). Please ${action} this pull request accordingly.`,
+					})
+					.catch((err) => {
+						console.error(
+							"gesture-review: failed to send decision:",
+							normalizeErrorMessage(err),
+						);
+					});
 			}
 
 			res.writeHead(200, { "Content-Type": "application/json" });
