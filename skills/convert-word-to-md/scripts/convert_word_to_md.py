@@ -29,15 +29,22 @@ Output:
     file, or under -o/--output (treated as a parent directory, created if
     missing) if given, preserving relative subfolder structure when
     --recursive is used.
+  - The "<name>/" destination folder must not already exist. If anything is
+    already at that path (an earlier conversion or any unrelated folder),
+    that file is reported as failed and the existing path is left untouched;
+    it is never deleted, replaced, or written into.
   - If a document has no embedded images, no "img/" folder is created.
 
 Exit codes:
   0 - all requested conversions succeeded
-  1 - one or more conversions failed (partial success in batch mode)
+  1 - one or more conversions failed (partial success in batch mode),
+      including a destination folder that already exists
   2 - required dependency ("markitdown") is not installed
   3 - invalid input (path not found, or single-file input is not .docx)
 """
 import argparse
+import errno
+import os
 import re
 import shutil
 import sys
@@ -49,6 +56,87 @@ EXIT_OK = 0
 EXIT_CONVERSION_FAILED = 1
 EXIT_MISSING_DEPENDENCY = 2
 EXIT_INVALID_INPUT = 3
+
+_DIR_FD_SUPPORTED = (
+    os.open in os.supports_dir_fd
+    and os.mkdir in os.supports_dir_fd
+    and os.listdir in os.supports_fd
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
+
+
+class OutputDir:
+    """A directory created by this script for one conversion.
+
+    Output never replaces or removes anything that already exists: the
+    directory itself and every entry in it are created exclusively. Where the
+    platform supports it, writes go through a descriptor for the directory
+    that was created and checked empty, so a path swapped in afterwards is
+    never written to."""
+
+    def __init__(self, path: Path, fd=None):
+        self.path = path
+        self._fd = fd
+
+    @classmethod
+    def create(cls, path: Path) -> "OutputDir":
+        """Create `path` as a new directory. Raises FileExistsError if
+        anything is already there."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not _DIR_FD_SUPPORTED:
+            os.mkdir(path)
+            return cls(path)
+        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            return cls._create_at(parent_fd, path.name, path)
+        finally:
+            os.close(parent_fd)
+
+    @classmethod
+    def _create_at(cls, parent_fd, name: str, path: Path) -> "OutputDir":
+        os.mkdir(name, dir_fd=parent_fd)
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        if os.listdir(fd):
+            os.close(fd)
+            raise FileExistsError(errno.EEXIST, "directory changed after it was created", str(path))
+        return cls(path, fd)
+
+    def mkdir(self, name: str) -> "OutputDir":
+        if self._fd is None:
+            os.mkdir(self.path / name)
+            return OutputDir(self.path / name)
+        return OutputDir._create_at(self._fd, name, self.path / name)
+
+    def _open_new(self, name: str, mode: str, **kwargs):
+        if self._fd is None:
+            return open(self.path / name, mode.replace("w", "x"), **kwargs)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(name, flags, 0o666, dir_fd=self._fd)
+        try:
+            return os.fdopen(fd, mode, **kwargs)
+        except BaseException:
+            os.close(fd)
+            raise
+
+    def write_bytes(self, name: str, data: bytes) -> None:
+        with self._open_new(name, "wb") as handle:
+            handle.write(data)
+
+    def write_text(self, name: str, text: str) -> None:
+        with self._open_new(name, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def close(self) -> None:
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
 
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -130,28 +218,35 @@ def _document_order_media(docx_path: Path):
     return ordered_media
 
 
-def _extract_images(docx_path: Path, img_dir: Path):
-    """Extract embedded images from docx_path into img_dir as img001.ext,
+def _extract_images(docx_path: Path, out: OutputDir):
+    """Extract embedded images from docx_path into a new 'img/' folder inside
+    `out` (created only if there is at least one image) as img001.ext,
     img002.ext, ... in document order. Returns the list of written filenames
-    (relative to img_dir), in that same order."""
+    (relative to img/), in that same order."""
     ordered_media = _document_order_media(docx_path)
     if not ordered_media:
         return []
 
     written = []
-    with zipfile.ZipFile(docx_path) as z:
-        names_in_zip = set(z.namelist())
-        for idx, (rid, media_path) in enumerate(ordered_media, start=1):
-            if media_path not in names_in_zip:
-                print(f"WARNING: {media_path} (rel {rid}) not found in {docx_path}", file=sys.stderr)
-                continue
-            ext = Path(media_path).suffix.lstrip(".").lower() or "bin"
-            if ext == "jpg":
-                ext = "jpeg"
-            out_name = f"img{idx:03d}.{ext}"
-            img_dir.mkdir(parents=True, exist_ok=True)
-            (img_dir / out_name).write_bytes(z.read(media_path))
-            written.append(out_name)
+    img_dir = None
+    try:
+        with zipfile.ZipFile(docx_path) as z:
+            names_in_zip = set(z.namelist())
+            for idx, (rid, media_path) in enumerate(ordered_media, start=1):
+                if media_path not in names_in_zip:
+                    print(f"WARNING: {media_path} (rel {rid}) not found in {docx_path}", file=sys.stderr)
+                    continue
+                ext = Path(media_path).suffix.lstrip(".").lower() or "bin"
+                if ext == "jpg":
+                    ext = "jpeg"
+                out_name = f"img{idx:03d}.{ext}"
+                if img_dir is None:
+                    img_dir = out.mkdir("img")
+                img_dir.write_bytes(out_name, z.read(media_path))
+                written.append(out_name)
+    finally:
+        if img_dir is not None:
+            img_dir.close()
     return written
 
 
@@ -183,9 +278,9 @@ def _rewrite_image_refs(markdown_text: str, image_files) -> str:
 
 
 def convert_one(md, source: Path, dest_dir: Path) -> bool:
-    """Convert a single .docx file to a "<name>/" folder containing the
-    Markdown file and an "img/" folder of extracted images. Returns True on
-    success."""
+    """Convert a single .docx file to a new "<name>/" folder containing the
+    Markdown file and an "img/" folder of extracted images. Refuses if
+    anything already exists at dest_dir. Returns True on success."""
     try:
       result = md.convert(str(source))
     except ImportError as exc:
@@ -202,13 +297,25 @@ def convert_one(md, source: Path, dest_dir: Path) -> bool:
         return False
 
     try:
-        if dest_dir.exists():
-            shutil.rmtree(dest_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        image_files = _extract_images(source, dest_dir / "img")
-        text = _rewrite_image_refs(result.text_content, image_files)
-        md_path = dest_dir / f"{source.stem}.md"
-        md_path.write_text(text, encoding="utf-8")
+        out = OutputDir.create(dest_dir)
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> {dest_dir} already exists; refusing to replace it. "
+            "Remove or rename it yourself, or choose a new destination with -o.",
+            file=sys.stderr,
+        )
+        return False
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not create {dest_dir}: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        with out:
+            image_files = _extract_images(source, out)
+            text = _rewrite_image_refs(result.text_content, image_files)
+            md_name = f"{source.stem}.md"
+            out.write_text(md_name, text)
+            md_path = dest_dir / md_name
     except OSError as exc:
         print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
         return False
