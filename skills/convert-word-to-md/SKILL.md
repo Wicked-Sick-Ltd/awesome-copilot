@@ -125,5 +125,6 @@ conversion. Never guess or assume the directory.
 | `ERROR: Unsupported file type '.doc'` / exit code 3 | Legacy `.doc`, not `.docx` | Ask the user to re-save as `.docx` |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
+| `FAILED <file> -> refused: ...` | The file exceeds the converter's safety limits (over 64 MiB on disk, over 32 MiB uncompressed, over 4096 zip members, more than 32 images, or non-standard zip compression) | Report the reason to the user; do not try to work around the limit |
 | `NOTE: skipped N non-.docx file(s)` | Folder contains non-Word files | Expected — those files are intentionally ignored |
 | `WARNING: found N image placeholder(s) ... but extracted M image file(s)` | Mismatch between MarkItDown's placeholder count and images found in `word/media/` (unusual/malformed docx) | Placeholders are left unreplaced rather than risk wrong images; inspect the source file's media manually if images are needed |
