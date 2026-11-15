@@ -1104,7 +1104,7 @@ ${state.callToAction.label}: ${state.callToAction.url}`;
 async function startServer(initialState) {
     let state = initialState;
 
-    const server = createServer(async (req, res) => {
+    const handleRequest = async (req, res) => {
         const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
 
         if (req.method === "GET" && requestUrl.pathname === "/") {
@@ -1146,6 +1146,23 @@ async function startServer(initialState) {
         }
 
         respondJson(res, { error: "Not found" }, 404);
+    };
+
+    // Rejections from an async request listener are unhandled and terminate
+    // the process, so failures are answered here instead.
+    const server = createServer((req, res) => {
+        handleRequest(req, res).catch((error) => {
+            if (res.headersSent) {
+                res.destroy();
+                return;
+            }
+            if (error instanceof InvalidJsonBodyError) {
+                respondJson(res, { error: error.message }, 400);
+                return;
+            }
+            console.error("Release notes showcase request failed:", error);
+            respondJson(res, { error: "Internal error" }, 500);
+        });
     });
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -2225,6 +2242,8 @@ function renderHtml(state) {
 </html>`;
 }
 
+class InvalidJsonBodyError extends Error {}
+
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
         let body = "";
@@ -2241,8 +2260,8 @@ function readJsonBody(req) {
 
             try {
                 resolve(JSON.parse(body));
-            } catch (error) {
-                reject(error);
+            } catch {
+                reject(new InvalidJsonBodyError("Request body must be valid JSON."));
             }
         });
         req.on("error", reject);
