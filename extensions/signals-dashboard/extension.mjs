@@ -5,8 +5,8 @@
 
 import { createServer } from "node:http";
 import { statSync, accessSync, realpathSync, constants as fsConstants } from "node:fs";
-import { readdir, readFile, writeFile, stat, rename, unlink, mkdir } from "node:fs/promises";
-import { join, delimiter, isAbsolute, sep, dirname } from "node:path";
+import { readdir, readFile, writeFile, stat, lstat, open, realpath, rename, unlink, mkdir } from "node:fs/promises";
+import { join, delimiter, isAbsolute, sep, dirname, basename } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
@@ -39,6 +39,9 @@ const servers = new Map();
 const STASH_TTL_MS = 48 * 60 * 60 * 1000;
 const MCP_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const MCP_DISCOVERY_MAX_BYTES = 1024 * 1024;
+const WORKSHOP_FILE_MAX_BYTES = 1024 * 1024;
+const WORKSHOP_FILE_OPEN_FLAGS = fsConstants.O_RDONLY |
+    (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
 const DEFAULT_DESK_PROFILE = normalizeDeskProfile(process.env.WORKSHOP_DESK_PROFILE);
 const mcpDiscoveryCache = new Map();
 const LAUNCH_PREFERENCE_PROPERTIES = {
@@ -573,13 +576,59 @@ function hasCapabilityToken(req, token) {
     return typeof provided === "string" && provided.length > 0 && provided === token;
 }
 
+// --- Workshop file reads ---
+
+async function realDirInsideWorkshop(workshopDir, dir) {
+    try {
+        const [root, real] = await Promise.all([realpath(workshopDir), realpath(dir)]);
+        const prefix = root.endsWith(sep) ? root : root + sep;
+        return real === root || real.startsWith(prefix) ? real : null;
+    } catch { return null; }
+}
+
+// Workshop content comes from a clone, so a signal or stash file may be a
+// symlink to a device, a fifo, or a file outside the workshop. Open once
+// without following the final link (and without blocking on a fifo), then
+// confirm the descriptor is a regular file that is the same inode linked from
+// a real directory inside the workshop. Every later step reads that
+// descriptor, never the path, and stops at WORKSHOP_FILE_MAX_BYTES.
+// Returns { text, stat } or null.
+async function readWorkshopFile(workshopDir, fp) {
+    let handle;
+    try { handle = await open(fp, WORKSHOP_FILE_OPEN_FLAGS); }
+    catch { return null; }
+    try {
+        const opened = await handle.stat();
+        if (!opened.isFile() || opened.size > WORKSHOP_FILE_MAX_BYTES) return null;
+        const realDir = await realDirInsideWorkshop(workshopDir, dirname(fp));
+        if (!realDir) return null;
+        const linked = await lstat(join(realDir, basename(fp)));
+        if (!linked.isFile() || linked.dev !== opened.dev || linked.ino !== opened.ino) return null;
+
+        const buf = Buffer.allocUnsafe(WORKSHOP_FILE_MAX_BYTES + 1);
+        let total = 0;
+        while (total < buf.length) {
+            const { bytesRead } = await handle.read(buf, total, buf.length - total, null);
+            if (bytesRead === 0) break;
+            total += bytesRead;
+        }
+        if (total > WORKSHOP_FILE_MAX_BYTES) return null;
+        return { text: buf.toString("utf8", 0, total), stat: opened };
+    } catch {
+        return null;
+    } finally {
+        await handle.close().catch(() => {});
+    }
+}
+
 // --- Stash management ---
 
 async function readStash(workshopDir) {
     const fp = join(workshopDir, ".desk-stash.json");
     try {
-        const raw = await readFile(fp, "utf-8");
-        const stash = JSON.parse(raw);
+        const file = await readWorkshopFile(workshopDir, fp);
+        if (!file) return [];
+        const stash = JSON.parse(file.text);
         const now = Date.now();
         const live = stash.filter(e => (now - new Date(e.stashedAt).getTime()) < STASH_TTL_MS);
         if (live.length !== stash.length) await writeStash(workshopDir, live);
@@ -587,9 +636,24 @@ async function readStash(workshopDir) {
     } catch { return []; }
 }
 
+// Write a fresh temp file and rename it over the stash path. rename replaces
+// the directory entry itself, so a planted .desk-stash.json symlink is
+// swapped out rather than written through.
 async function writeStash(workshopDir, entries) {
     const fp = join(workshopDir, ".desk-stash.json");
-    await writeFile(fp, JSON.stringify(entries, null, 2), "utf-8");
+    const tmp = join(workshopDir, `.desk-stash.${process.pid}.${randomBytes(4).toString("hex")}.tmp`);
+    try {
+        await writeFile(tmp, JSON.stringify(entries, null, 2), { encoding: "utf-8", flag: "wx" });
+        try {
+            await rename(tmp, fp);
+        } catch {
+            await unlink(fp).catch(() => {});
+            await rename(tmp, fp);
+        }
+    } catch (err) {
+        await unlink(tmp).catch(() => {});
+        throw err;
+    }
 }
 
 async function stashDesk(workshopDir, deskName) {
@@ -625,7 +689,10 @@ async function scanSignals(workshopDir) {
             if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
             const sigDir = join(parent, entry.name, ".signals");
             let sigFiles;
-            try { sigFiles = await readdir(sigDir); }
+            try {
+                if (!(await realDirInsideWorkshop(workshopDir, sigDir))) throw new Error("outside workshop");
+                sigFiles = await readdir(sigDir);
+            }
             catch {
                 results.push({
                     deskName: entry.name, signalType: "none", agentName: entry.name,
@@ -655,10 +722,10 @@ async function scanSignals(workshopDir) {
             for (const f of jsonFiles) {
                 const fp = join(sigDir, f);
                 try {
-                    const s = await stat(fp);
-                    const raw = await readFile(fp, "utf-8");
-                    const parsed = JSON.parse(raw);
-                    const emittedMs = signalTime(parsed, s.mtimeMs);
+                    const file = await readWorkshopFile(workshopDir, fp);
+                    if (!file) continue;
+                    const parsed = JSON.parse(file.text);
+                    const emittedMs = signalTime(parsed, file.stat.mtimeMs);
                     allSignals.push({ parsed, mtimeMs: emittedMs, path: fp });
                     // Latest non-outcome signal (execution, partnership, escalation)
                     if ((parsed.signal_type || "execution") !== "outcome" && emittedMs > latestTime) {
