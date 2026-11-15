@@ -319,7 +319,7 @@ async function startServer(instanceId) {
         eventNanoAiu: 0,
         quotaInterval: null,
     };
-    const server = createServer(async (req, res) => {
+    const handleRequest = async (req, res) => {
         if (req.url === "/events") {
             res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
             res.write(`data: ${JSON.stringify(snapshot(entry))}\n\n`);
@@ -331,10 +331,13 @@ async function startServer(instanceId) {
         if (req.method === "POST") {
             let body = "";
             for await (const chunk of req) body += chunk;
-            let input = {};
+            let input = null;
             try {
                 input = body ? JSON.parse(body) : {};
             } catch {
+                // Rejected below.
+            }
+            if (input === null || typeof input !== "object" || Array.isArray(input)) {
                 return json(res, 400, { error: "Invalid JSON request body." });
             }
 
@@ -347,6 +350,18 @@ async function startServer(instanceId) {
         }
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(renderHtml());
+    };
+    // Rejections from an async request listener (including a client aborting
+    // mid-body) are unhandled and terminate the process.
+    const server = createServer((req, res) => {
+        handleRequest(req, res).catch((error) => {
+            if (res.headersSent) {
+                res.destroy();
+                return;
+            }
+            console.error("Token Pac-Man request failed:", error);
+            json(res, 500, { error: "Internal error" });
+        });
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = server.address().port;
