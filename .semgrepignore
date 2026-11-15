@@ -1,0 +1,13 @@
+# Teaching files show vulnerable SQL and filesystem patterns on purpose so
+# reviewers can recognise them. They are not executed.
+#
+# skill-sql-string-formatting (generic, HIGH) matches those examples. A path
+# exclude is used instead of rewriting the examples. Executable scripts,
+# including skills/**/examples/*.py and *.mjs, stay in the scan.
+# fs-express applies to Express handlers. This repository does not ship an
+# Express app, so those servers are not excluded here.
+
+agents/**/*.md
+instructions/**/*.md
+skills/**/*.md
+cookbook/**/*.md
