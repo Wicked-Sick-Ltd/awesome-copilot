@@ -1,3 +1,5 @@
+import { sanitizeHtml } from "./sanitize-html";
+
 /**
  * Accessibility post-processing for marked-generated markdown HTML.
  *
@@ -8,28 +10,30 @@
  *  - `label`: GitHub-style task-list checkboxes (`- [ ]` / `- [x]`) render as bare
  *    disabled <input type="checkbox"> elements with no accessible name.
  *
- * This module is pure (no DOM or node deps) so it can run both at build time
- * (src/lib/detail-page.ts) and on the client (src/scripts/pages/file-browser.ts).
+ * The edits run on the sanitized tree rather than the HTML string, because a
+ * `<` inside a quoted attribute survives sanitizing and must stay attribute
+ * text. `sanitizeHtml` is isomorphic, so this still runs both at build time
+ * (src/lib/detail-page.ts) and on the client (SkillDetail, CookbookRecipe).
  */
 export function enhanceMarkdownA11y(html: string): string {
   if (!html) return html;
-  let out = html;
 
-  // Make scrollable code/table blocks keyboard focusable.
-  out = out.replace(/<pre(?![^>]*\btabindex=)/g, '<pre tabindex="0"');
-  out = out.replace(/<table(?![^>]*\btabindex=)/g, '<table tabindex="0"');
-
-  // Give task-list checkboxes an accessible name based on their checked state.
-  out = out.replace(
-    /<input\b([^>]*\btype="checkbox"[^>]*)>/g,
-    (match, attrs) => {
-      if (/\baria-label=/.test(attrs)) return match;
-      const label = /\bchecked\b/.test(attrs)
-        ? "Completed task"
-        : "Incomplete task";
-      return `<input${attrs} aria-label="${label}">`;
+  return sanitizeHtml(html, undefined, (root) => {
+    // Make scrollable code/table blocks keyboard focusable.
+    for (const block of Array.from(
+      root.querySelectorAll("pre:not([tabindex]), table:not([tabindex])"),
+    )) {
+      block.setAttribute("tabindex", "0");
     }
-  );
 
-  return out;
+    // Give task-list checkboxes an accessible name based on their checked state.
+    for (const checkbox of Array.from(
+      root.querySelectorAll('input[type="checkbox"]:not([aria-label])'),
+    )) {
+      checkbox.setAttribute(
+        "aria-label",
+        checkbox.hasAttribute("checked") ? "Completed task" : "Incomplete task",
+      );
+    }
+  });
 }
