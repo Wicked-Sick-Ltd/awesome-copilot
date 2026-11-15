@@ -162,8 +162,8 @@ export class DrawingStore extends EventEmitter {
         const docs = [...this.docs.values()];
         const only = (matches) => {
             if (matches.length > 1) {
-                const list = matches.map((d) => `${d.id} ("${d.name}")`).join(", ");
-                throw new StoreError("ambiguous_name", `More than one drawing matches "${raw}": ${list}. Pass the id of the one you want.`);
+                const list = matches.map((d) => `${d.id} (${JSON.stringify(d.name)})`).join(", ");
+                throw new StoreError("ambiguous_name", `More than one drawing matches ${JSON.stringify(raw)}: ${list}. Pass the id of the one you want.`);
             }
             return matches[0] || null;
         };
@@ -200,7 +200,7 @@ export class DrawingStore extends EventEmitter {
 
     #require(id) {
         const doc = this.get(id);
-        if (!doc) throw new Error(`No drawing with id "${id}".`);
+        if (!doc) throw new Error(`No drawing with id ${JSON.stringify(String(id))}.`);
         return doc;
     }
 
@@ -274,7 +274,7 @@ export class DrawingStore extends EventEmitter {
             if (!this.docs.has(id)) this.docs.set(id, doc);
             this.#scheduleSave(id);
             this.emit("list");
-            throw new StoreError("delete_failed", `Could not delete "${doc.name}": ${err.message}`, 500);
+            throw new StoreError("delete_failed", `Could not delete ${JSON.stringify(doc.name)}: ${err.message}`, 500);
         }
         this.saving.delete(id);
         this.saveErrors.delete(id);

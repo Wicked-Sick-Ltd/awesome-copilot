@@ -160,7 +160,7 @@ export function makeActions({ runtime, CanvasError }) {
       if (!anyDrawing && input.drawingId && input.drawingId !== doc.id) {
         fail(
           "drawing_changed",
-          `Nothing was done: this canvas shows "${doc.name}" (id ${doc.id}) now, not drawing ${input.drawingId}. The user may have opened it on purpose, so ask before calling open_drawing to go back.`,
+          `Nothing was done: this canvas shows ${JSON.stringify(doc.name)} (id ${doc.id}) now, not drawing ${JSON.stringify(String(input.drawingId))}. The user may have opened it on purpose, so ask before calling open_drawing to go back.`,
         );
       }
       let result;
@@ -389,7 +389,7 @@ export function makeActions({ runtime, CanvasError }) {
         let doc = store.find(input.name);
         let created = false;
         if (!doc) {
-          if (input.create === false) fail("not_found", `No drawing is named "${input.name}". Call list_drawings to see them.`);
+          if (input.create === false) fail("not_found", `No drawing is named ${JSON.stringify(String(input.name))}. Call list_drawings to see them.`);
           doc = store.create(input.name);
           created = true;
         }
@@ -397,10 +397,10 @@ export function makeActions({ runtime, CanvasError }) {
         if (outcome === "refused") {
           fail(
             "unsaved_changes",
-            `The canvas stayed on "${current.name}" (id ${current.id}): it has changes that could not be saved yet, and opening "${doc.name}" would lose them. The user was offered a button to discard them and open it.${created ? ` "${doc.name}" was created, so opening it again finds it.` : ""}`,
+            `The canvas stayed on ${JSON.stringify(current.name)} (id ${current.id}): it has changes that could not be saved yet, and opening ${JSON.stringify(doc.name)} would lose them. The user was offered a button to discard them and open it.${created ? ` ${JSON.stringify(doc.name)} was created, so opening it again finds it.` : ""}`,
           );
         }
-        let message = created ? `Created and opened "${doc.name}".` : `Opened "${doc.name}".`;
+        let message = created ? `Created and opened ${JSON.stringify(doc.name)}.` : `Opened ${JSON.stringify(doc.name)}.`;
         if (outcome === "unconfirmed") {
           message += ` The canvas has not said yet that it shows it, so pass drawingId "${doc.id}" to the next actions: then they change nothing if it stays on another drawing.`;
         }
