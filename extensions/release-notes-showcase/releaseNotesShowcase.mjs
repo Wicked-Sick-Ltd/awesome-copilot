@@ -12,6 +12,13 @@ const servers = new Map();
 const CANVAS_ID = "release-notes-showcase";
 const CANVAS_TITLE = "Release Notes Showcase";
 
+// The canvas posts a few dozen bytes of JSON. The per-request cap keeps one
+// request from growing without bound; the shared budget keeps many parallel
+// requests from adding up to the same thing.
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+const MAX_BUFFERED_BODY_BYTES = 1024 * 1024;
+let bufferedBodyBytes = 0;
+
 const releaseNotesInputSchema = {
     type: "object",
     additionalProperties: false,
@@ -1113,7 +1120,10 @@ async function startServer(initialState) {
         }
 
         if (req.method === "POST" && requestUrl.pathname === "/actions/export-email") {
-            const body = await readJsonBody(req);
+            const body = await readJsonBodyOrRespond(req, res);
+            if (body === undefined) {
+                return;
+            }
             respondJson(res, buildExportPayload(state, body));
             return;
         }
@@ -1129,7 +1139,10 @@ async function startServer(initialState) {
         }
 
         if (req.method === "POST" && requestUrl.pathname === "/actions/load-release") {
-            const body = await readJsonBody(req);
+            const body = await readJsonBodyOrRespond(req, res);
+            if (body === undefined) {
+                return;
+            }
             const mode = pickString(body?.mode, "unreleased");
             const selectedTag = pickString(body?.tag, "");
             if (mode !== "unreleased" && mode !== "tag") {
@@ -2225,15 +2238,66 @@ function renderHtml(state) {
 </html>`;
 }
 
-function readJsonBody(req) {
-    return new Promise((resolve, reject) => {
-        let body = "";
+class RequestBodyError extends Error {
+    constructor(statusCode, message) {
+        super(message);
+        this.statusCode = statusCode;
+    }
+}
 
-        req.setEncoding("utf8");
-        req.on("data", (chunk) => {
-            body += chunk;
-        });
+function readJsonBody(req, limit = MAX_JSON_BODY_BYTES) {
+    return new Promise((resolve, reject) => {
+        const declaredLength = Number(req.headers["content-length"]);
+        if (Number.isFinite(declaredLength) && declaredLength > limit) {
+            req.pause();
+            reject(new RequestBodyError(413, "Request body too large."));
+            return;
+        }
+
+        let chunks = [];
+        let size = 0;
+        let reserved = 0;
+        let settled = false;
+
+        const release = () => {
+            bufferedBodyBytes -= reserved;
+            reserved = 0;
+            chunks = [];
+        };
+        const fail = (error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            req.off("data", onData);
+            req.pause();
+            release();
+            reject(error);
+        };
+        const onData = (chunk) => {
+            size += chunk.length;
+            if (size > limit) {
+                fail(new RequestBodyError(413, "Request body too large."));
+                return;
+            }
+            if (bufferedBodyBytes + chunk.length > MAX_BUFFERED_BODY_BYTES) {
+                fail(new RequestBodyError(503, "Server is busy."));
+                return;
+            }
+            bufferedBodyBytes += chunk.length;
+            reserved += chunk.length;
+            chunks.push(chunk);
+        };
+
+        req.on("data", onData);
         req.on("end", () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            const body = Buffer.concat(chunks).toString("utf8");
+            release();
+
             if (!body.trim()) {
                 resolve({});
                 return;
@@ -2241,12 +2305,40 @@ function readJsonBody(req) {
 
             try {
                 resolve(JSON.parse(body));
-            } catch (error) {
-                reject(error);
+            } catch {
+                reject(new RequestBodyError(400, "Invalid JSON body."));
             }
         });
-        req.on("error", reject);
+        req.on("error", fail);
+        req.on("close", () => fail(new RequestBodyError(400, "Request aborted.")));
     });
+}
+
+async function readJsonBodyOrRespond(req, res) {
+    try {
+        return await readJsonBody(req);
+    } catch (error) {
+        const statusCode = error instanceof RequestBodyError ? error.statusCode : 400;
+        const message = error instanceof RequestBodyError ? error.message : "Invalid request body.";
+        if (res.headersSent || res.destroyed) {
+            req.destroy();
+            return undefined;
+        }
+        // The rest of an oversized body is never read, so the connection cannot
+        // be reused; close it once the error response has been flushed.
+        const closeConnection = !req.complete;
+        res.statusCode = statusCode;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        if (closeConnection) {
+            res.setHeader("Connection", "close");
+        }
+        res.end(JSON.stringify({ error: message }), () => {
+            if (closeConnection) {
+                req.destroy();
+            }
+        });
+        return undefined;
+    }
 }
 
 function respondHtml(res, html) {
