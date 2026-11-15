@@ -18,10 +18,50 @@ jobs:
     name: validate-submission-gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      # The gate module, its tests, and dependencies come from the base commit. Only the
+      # policy files under review are taken from the PR, as data read through git objects.
+      - name: Checkout trusted base
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
+
+      - name: Checkout PR policy files
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          path: pull-request
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+
+      - name: Overlay PR policy files
+        run: |
+          set -euo pipefail
+          rm -rf .github/workflows .github/submission-gate.yml .github/risk-tiers.yml .github/review-routing.yml
+          mkdir -p .github/workflows
+          git -C pull-request ls-tree -z HEAD -- \
+            .github/submission-gate.yml .github/risk-tiers.yml .github/review-routing.yml .github/workflows/ |
+            while IFS= read -r -d '' entry; do
+              file="${entry#*$'\t'}"
+              read -r mode type object <<< "${entry%%$'\t'*}"
+              case "$file" in
+                .github/submission-gate.yml | .github/risk-tiers.yml | .github/review-routing.yml) ;;
+                .github/workflows/. | .github/workflows/..)
+                  echo "::error::unexpected path in PR policy files: $file"
+                  exit 1
+                  ;;
+                .github/workflows/?*) ;;
+                *) continue ;;
+              esac
+              # Workflows in subdirectories are ignored by Actions and by the gate.
+              [ "$type" = tree ] && continue
+              if [ "$type" != blob ] || { [ "$mode" != 100644 ] && [ "$mode" != 100755 ]; }; then
+                echo "::error file=$file::must be a regular file (mode $mode, type $type)"
+                exit 1
+              fi
+              git -C pull-request cat-file blob "$object" > "$file"
+            done
+          rm -rf pull-request
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
