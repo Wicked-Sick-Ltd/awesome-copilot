@@ -183,11 +183,14 @@ sessions isolate model context, not filesystem access.
 <details>
 <summary><strong>Accessibility Report</strong> - Requires Playwright MCP</summary>
 
-Install Node.js so `npx` is available. The recipe launches
-`npx @playwright/mcp@latest` on demand; a global MCP installation is not required.
-Allow time for package resolution and browser setup on the first run.
+Install Node.js, then install the pinned Playwright MCP server once. `npm ci`
+verifies every package against the integrity hashes in
+[`../../playwright-mcp/package-lock.json`](../../playwright-mcp/package-lock.json).
+The recipe runs that install with `node` and resolves it relative to this directory,
+so run it from here. Allow time for browser setup on the first run.
 
 ```bash
+npm ci --prefix ../../playwright-mcp
 jbang AccessibilityReport.java
 ```
 

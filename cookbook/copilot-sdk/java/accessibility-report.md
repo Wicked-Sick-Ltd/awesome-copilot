@@ -9,7 +9,8 @@ Build a CLI tool that analyzes web page accessibility using the Playwright MCP s
 > **Runnable example:** [recipe/AccessibilityReport.java](recipe/AccessibilityReport.java)
 >
 > ```bash
-> jbang recipe/AccessibilityReport.java
+> npm ci --prefix ../playwright-mcp
+> cd recipe && jbang AccessibilityReport.java
 > ```
 
 ## Example scenario
@@ -18,20 +19,23 @@ You want to audit a website's accessibility compliance. This tool navigates to a
 
 ## Prerequisites
 
-Install [JBang](https://www.jbang.dev/) and ensure `npx` is available (Node.js installed) for the Playwright MCP server:
+Install [JBang](https://www.jbang.dev/) and Node.js, then install the pinned Playwright MCP server from [`../playwright-mcp`](../playwright-mcp). `npm ci` verifies every package against the integrity hashes in its `package-lock.json`:
 
 ```bash
 # macOS (using Homebrew)
 brew install jbangdev/tap/jbang
 
-# Verify npx is available (needed for Playwright MCP)
-npx --version
+# Install the pinned Playwright MCP server
+npm ci --prefix ../playwright-mcp
 ```
 
 ## Usage
 
+Run the recipe from the `recipe` directory so it finds `../../playwright-mcp`:
+
 ```bash
-jbang recipe/AccessibilityReport.java
+cd recipe
+jbang AccessibilityReport.java
 # Enter a URL when prompted
 ```
 
@@ -70,10 +74,14 @@ public class AccessibilityReport {
         try (var client = new CopilotClient()) {
             client.start().get();
 
-            // Configure Playwright MCP server for browser automation
+            // Configure Playwright MCP server for browser automation.
+            // Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+            String playwrightMcpCli = java.nio.file.Path.of(
+                    "..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js")
+                .toAbsolutePath().normalize().toString();
             var mcpConfig = new McpStdioServerConfig()
-                .setCommand("npx")
-                .setArgs(List.of("@playwright/mcp@latest"))
+                .setCommand("node")
+                .setArgs(List.of(playwrightMcpCli))
                 .setTools(List.of("*"));
 
             var session = client.createSession(
@@ -157,7 +165,7 @@ public class AccessibilityReport {
 
 ## How it works
 
-1. **Playwright MCP server**: Configures a local MCP server running `@playwright/mcp` to provide browser automation tools
+1. **Playwright MCP server**: Configures a local MCP server running the lockfile-pinned `@playwright/mcp` install to provide browser automation tools
 2. **Streaming output**: Uses `streaming: true` and `AssistantMessageDeltaEvent` for real-time token-by-token output
 3. **Accessibility snapshot**: Playwright's `browser_snapshot` tool captures the full accessibility tree of the page
 4. **Structured report**: The prompt engineers a consistent WCAG-aligned report format with emoji severity indicators
@@ -171,8 +179,8 @@ The recipe configures a local MCP server that runs alongside the session:
 
 ```java
 var mcpConfig = new McpStdioServerConfig()
-    .setCommand("npx")
-    .setArgs(List.of("@playwright/mcp@latest"))
+    .setCommand("node")
+    .setArgs(List.of(playwrightMcpCli))
     .setTools(List.of("*"));
 
 var session = client.createSession(
@@ -181,6 +189,8 @@ var session = client.createSession(
         .setMcpServers(Map.of("playwright", mcpConfig))
 ).get();
 ```
+
+`playwrightMcpCli` points at the `cli.js` installed by `npm ci` in `../playwright-mcp`. Running a fixed install avoids `npx` resolving whatever version is currently published under a tag every time the recipe starts.
 
 This gives the model access to Playwright browser tools like `browser_navigate`, `browser_snapshot`, and `browser_click`.
 

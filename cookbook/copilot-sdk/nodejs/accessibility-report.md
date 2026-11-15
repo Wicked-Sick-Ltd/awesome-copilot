@@ -5,6 +5,7 @@ Build a CLI tool that analyzes web page accessibility using the Playwright MCP s
 > **Runnable example:** [recipe/accessibility-report.ts](recipe/accessibility-report.ts)
 >
 > ```bash
+> npm ci --prefix ../playwright-mcp
 > cd recipe && npm install
 > npx tsx accessibility-report.ts
 > # or: npm run accessibility-report
@@ -21,7 +22,11 @@ npm install @github/copilot-sdk
 npm install -D typescript tsx @types/node
 ```
 
-You also need `npx` available (Node.js installed) for the Playwright MCP server.
+You also need Node.js and the pinned Playwright MCP server from [`../playwright-mcp`](../playwright-mcp). Install it with `npm ci`, which verifies every package against the integrity hashes in its `package-lock.json`:
+
+```bash
+npm ci --prefix ../playwright-mcp
+```
 
 ## Usage
 
@@ -37,6 +42,12 @@ npx tsx accessibility-report.ts
 
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
 import * as readline from "node:readline";
+import { fileURLToPath } from "node:url";
+
+// Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+const playwrightMcpCli = fileURLToPath(
+    new URL("../../playwright-mcp/node_modules/@playwright/mcp/cli.js", import.meta.url)
+);
 
 // ============================================================================
 // Main Application
@@ -79,8 +90,8 @@ async function main() {
         mcpServers: {
             playwright: {
                 type: "local",
-                command: "npx",
-                args: ["@playwright/mcp@latest"],
+                command: "node",
+                args: [playwrightMcpCli],
                 tools: ["*"],
             },
         },
@@ -178,7 +189,7 @@ main().catch(console.error);
 
 ## How it works
 
-1. **Playwright MCP server**: Configures a local MCP server running `@playwright/mcp` to provide browser automation tools
+1. **Playwright MCP server**: Configures a local MCP server running the lockfile-pinned `@playwright/mcp` install to provide browser automation tools
 2. **Streaming output**: Uses `streaming: true` and `assistant.message_delta` events for real-time token-by-token output
 3. **Accessibility snapshot**: Playwright's `browser_snapshot` tool captures the full accessibility tree of the page
 4. **Structured report**: The prompt engineers a consistent WCAG-aligned report format with emoji severity indicators
@@ -196,13 +207,15 @@ const session = await client.createSession({
     mcpServers: {
         playwright: {
             type: "local",
-            command: "npx",
-            args: ["@playwright/mcp@latest"],
+            command: "node",
+            args: [playwrightMcpCli],
             tools: ["*"],
         },
     },
 });
 ```
+
+`playwrightMcpCli` points at the `cli.js` installed by `npm ci` in `../playwright-mcp`. Running a fixed install avoids `npx` resolving whatever version is currently published under a tag every time the recipe starts.
 
 This gives the model access to Playwright browser tools like `browser_navigate`, `browser_snapshot`, and `browser_click`.
 

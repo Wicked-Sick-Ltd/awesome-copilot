@@ -5,6 +5,7 @@ Build a CLI tool that analyzes web page accessibility using the Playwright MCP s
 > **Runnable example:** [recipe/accessibility-report.cs](recipe/accessibility-report.cs)
 >
 > ```bash
+> npm ci --prefix ../playwright-mcp
 > dotnet run recipe/accessibility-report.cs
 > ```
 
@@ -18,7 +19,11 @@ You want to audit a website's accessibility compliance. This tool navigates to a
 dotnet add package GitHub.Copilot.SDK
 ```
 
-You also need `npx` available (Node.js installed) for the Playwright MCP server.
+You also need Node.js and the pinned Playwright MCP server from [`../playwright-mcp`](../playwright-mcp). Install it with `npm ci`, which verifies every package against the integrity hashes in its `package-lock.json`:
+
+```bash
+npm ci --prefix ../playwright-mcp
+```
 
 ## Usage
 
@@ -32,6 +37,7 @@ dotnet run recipe/accessibility-report.cs
 ```csharp
 #:package GitHub.Copilot.SDK@*
 
+using System.Runtime.CompilerServices;
 using GitHub.Copilot;
 
 // Create and start client
@@ -59,6 +65,11 @@ if (!url.StartsWith("http://") && !url.StartsWith("https://"))
 Console.WriteLine($"\nAnalyzing: {url}");
 Console.WriteLine("Please wait...\n");
 
+// Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+var playwrightMcpCli = Path.GetFullPath(Path.Combine(
+    Path.GetDirectoryName(SourceFilePath())!,
+    "..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js"));
+
 // Create a session with Playwright MCP server
 await using var session = await client.CreateSessionAsync(new SessionConfig
 {
@@ -70,8 +81,8 @@ await using var session = await client.CreateSessionAsync(new SessionConfig
         ["playwright"] =
         new McpStdioServerConfig
         {
-            Command = "npx",
-            Args = ["@playwright/mcp@latest"],
+            Command = "node",
+            Args = [playwrightMcpCli],
             Tools = ["*"]
         }
     },
@@ -190,11 +201,13 @@ if (generateTests == "y" || generateTests == "yes")
 
     Console.WriteLine("\n\n=== Tests Generated ===");
 }
+
+static string SourceFilePath([CallerFilePath] string path = "") => path;
 ```
 
 ## How it works
 
-1. **Playwright MCP server**: Configures a local stdio MCP server (`McpStdioServerConfig`, launched via `npx`) running `@playwright/mcp` to provide browser automation tools
+1. **Playwright MCP server**: Configures a local stdio MCP server (`McpStdioServerConfig`, launched with `node`) running the lockfile-pinned `@playwright/mcp` install to provide browser automation tools
 2. **Streaming output**: Uses `Streaming = true` and `AssistantMessageDeltaEvent` for real-time token-by-token output
 3. **Accessibility snapshot**: Playwright's `browser_snapshot` tool captures the full accessibility tree of the page
 4. **Structured report**: The prompt engineers a consistent WCAG-aligned report format with emoji severity indicators
@@ -204,7 +217,7 @@ if (generateTests == "y" || generateTests == "yes")
 
 ### MCP server configuration
 
-The recipe configures a local stdio MCP server (`McpStdioServerConfig`, launched via `npx`) that runs alongside the session:
+The recipe configures a local stdio MCP server (`McpStdioServerConfig`, launched with `node`) that runs alongside the session:
 
 ```csharp
 OnPermissionRequest = PermissionHandler.ApproveAll,
@@ -212,12 +225,14 @@ McpServers = new Dictionary<string, McpServerConfig>()
 {
     ["playwright"] = new McpStdioServerConfig
     {
-        Command = "npx",
-        Args = ["@playwright/mcp@latest"],
+        Command = "node",
+        Args = [playwrightMcpCli],
         Tools = ["*"]
     }
 }
 ```
+
+`playwrightMcpCli` points at the `cli.js` installed by `npm ci` in `../playwright-mcp`. Running a fixed install avoids `npx` resolving whatever version is currently published under a tag every time the recipe starts.
 
 This gives the model access to Playwright browser tools like `browser_navigate`, `browser_snapshot`, and `browser_click`.
 
