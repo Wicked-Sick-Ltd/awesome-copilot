@@ -126,6 +126,7 @@ conversion. Never guess or assume the directory.
 | `ModuleNotFoundError: No module named 'markitdown'` / exit code 2 | MarkItDown not installed | Follow `references/setup.md` |
 | `ERROR: Unsupported file type '.xls'` / exit code 3 | Legacy `.xls`, not `.xlsx` | Ask the user to re-save as `.xlsx` |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
+| `FAILED <file> -> <folder> already exists; refusing to replace it` / exit code 1 | A file or folder with the output name is already there (an earlier conversion, or an unrelated folder that happens to share the document's name) | The script never deletes, replaces, or writes into an existing path. Do not delete or rename it yourself; if it is an earlier conversion, read the existing Markdown, otherwise tell the user and ask where the output should go |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
 | `NOTE: skipped N non-.xlsx file(s)` | Folder contains non-Excel files | Expected — those files are intentionally ignored |
 | A sheet's charts don't appear as images | Charts are chart objects, not embedded pictures — this skill only extracts real embedded raster images | Expected; mention this limitation if the user specifically needs chart images |
