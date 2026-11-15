@@ -8,13 +8,15 @@ calls/day per client IP). Exits 1 to block on a confident "does not exist".
 Quota exhaustion, offline, and payload problems fail open (exit 0): a guard
 that blocks the wrong operation is worse than one that misses one.
 
-Stdlib only. Answers are cached at ~/.cache/attester-import-check/cache.json
-(exists 30 days, negatives 1 day) so repeated edits do not burn quota.
+Stdlib only. Answers are never read from disk: the coding agent can write
+any file the hook could read, so a stored answer or a workspace allowlist
+would let it pre-approve a missing package. Every package in the current
+edit is decided by a fresh oracle response.
 
-Env:
+Env (set in hooks.json, not in the workspace):
     ATTESTER_MODE=block|warn          default block (warn never blocks)
     ATTESTER_BASE_URL                 default https://attester.dev
-    ATTESTER_IMPORT_CHECK_NO_CACHE=1  skip the answer cache
+    ATTESTER_ALLOWLIST=a,b            comma-separated import names to skip
 """
 
 from __future__ import annotations
@@ -24,14 +26,10 @@ import json
 import os
 import re
 import sys
-import time
 import urllib.request
 from pathlib import Path
 
 BASE_URL = os.environ.get("ATTESTER_BASE_URL", "https://attester.dev").rstrip("/")
-CACHE_PATH = Path.home() / ".cache" / "attester-import-check" / "cache.json"
-TTL_POSITIVE_S = 30 * 24 * 3600
-TTL_NEGATIVE_S = 24 * 3600
 TIMEOUT_S = 10.0
 
 PY_EXTS = {".py", ".pyi"}
@@ -101,35 +99,8 @@ def walk_strings(node):
             yield from walk_strings(item)
 
 
-def load_cache() -> dict:
-    if os.environ.get("ATTESTER_IMPORT_CHECK_NO_CACHE"):
-        return {}
-    try:
-        return json.loads(CACHE_PATH.read_text())
-    except (OSError, ValueError):
-        return {}
-
-
-def save_cache(cache: dict) -> None:
-    if os.environ.get("ATTESTER_IMPORT_CHECK_NO_CACHE"):
-        return
-    try:
-        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CACHE_PATH.write_text(json.dumps(cache))
-    except OSError:
-        pass
-
-
-def oracle(package: str, ecosystem: str, cache: dict):
-    """True/False answer, or None when unchecked (offline). Raises SystemExit-free
-    sentinel string 'quota' is returned via the cache-neutral marker below."""
-    key = f"{ecosystem}:{package}"
-    entry = cache.get(key)
-    now = time.time()
-    if entry is not None:
-        ttl = TTL_POSITIVE_S if entry.get("exists") else TTL_NEGATIVE_S
-        if now - entry.get("ts", 0) < ttl:
-            return entry.get("exists"), entry.get("adjacent_to") or []
+def oracle(package: str, ecosystem: str):
+    """True/False answer, None when unchecked (offline), or 'quota'."""
     body = json.dumps({"ecosystem": ecosystem, "name": package}).encode()
     req = urllib.request.Request(
         f"{BASE_URL}/demo/v1/package/exists",
@@ -146,26 +117,14 @@ def oracle(package: str, ecosystem: str, cache: dict):
         return None, []
     except Exception:
         return None, []
-    if "exists" not in info:
+    if not isinstance(info, dict) or "exists" not in info:
         return None, []
-    cache[key] = {
-        "exists": bool(info["exists"]),
-        "adjacent_to": info.get("adjacent_to") or [],
-        "ts": now,
-    }
-    save_cache(cache)
     return bool(info["exists"]), info.get("adjacent_to") or []
 
 
 def load_allowlist() -> set[str]:
-    path = Path.cwd() / ".attester-allowlist"
-    if not path.is_file():
-        return set()
-    return {
-        line.strip()
-        for line in path.read_text(errors="replace").splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    }
+    raw = os.environ.get("ATTESTER_ALLOWLIST", "")
+    return {name.strip() for name in raw.split(",") if name.strip()}
 
 
 def main() -> int:
@@ -205,14 +164,13 @@ def main() -> int:
         return 0
 
     allowlist = load_allowlist()
-    cache = load_cache()
     findings: list[tuple[str, str, list[str]]] = []
     warn_only = os.environ.get("ATTESTER_MODE", "block").lower() == "warn"
     try:
         for package in sorted(candidates):
             if package in allowlist:
                 continue
-            answer, adjacent = oracle(package, candidates[package], cache)
+            answer, adjacent = oracle(package, candidates[package])
             if answer == "quota":
                 print(
                     "attester-import-check: attester quota exhausted, unchecked",
@@ -229,7 +187,7 @@ def main() -> int:
         msg = f"attester-import-check: '{package}' does not exist on {registry} (attester.dev oracle)."
         if adjacent:
             msg += f" Closest real name: {', '.join(adjacent)}."
-        msg += " Remove or fix the import, or add the name to .attester-allowlist if this is a false positive."
+        msg += " Remove or fix the import, or add the name to ATTESTER_ALLOWLIST in hooks.json if this is a false positive."
         print(msg, file=sys.stderr)
     if findings and not warn_only:
         return 1
