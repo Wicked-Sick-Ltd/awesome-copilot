@@ -127,5 +127,6 @@ conversion. Never guess or assume the directory.
 | `ERROR: Unsupported file type '.xls'` / exit code 3 | Legacy `.xls`, not `.xlsx` | Ask the user to re-save as `.xlsx` |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
+| `FAILED <file> -> ... bytes uncompressed ...`, `... in total`, or `... more than N images` | The workbook exceeds the converter's safety limits (16 MiB per zip part, 32 MiB decompressed in total, 64 images per sheet, 1024 per workbook); its existing output is left untouched | Report the file as too large to convert safely; do not try to unzip or parse it some other way |
 | `NOTE: skipped N non-.xlsx file(s)` | Folder contains non-Excel files | Expected — those files are intentionally ignored |
 | A sheet's charts don't appear as images | Charts are chart objects, not embedded pictures — this skill only extracts real embedded raster images | Expected; mention this limitation if the user specifically needs chart images |
