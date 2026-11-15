@@ -643,6 +643,7 @@ const pythonRunner = String.raw`
 import ast
 import base64
 import contextlib
+import errno
 import io
 import json
 import os
@@ -653,6 +654,10 @@ try:
     import resource
 except ImportError:
     resource = None
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 payload = json.load(sys.stdin)
 namespace = {}
@@ -711,11 +716,132 @@ def under(path_value, roots):
         return True
     return any(path_value == root or root in path_value.parents for root in roots)
 
+IS_LINUX = sys.platform.startswith("linux")
+DENIED_EVENTS = {
+    "os.system", "os.posix_spawn", "os.spawn", "os.exec", "os.fork", "os.forkpty",
+    "os.startfile", "os.startfile/2",
+    "os.kill", "os.killpg", "os.pidfd_send_signal",
+    "signal.pthread_kill", "signal.pidfd_send_signal",
+    "_winapi.CreateProcess", "_winapi.OpenProcess", "_winapi.TerminateProcess",
+}
+SIGNAL_OWNER_FCNTL = {8, 10, 15} if IS_LINUX else set()
+if fcntl is not None:
+    SIGNAL_OWNER_FCNTL.update(
+        getattr(fcntl, name) for name in ("F_SETOWN", "F_SETOWN_EX", "F_SETSIG") if hasattr(fcntl, name)
+    )
+SIGNAL_OWNER_IOCTL = {0x8901, 0x8902} if IS_LINUX else {0x8004667C, 0x80047308}
+
+GENERIC_LINUX_SYSCALLS = {
+    "kill": 129, "tkill": 130, "tgkill": 131, "rt_sigqueueinfo": 138, "rt_tgsigqueueinfo": 240,
+    "pidfd_send_signal": 424, "ptrace": 117, "process_vm_writev": 271, "pidfd_getfd": 438,
+    "execve": 221, "execveat": 281, "fcntl": 25, "ioctl": 29, "prlimit64": 261,
+}
+LINUX_SYSCALLS = {
+    "x86_64": (0xC000003E, True, {
+        "kill": 62, "tkill": 200, "tgkill": 234, "rt_sigqueueinfo": 129, "rt_tgsigqueueinfo": 297,
+        "pidfd_send_signal": 424, "ptrace": 101, "process_vm_writev": 311, "pidfd_getfd": 438,
+        "execve": 59, "execveat": 322, "fcntl": 72, "ioctl": 16, "prlimit64": 302,
+    }),
+    "aarch64": (0xC00000B7, False, GENERIC_LINUX_SYSCALLS),
+    "arm64": (0xC00000B7, False, GENERIC_LINUX_SYSCALLS),
+    "riscv64": (0xC00000F3, False, GENERIC_LINUX_SYSCALLS),
+}
+DENIED_LINUX_SYSCALLS = (
+    "kill", "tkill", "tgkill", "rt_sigqueueinfo", "rt_tgsigqueueinfo", "pidfd_send_signal",
+    "ptrace", "process_vm_writev", "pidfd_getfd", "execve", "execveat",
+)
+
+def seccomp_program(arch, check_x32, numbers):
+    allow = 0x7FFF0000
+    deny = 0x00050000 | errno.EPERM
+    load, jeq, jge, ret = 0x20, 0x15, 0x35, 0x06
+    args0, args1 = 16, 24
+    source = [(load, 0, 0, 4), (jeq, 0, "deny", arch), (load, 0, 0, 0)]
+    if check_x32:
+        source.append((jge, "deny", 0, 0x40000000))
+    source += [(jeq, "deny", 0, numbers[name]) for name in DENIED_LINUX_SYSCALLS]
+    source += [
+        (jeq, "fcntl", 0, numbers["fcntl"]),
+        (jeq, "ioctl", 0, numbers["ioctl"]),
+        (jeq, "prlimit", 0, numbers["prlimit64"]),
+        (ret, 0, 0, allow),
+        "fcntl", (load, 0, 0, args1), (jeq, "deny", 0, 8), (jeq, "deny", 0, 10), (jeq, "deny", 0, 15),
+        (ret, 0, 0, allow),
+        "ioctl", (load, 0, 0, args1), (jeq, "deny", 0, 0x8901), (jeq, "deny", 0, 0x8902),
+        (ret, 0, 0, allow),
+        "prlimit", (load, 0, 0, args0), (jeq, 0, "deny", 0),
+        (ret, 0, 0, allow),
+        "deny", (ret, 0, 0, deny),
+    ]
+    labels = {}
+    program = []
+    for item in source:
+        if isinstance(item, str):
+            labels[item] = len(program)
+        else:
+            program.append(item)
+    resolved = []
+    for index, (code, jt, jf, k) in enumerate(program):
+        jt, jf = (labels[value] - index - 1 if isinstance(value, str) else value for value in (jt, jf))
+        if not (0 <= jt <= 255 and 0 <= jf <= 255):
+            raise ValueError("Process filter jump out of range")
+        resolved.append((code, jt, jf, k))
+    return resolved
+
+def restrict_process_control():
+    # CPython raises no audit event for signal.pidfd_send_signal, signal.raise_signal or
+    # _posixsubprocess.fork_exec, and programs a cell manages to exec are not bound by the
+    # audit hook, so on Linux signal delivery, tracing and exec are denied in the kernel.
+    try:
+        import _posixsubprocess
+    except ImportError:
+        _posixsubprocess = None
+    if _posixsubprocess is not None:
+        def fork_exec(*args, **kwargs):
+            raise PermissionError("_posixsubprocess.fork_exec is disabled in notebook execution")
+        _posixsubprocess.fork_exec = fork_exec
+    if not IS_LINUX:
+        if resource is not None and hasattr(resource, "RLIMIT_NPROC"):
+            try:
+                resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+            except (OSError, ValueError):
+                pass
+        return
+    machine = os.uname().machine
+    if machine not in LINUX_SYSCALLS or sys.byteorder != "little" or sys.maxsize <= 2**32:
+        raise RuntimeError(f"no process filter is available for this Python build ({machine})")
+    import ctypes
+
+    class SockFilter(ctypes.Structure):
+        _fields_ = [("code", ctypes.c_ushort), ("jt", ctypes.c_ubyte), ("jf", ctypes.c_ubyte), ("k", ctypes.c_uint32)]
+
+    class SockFprog(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.POINTER(SockFilter))]
+
+    program = seccomp_program(*LINUX_SYSCALLS[machine])
+    filters = (SockFilter * len(program))(*(SockFilter(*instruction) for instruction in program))
+    fprog = SockFprog(len(program), filters)
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    prctl.restype = ctypes.c_int
+    pr_set_seccomp, pr_set_no_new_privs, seccomp_mode_filter = 22, 38, 2
+    if prctl(pr_set_no_new_privs, 1, 0, 0, 0) != 0 or prctl(
+        pr_set_seccomp, seccomp_mode_filter, ctypes.addressof(fprog), 0, 0
+    ) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+
 def audit(event, args):
-    if event.startswith(("socket.", "subprocess.", "ctypes.", "pty.")) or event in {
-        "os.system", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty"
-    }:
+    if event.startswith(("socket.", "subprocess.", "ctypes.", "pty.")) or event in DENIED_EVENTS:
         raise PermissionError(f"{event} is disabled in notebook execution")
+    if event == "import" and args and args[0] == "_posixsubprocess":
+        raise PermissionError("Loading _posixsubprocess is disabled in notebook execution")
+    if event == "fcntl.fcntl" and len(args) > 1 and args[1] in SIGNAL_OWNER_FCNTL:
+        raise PermissionError("Changing signal ownership is disabled in notebook execution")
+    if event == "fcntl.ioctl" and len(args) > 1 and (args[1] & 0xFFFFFFFF) in SIGNAL_OWNER_IOCTL:
+        raise PermissionError("Changing signal ownership is disabled in notebook execution")
+    if event == "resource.prlimit" and args and args[0] not in (0, os.getpid()):
+        raise PermissionError("Changing another process's limits is disabled in notebook execution")
     if event == "open":
         target = resolve_path(args[0])
         mode = str(args[1]) if len(args) > 1 else "r"
@@ -736,6 +862,11 @@ def audit(event, args):
         if any(not under(resolve_path(value), [WORKSPACE]) for value in args[:2]):
             raise PermissionError("Filesystem changes outside the isolated workspace are disabled")
 
+try:
+    restrict_process_control()
+except Exception as exc:
+    sys.stderr.write(f"Notebook execution is unavailable because the process sandbox could not be enabled: {exc}\n")
+    sys.exit(1)
 sys.addaudithook(audit)
 
 def rich_repr(value):

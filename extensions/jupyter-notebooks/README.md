@@ -15,6 +15,7 @@ Create, edit, run, save, and checkpoint Jupyter notebooks in an interactive GitH
 ## Requirements
 
 - Python 3 available as `python3` or `python`.
+- On Linux, a 64-bit x86_64, aarch64, or riscv64 Python with `ctypes` and seccomp support. Cell execution is refused when the process filter cannot be installed.
 - The `@github/copilot-sdk` package installed with the extension.
 
 ## Install
@@ -33,6 +34,6 @@ The canvas provides actions for notebook lifecycle, workspace files, cell editin
 
 ## Security and local data
 
-Notebook execution uses Python isolated mode in a fresh temporary directory. The runner applies CPU, file-size, process, and memory limits where the platform supports them, caps captured output, and stops execution after 30 seconds.
+Notebook execution uses Python isolated mode in a fresh temporary directory. The runner applies CPU, file-size, process, and memory limits where the platform supports them, caps captured output, and stops execution after 30 seconds. Cells cannot start programs, signal, trace, or change the limits of other processes: the runner's audit hook rejects those calls, and on Linux a seccomp filter also denies the underlying system calls for the runner and anything it forks.
 
 The local canvas server binds to `127.0.0.1`, protects requests with a per-instance capability token, validates action origins, and sends a restrictive content security policy. Notebook state and checkpoints stay in the active Copilot workspace.
