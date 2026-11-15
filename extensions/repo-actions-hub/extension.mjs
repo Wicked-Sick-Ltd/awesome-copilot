@@ -1,8 +1,11 @@
-import { createServer } from "node:http";
+import { createServer, STATUS_CODES } from "node:http";
 import { spawn } from "node:child_process";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 const instanceEntries = new Map();
+
+const MAX_BODY_BYTES = 64 * 1024;
+const REJECTED_SOCKET_LINGER_MS = 2000;
 
 const OPEN_INPUT_SCHEMA = {
     type: "object",
@@ -192,6 +195,10 @@ async function startServer(instanceId, config) {
 
     entry.server = createServer((req, res) => {
         handleRequest(entry, req, res).catch((error) => {
+            if (Number.isInteger(error?.statusCode)) {
+                rejectRequest(req, res, error.statusCode, error.message);
+                return;
+            }
             writeJson(res, 500, { error: error.message || "Request failed." });
         });
     });
@@ -199,11 +206,16 @@ async function startServer(instanceId, config) {
     await new Promise((resolve) => entry.server.listen(0, "127.0.0.1", resolve));
     const address = entry.server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    entry.url = `http://127.0.0.1:${port}/`;
+    entry.origin = `http://127.0.0.1:${port}`;
+    entry.url = `${entry.origin}/`;
     return entry;
 }
 
 async function handleRequest(entry, req, res) {
+    if (req.headers.host !== new URL(entry.origin).host || (req.headers.origin && req.headers.origin !== entry.origin)) {
+        throw httpError(403, "This request is not authorized for this canvas.");
+    }
+
     const url = new URL(req.url || "/", entry.url);
 
     if (req.method === "GET" && url.pathname === "/") {
@@ -750,20 +762,80 @@ function writeJson(res, statusCode, payload) {
     res.end(JSON.stringify(payload));
 }
 
+function httpError(statusCode, message) {
+    return Object.assign(new Error(message), { statusCode });
+}
+
+// Refuses without reading any more of the request. The socket stops reading, the
+// response is written and the write side half-closed so the client receives it
+// instead of a reset (RFC 9112 section 9.6), and the socket is destroyed after a
+// short linger. ServerResponse is bypassed because finishing it would drain the
+// remaining body or destroy the socket before the client can read the response.
+function rejectRequest(req, res, statusCode, message) {
+    const socket = req.socket;
+    socket.pause();
+    if (res.headersSent || socket.destroyed || !socket.writable) {
+        socket.destroy();
+        return;
+    }
+    const body = JSON.stringify({ error: message });
+    socket.end(
+        [
+            `HTTP/1.1 ${statusCode} ${STATUS_CODES[statusCode] ?? "Error"}`,
+            "Content-Type: application/json; charset=utf-8",
+            `Content-Length: ${Buffer.byteLength(body)}`,
+            "Connection: close",
+            "",
+            body,
+        ].join("\r\n")
+    );
+    setTimeout(() => socket.destroy(), REJECTED_SOCKET_LINGER_MS);
+}
+
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
-        let body = "";
-        req.on("data", (chunk) => {
-            body += chunk.toString();
-        });
-        req.on("end", () => {
+        const tooLarge = () => httpError(413, `Request body exceeds ${MAX_BODY_BYTES} bytes.`);
+        const declaredLength = Number(req.headers["content-length"]);
+        if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+            req.pause();
+            reject(tooLarge());
+            return;
+        }
+
+        const chunks = [];
+        let size = 0;
+        const cleanup = () => {
+            req.off("data", onData);
+            req.off("end", onEnd);
+            req.off("error", onError);
+        };
+        const onData = (chunk) => {
+            size += chunk.length;
+            if (size > MAX_BODY_BYTES) {
+                cleanup();
+                chunks.length = 0;
+                req.pause();
+                reject(tooLarge());
+                return;
+            }
+            chunks.push(chunk);
+        };
+        const onEnd = () => {
+            cleanup();
+            const body = Buffer.concat(chunks).toString("utf8");
             try {
                 resolve(body ? JSON.parse(body) : {});
             } catch (error) {
                 reject(new CanvasError("invalid_json", "Request body must be valid JSON."));
             }
-        });
-        req.on("error", reject);
+        };
+        const onError = (error) => {
+            cleanup();
+            reject(error);
+        };
+        req.on("data", onData);
+        req.on("end", onEnd);
+        req.on("error", onError);
     });
 }
 
