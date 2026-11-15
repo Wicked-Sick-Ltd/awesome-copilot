@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -24,6 +25,10 @@ const gameKeys = new Set(games.map((game) => game.key));
 const defaultGame = "ninja-runner";
 const canvasBackgroundGames = ["cosmic-rocks", "alien-onslaught", "galaxy-blaster", "defender", "surface-defense"];
 const servers = new Map();
+const MAX_BODY_BYTES = 64 * 1024;
+// The page sets <base href="/t/<token>/game/"> so the game's relative script,
+// image, and audio loads carry the instance token in their path.
+const tokenPathPattern = /^\/t\/([^/]*)(\/.*)?$/;
 
 function normalizeGameKey(value) {
     return typeof value === "string" && gameKeys.has(value) ? value : defaultGame;
@@ -95,6 +100,8 @@ async function renderIndex(entry) {
     const bootstrap = `<script>
 (() => {
   window.__agentArcadeLayoutProfile = "canvas";
+  const token = ${JSON.stringify(entry.token)};
+  const tokenQuery = "?token=" + encodeURIComponent(token);
   const selectedGame = ${JSON.stringify(entry.selectedGame)};
   const games = ${JSON.stringify(games)};
   const canvasBackgroundGames = ${JSON.stringify(canvasBackgroundGames)};
@@ -221,7 +228,7 @@ async function renderIndex(entry) {
 
   document.getElementById("game-select")?.addEventListener("change", (event) => {
     markSwitchingGame();
-    fetch("/select-game", {
+    fetch("/select-game" + tokenQuery, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ gameKey: event.target.value }),
@@ -245,7 +252,7 @@ async function renderIndex(entry) {
     body.canvas-space-background #game {
       background-image:
         radial-gradient(circle at 50% 35%, rgba(18, 34, 88, 0.35), rgba(2, 4, 13, 0.18) 42%, rgba(2, 4, 13, 0.78) 100%),
-        url('/assets/canvas-background.webp') !important;
+        url('../assets/canvas-background.webp') !important;
       background-position: center, center !important;
       background-repeat: no-repeat, no-repeat !important;
       background-size: cover, cover !important;
@@ -268,14 +275,17 @@ async function renderIndex(entry) {
   window.__agentArcadeCanvasSelectGame = selectGame;
   window.__agentArcadeCanvasGames = games;
 
-  const events = new EventSource("/events");
+  const events = new EventSource("/events" + tokenQuery);
   events.addEventListener("selectGame", (event) => {
     try { selectGame(JSON.parse(event.data).gameKey); } catch {}
   });
   events.addEventListener("reload", () => window.location.reload());
 })();
 </script>`;
-    return html.replace('<script src="./hud.js"></script>', `${bootstrap}\n  <script src="./hud.js"></script>`);
+    const base = `<base href="/t/${encodeURIComponent(entry.token)}/game/">\n  <link rel="icon" href="../favicon.ico">`;
+    return html
+        .replace("<head>", `<head>\n  ${base}`)
+        .replace('<script src="./hud.js"></script>', `${bootstrap}\n  <script src="./hud.js"></script>`);
 }
 
 async function streamFile(res, filePath) {
@@ -300,15 +310,84 @@ async function streamFile(res, filePath) {
     stream.pipe(res);
 }
 
+function sendRefusal(res, status, message) {
+    res.writeHead(status, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+        connection: "close",
+    });
+    res.end(message);
+}
+
+// Resolves undefined once the body exceeds `limit`, leaving the rest unread so
+// the connection can be closed after the 413 instead of draining it.
+function readLimitedBody(req, limit) {
+    return new Promise((resolve, reject) => {
+        const declared = Number(req.headers["content-length"]);
+        if (Number.isFinite(declared) && declared > limit) {
+            resolve(undefined);
+            return;
+        }
+        const chunks = [];
+        let size = 0;
+        const cleanup = () => {
+            req.off("data", onData);
+            req.off("end", onEnd);
+            req.off("error", onError);
+            req.off("close", onClose);
+        };
+        const onData = (chunk) => {
+            size += chunk.length;
+            if (size > limit) {
+                cleanup();
+                req.pause();
+                resolve(undefined);
+                return;
+            }
+            chunks.push(chunk);
+        };
+        const onEnd = () => {
+            cleanup();
+            resolve(Buffer.concat(chunks));
+        };
+        const onError = (error) => {
+            cleanup();
+            reject(error);
+        };
+        const onClose = () => {
+            cleanup();
+            reject(new Error("Request closed before the body was complete"));
+        };
+        req.on("data", onData);
+        req.on("end", onEnd);
+        req.on("error", onError);
+        req.on("close", onClose);
+    });
+}
+
+function tokenMatches(expected, supplied) {
+    if (typeof supplied !== "string") return false;
+    const a = Buffer.from(expected);
+    const b = Buffer.from(supplied);
+    return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function isAuthorized(entry, req, suppliedTokens) {
+    if (req.headers.host !== entry.host) return false;
+    const origin = req.headers.origin;
+    if (origin !== undefined && origin !== entry.origin) return false;
+    return suppliedTokens.length > 0 && suppliedTokens.every((value) => tokenMatches(entry.token, value));
+}
+
 async function handleSelectGame(entry, req, res) {
-    let body = "";
-    req.setEncoding("utf8");
-    for await (const chunk of req) {
-        body += chunk;
+    const body = await readLimitedBody(req, MAX_BODY_BYTES);
+    if (body === undefined) {
+        sendRefusal(res, 413, "Request body is too large");
+        return;
     }
     let input;
     try {
-        input = JSON.parse(body);
+        input = JSON.parse(body.toString("utf8"));
     } catch {
         res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
         res.end("Invalid JSON request body");
@@ -325,9 +404,20 @@ async function handleSelectGame(entry, req, res) {
 }
 
 async function handleRequest(entry, req, res) {
-    const url = new URL(req.url ?? "/", entry.url);
+    const requestUrl = new URL(req.url ?? "/", entry.origin);
+    const suppliedTokens = requestUrl.searchParams.getAll("token");
+    let pathname = requestUrl.pathname;
+    const scoped = tokenPathPattern.exec(pathname);
+    if (scoped) {
+        suppliedTokens.push(scoped[1]);
+        pathname = scoped[2] ?? "/";
+    }
+    if (!isAuthorized(entry, req, suppliedTokens)) {
+        sendRefusal(res, 403, "This request is not authorized for this canvas.");
+        return;
+    }
 
-    if (url.pathname === "/events") {
+    if (pathname === "/events") {
         res.writeHead(200, {
             "content-type": "text/event-stream; charset=utf-8",
             "cache-control": "no-cache",
@@ -339,34 +429,35 @@ async function handleRequest(entry, req, res) {
         return;
     }
 
-    if (url.pathname === "/state") {
+    if (pathname === "/state") {
         sendJson(res, { games, selectedGame: entry.selectedGame });
         return;
     }
 
-    if (url.pathname === "/favicon.ico") {
+    if (pathname === "/favicon.ico") {
         await streamFile(res, path.join(assetsRoot, "icon.png"));
         return;
     }
 
-    if (url.pathname === "/select-game" && req.method === "POST") {
+    if (pathname === "/select-game" && req.method === "POST") {
         await handleSelectGame(entry, req, res);
         return;
     }
 
     try {
-        if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/game" || url.pathname === "/game/") {
+        if (pathname === "/" || pathname === "/index.html" || pathname === "/game" || pathname === "/game/") {
             res.writeHead(200, {
                 "content-type": "text/html; charset=utf-8",
                 "cache-control": "no-cache",
+                "referrer-policy": "no-referrer",
             });
             res.end(await renderIndex(entry));
             return;
         }
 
-        const staticPath = url.pathname.startsWith("/assets/")
-            ? resolveUnder(assetsRoot, url.pathname.slice("/assets".length))
-            : resolveUnder(gameRoot, url.pathname.startsWith("/game/") ? url.pathname.slice("/game".length) : url.pathname);
+        const staticPath = pathname.startsWith("/assets/")
+            ? resolveUnder(assetsRoot, pathname.slice("/assets".length))
+            : resolveUnder(gameRoot, pathname.startsWith("/game/") ? pathname.slice("/game".length) : pathname);
         await streamFile(res, staticPath);
     } catch (error) {
         if (error instanceof CanvasError) {
@@ -383,10 +474,17 @@ async function startServer(instanceId, selectedGame) {
         clients: new Set(),
         selectedGame,
         server: undefined,
+        token: randomBytes(32).toString("base64url"),
+        host: undefined,
+        origin: undefined,
         url: undefined,
     };
     const server = createServer((req, res) => {
         handleRequest(entry, req, res).catch((error) => {
+            if (res.headersSent) {
+                res.destroy();
+                return;
+            }
             res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
             res.end(error instanceof Error ? error.message : "Arcade canvas server error");
         });
@@ -396,7 +494,9 @@ async function startServer(instanceId, selectedGame) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    entry.url = `http://127.0.0.1:${port}/`;
+    entry.host = `127.0.0.1:${port}`;
+    entry.origin = `http://${entry.host}`;
+    entry.url = `${entry.origin}/?token=${encodeURIComponent(entry.token)}`;
     servers.set(instanceId, entry);
     return entry;
 }
