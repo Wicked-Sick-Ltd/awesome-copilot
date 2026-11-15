@@ -667,12 +667,16 @@ if resource is not None:
     except (AttributeError, OSError, ValueError):
         pass
 READ_ROOTS = [WORKSPACE]
+NATIVE_ROOTS = []
 for entry in [sys.base_prefix, sys.prefix, *sys.path]:
     if entry:
         try:
-            READ_ROOTS.append(pathlib.Path(entry).resolve())
+            resolved_entry = pathlib.Path(entry).resolve()
         except (OSError, TypeError):
-            pass
+            continue
+        READ_ROOTS.append(resolved_entry)
+        if resolved_entry != WORKSPACE:
+            NATIVE_ROOTS.append(resolved_entry)
 
 class LimitedBuffer(io.StringIO):
     def __init__(self, limit):
@@ -716,6 +720,15 @@ def audit(event, args):
         "os.system", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty"
     }:
         raise PermissionError(f"{event} is disabled in notebook execution")
+    if event == "import":
+        filename = args[1] if len(args) > 1 else None
+        if filename:
+            try:
+                resolved = pathlib.Path(filename).resolve()
+            except (OSError, TypeError, ValueError):
+                raise PermissionError("Loading native extension modules is disabled in notebook execution")
+            if not under(resolved, NATIVE_ROOTS):
+                raise PermissionError("Loading native extension modules outside the interpreter is disabled in notebook execution")
     if event == "open":
         target = resolve_path(args[0])
         mode = str(args[1]) if len(args) > 1 else "r"
