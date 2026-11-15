@@ -56,7 +56,7 @@ applyTo: "apps/frontend/**"
 Workflow:
 
 1. **Read `agentrc.config.json`** to discover declared areas and their `paths` / globs. If `paths` is missing, ask the user for the glob (e.g. `src/api/**`).
-2. **Run `agentrc instructions --areas`** (or `--area <name>`) to produce the per-area body content.
+2. **Run `instructions --areas`** (or `--area <name>`) through the commit-pinned `npx` command shown in step 4 of "Steps" below to produce the per-area body content.
 3. **Wrap each area's content** in `.github/instructions/<area>.instructions.md` with the `applyTo` frontmatter taken from the area's `paths`. If the user passed `--apply-to <glob>` on a single-area call, use that glob verbatim.
 4. **Leave the main file alone** — the root `.github/copilot-instructions.md` stays as the always-on instructions; `.instructions.md` files only kick in for matching paths.
 
@@ -72,8 +72,9 @@ Naming: lowercase, kebab-case area name. Examples: `.github/instructions/fronten
 3. **Detect monorepo areas** by reading `agentrc.config.json`. If areas exist, ask the user whether they want **per-area `.instructions.md` files with `applyTo`** in addition to the root file. Default to "yes" when `agentrc.config.json` declares areas.
 4. **Run dry-run first** so the user can preview:
    ```bash
-   npx -y github:microsoft/agentrc instructions --output <file> --strategy <flat|nested> [--areas|--area <name>] [--claude-md] --dry-run
+   npx -y github:microsoft/agentrc#f0ff6f36edb712b1744995d9bbc654f8277d642f instructions --output <file> --strategy <flat|nested> [--areas|--area <name>] [--claude-md] --dry-run
    ```
+   The `#f0ff6f36edb712b1744995d9bbc654f8277d642f` suffix pins AgentRC to the exact commit of its `v2.1.0` release. Run the command exactly as written: never drop the suffix, never replace it with a branch or tag name (such as `#main` or `#v2.1.0`), and never substitute `npx agentrc` or `npx @microsoft/agentrc`. Branches, tags, and registry versions can be repointed; a full commit SHA cannot.
 5. **Show a short summary** of what would change — files that would be created or overwritten, area count + their `applyTo` globs, model used (default `claude-sonnet-4.6`).
 6. **On confirmation, run the same command without `--dry-run`** (and optionally `--force` if files already exist).
 7. **Post-process layout for Copilot output**:

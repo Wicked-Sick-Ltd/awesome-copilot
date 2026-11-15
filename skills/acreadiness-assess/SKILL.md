@@ -1,6 +1,6 @@
 ---
 name: acreadiness-assess
-description: 'Run the AgentRC readiness assessment on the current repository and produce a static HTML dashboard at reports/index.html. Wraps `npx github:microsoft/agentrc readiness` and hands off rendering to the @ai-readiness-reporter custom agent. Supports policies (--policy) for org-specific scoring. Use when asked to assess, audit, or score the AI readiness of a repo.'
+description: 'Run the AgentRC readiness assessment on the current repository and produce a static HTML dashboard at reports/index.html. Wraps AgentRC `readiness`, run through npx pinned to a release commit, and hands off rendering to the @ai-readiness-reporter custom agent. Supports policies (--policy) for org-specific scoring. Use when asked to assess, audit, or score the AI readiness of a repo.'
 argument-hint: "[--policy <path-or-pkg>] [--per-area] — e.g. /acreadiness-assess, /acreadiness-assess --policy ./policies/strict.json"
 ---
 
@@ -22,8 +22,9 @@ This skill is the *Measure* step in AgentRC's **Measure → Generate → Maintai
 
 3. **Run the readiness scan** in the repo root with structured output:
    ```bash
-   npx -y github:microsoft/agentrc readiness --json [--policy <source>] [--per-area]
+   npx -y github:microsoft/agentrc#f0ff6f36edb712b1744995d9bbc654f8277d642f readiness --json [--policy <source>] [--per-area]
    ```
+   The `#f0ff6f36edb712b1744995d9bbc654f8277d642f` suffix pins AgentRC to the exact commit of its `v2.1.0` release. Run the command exactly as written: never drop the suffix, never replace it with a branch or tag name (such as `#main` or `#v2.1.0`), and never substitute `npx agentrc` or `npx @microsoft/agentrc`. Branches, tags, and registry versions can be repointed; a full commit SHA cannot.
    The `CommandResult<T>` JSON envelope is your input for the next step.
 
 4. **Hand off to the `ai-readiness-reporter` custom agent** to interpret the JSON and produce `reports/index.html`. The agent renders via the bundled template `report-template.html` (shipped alongside this skill) so every report has an identical look & feel. The agent:
@@ -42,5 +43,5 @@ This skill is the *Measure* step in AgentRC's **Measure → Generate → Maintai
 ## Notes
 
 - AgentRC also has a built-in HTML renderer (`--visual` / `--output report.html`) but its output is intentionally generic. This skill produces a tailored, opinionated dashboard via the custom agent — closer to a code review than a metrics dump.
-- For CI gating, recommend `agentrc readiness --fail-level <n>` (1–5).
+- For CI gating, recommend `readiness --fail-level <n>` (1–5), run through the same commit-pinned `npx` command as step 3.
 - The skill never modifies repository files other than creating `reports/index.html`.
