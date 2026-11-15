@@ -2,40 +2,16 @@
   AI Readiness Report — canonical template
   --------------------------------------------
   This file is the single source of truth for the look & feel of the
-  reports/index.html output. The @ai-readiness-reporter agent MUST load
-  this file, substitute the {{placeholders}} with real data from
-  `agentrc readiness --json`, and write the result to reports/index.html.
+  reports/index.html output. Do not fill it in by hand or by string
+  replacement: render it with render-report.mjs (next to this file), which
+  encodes every value for the context it lands in.
 
-  Rules for the agent:
-  - Do NOT change the HTML structure, class names, CSS variables or the
-    inline <style> block. The template is intentionally fixed so every
-    consumer of this plugin gets an identical-looking report.
-  - Replace every {{placeholder}} with concrete data. Repeat the marked
-    blocks (pillar cards, plan rows, maturity rows, extra rows) for
-    each item. Remove blocks that don't apply (e.g. policy section if
-    no policy is active).
-  - Keep the file self-contained: no external CSS/JS, no network fonts.
-  - Preserve the <script type="application/json" id="raw-data"> block
-    and embed the compact AgentRC JSON inside it.
+    node render-report.mjs --values <values.json> --raw <agentrc.json> --out reports/index.html
 
-  Placeholders used:
-    {{repoName}}       repository name
-    {{date}}           ISO date the report was generated
-    {{level}}          maturity level number (1-5)
-    {{levelName}}      maturity level name (Functional, Documented, ...)
-    {{overallPct}}     overall readiness as integer percent
-    {{grade}}          letter grade A-F
-    {{passRatePct}}    pass rate as integer percent (or "—" if N/A)
-    {{thresholdPct}}   policy pass-rate threshold (or "—")
-    {{policyName}}     active policy name (omit policy section if none)
-    {{policySummary}}  one-paragraph summary of disabled/overridden criteria
-    {{rawJsonCompact}} compact JSON for embedding
-    {{rawJsonPretty}}  pretty JSON for the <details> view
-
-  Pillar card placeholders (repeat per pillar):
-    {{pillarName}} {{pillarScore}} {{pillarRelevance}} (high|medium|low)
-    {{pillarStatus}} (good|warn|bad — drives bar + dot colour)
-    {{pillarWhat}} {{pillarWhyAi}} {{pillarCurrent}} {{pillarRecommendation}}
+  {{name}} is a placeholder. A comment holding only {{#name}} opens a block
+  and one holding only {{/name}} closes it; the renderer repeats the block
+  once per item, or drops it when there are none. All other comments are
+  stripped from the output. See render-report.mjs for the values it accepts.
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -56,7 +32,9 @@
     header { padding: 28px 32px; border-bottom: 1px solid var(--border);
       background: linear-gradient(180deg,#141823,#0f1115); }
     header h1 { margin: 0 0 4px; font-size: 22px; }
-    header .meta { color: var(--muted); font-size: 13px; }
+    header .meta { color: var(--muted); font-size: 13px; margin: 0; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     main { max-width: 1180px; margin: 0 auto; padding: 24px 32px 80px; }
     .panel { background:var(--panel); border:1px solid var(--border);
       border-radius:10px; padding:20px; margin-bottom:18px; }
@@ -102,12 +80,12 @@
 <body>
   <header>
     <h1>AI Readiness Report</h1>
-    <div class="meta">
+    <p class="meta">
       <strong>{{repoName}}</strong> · Assessed {{date}} ·
-      <span class="badge lvl-{{level}}">L{{level}} — {{levelName}}</span> ·
+      <span class="badge {{levelClass}}">L{{level}} — {{levelName}}</span> ·
       Overall <strong>{{overallPct}}%</strong> · Grade <strong>{{grade}}</strong>
-      <!-- if a policy is active, append: · Policy <code>{{policyName}}</code> -->
-    </div>
+      <!-- {{#policy}} -->· Policy <code>{{policyName}}</code><!-- {{/policy}} -->
+    </p>
   </header>
 
   <main>
@@ -121,7 +99,7 @@
 
     <!-- 2. KPIs -->
     <section class="grid cols-3">
-      <div class="panel kpi"><span class="lbl">Maturity</span><div class="num"><span class="badge lvl-{{level}}">L{{level}} — {{levelName}}</span></div></div>
+      <div class="panel kpi"><span class="lbl">Maturity</span><div class="num"><span class="badge {{levelClass}}">L{{level}} — {{levelName}}</span></div></div>
       <div class="panel kpi"><span class="lbl">Overall Score</span><div class="num">{{overallPct}}%</div><div style="color:var(--muted);font-size:12px">Grade {{grade}}</div></div>
       <div class="panel kpi"><span class="lbl">Pass rate</span><div class="num">{{passRate}}</div><div style="color:var(--muted);font-size:12px">Threshold {{threshold}}</div></div>
     </section>
@@ -132,41 +110,43 @@
       <table>
         <thead><tr><th>Level</th><th>Name</th><th>Status</th></tr></thead>
         <tbody>
-          <!-- Render levels 5 → 1. Mark the current level with "◼ You are here". Example row:
-            <tr><td>L3</td><td>Standardized</td><td>◼ You are here</td></tr>
-          -->
+          <!-- {{#maturityRows}} -->
+          <tr><td>L{{rowLevel}}</td><td>{{rowName}}</td><td>{{rowStatus}}</td></tr>
+          <!-- {{/maturityRows}} -->
         </tbody>
       </table>
     </section>
 
-    <!-- 4. Active policy (omit this section entirely when no policy is active) -->
+    <!-- 4. Active policy (dropped when no policy is active) -->
+    <!-- {{#policy}} -->
     <section class="panel">
       <h2>Active Policy</h2>
       <p><code>{{policyName}}</code> — {{policySummary}}</p>
     </section>
+    <!-- {{/policy}} -->
 
     <!-- 5. Repo Health Pillars -->
     <section class="panel">
       <h2>Repo Health Breakdown</h2>
       <div class="grid cols-2">
-        <!--
-          Repeat one .pillar block per Repo Health pillar (8 pillars):
-          Style, Build, Testing, Docs, Dev Environment, Code Quality, Observability, Security.
-
+        <!-- One .pillar per Repo Health pillar (8): Style, Build, Testing, Docs,
+             Dev Environment, Code Quality, Observability, Security. -->
+        <!-- {{#repoHealthPillars}} -->
           <div class="pillar">
             <h3>
-              <span class="dot {{pillarStatus}}"></span>
+              <span class="dot {{pillarStatusClass}}"></span>
               {{pillarName}}
-              <span class="rel {{pillarRelevance}}">AI relevance: {{pillarRelevance}}</span>
+              <span class="rel {{pillarRelevanceClass}}">AI relevance: {{pillarRelevance}}</span>
               <span style="margin-left:auto;color:var(--muted);font-size:13px">{{pillarScore}}%</span>
             </h3>
-            <div class="bar {{pillarStatus}}"><span style="width:{{pillarScore}}%"></span></div>
+            <div class="bar {{pillarStatusClass}}"><span style="width:{{pillarWidth}}%"></span></div>
+            <p class="sr-only">{{pillarName}} status: {{pillarStatus}}</p>
             <p class="what"><strong>What it measures:</strong> {{pillarWhat}}</p>
             <p class="why"><strong>Why it matters for AI:</strong> {{pillarWhyAi}}</p>
             <p class="rec"><strong>Current state:</strong> {{pillarCurrent}}</p>
             <p class="rec"><strong>Recommendation:</strong> {{pillarRecommendation}}</p>
           </div>
-        -->
+        <!-- {{/repoHealthPillars}} -->
       </div>
     </section>
 
@@ -174,7 +154,23 @@
     <section class="panel">
       <h2>AI Setup Breakdown</h2>
       <div class="grid cols-2">
-        <!-- AI Tooling pillar block — same structure as above, AI relevance is always "high". -->
+        <!-- AI Tooling pillar; AI relevance is always "high". -->
+        <!-- {{#aiSetupPillars}} -->
+          <div class="pillar">
+            <h3>
+              <span class="dot {{pillarStatusClass}}"></span>
+              {{pillarName}}
+              <span class="rel {{pillarRelevanceClass}}">AI relevance: {{pillarRelevance}}</span>
+              <span style="margin-left:auto;color:var(--muted);font-size:13px">{{pillarScore}}%</span>
+            </h3>
+            <div class="bar {{pillarStatusClass}}"><span style="width:{{pillarWidth}}%"></span></div>
+            <p class="sr-only">{{pillarName}} status: {{pillarStatus}}</p>
+            <p class="what"><strong>What it measures:</strong> {{pillarWhat}}</p>
+            <p class="why"><strong>Why it matters for AI:</strong> {{pillarWhyAi}}</p>
+            <p class="rec"><strong>Current state:</strong> {{pillarCurrent}}</p>
+            <p class="rec"><strong>Recommendation:</strong> {{pillarRecommendation}}</p>
+          </div>
+        <!-- {{/aiSetupPillars}} -->
       </div>
     </section>
 
@@ -184,7 +180,10 @@
       <table>
         <thead><tr><th></th><th>Extra</th><th>Status</th></tr></thead>
         <tbody>
-          <!-- agents-doc, pr-template, pre-commit, architecture-doc rows. Use ✅ or ◻. -->
+          <!-- agents-doc, pr-template, pre-commit, architecture-doc -->
+          <!-- {{#extras}} -->
+          <tr><td>{{extraMark}}</td><td>{{extraName}}</td><td>{{extraStatus}}</td></tr>
+          <!-- {{/extras}} -->
         </tbody>
       </table>
     </section>
@@ -193,11 +192,11 @@
     <section class="panel">
       <h2>Prioritised Remediation Plan</h2>
       <h3 style="color:var(--bad)">🔴 Fix First (high impact / low effort)</h3>
-      <table><thead><tr><th>#</th><th>Finding</th><th>File / config</th><th>Why it matters</th></tr></thead><tbody><!-- rows --></tbody></table>
+      <table><thead><tr><th>#</th><th>Finding</th><th>File / config</th><th>Why it matters</th></tr></thead><tbody><!-- {{#fixFirst}} --><tr><td>{{planIndex}}</td><td>{{planFinding}}</td><td>{{planFile}}</td><td>{{planWhy}}</td></tr><!-- {{/fixFirst}} --></tbody></table>
       <h3 style="color:var(--warn)">🟡 Fix Next (medium impact / low effort)</h3>
-      <table><thead><tr><th>#</th><th>Finding</th><th>File / config</th><th>Why</th></tr></thead><tbody><!-- rows --></tbody></table>
+      <table><thead><tr><th>#</th><th>Finding</th><th>File / config</th><th>Why</th></tr></thead><tbody><!-- {{#fixNext}} --><tr><td>{{planIndex}}</td><td>{{planFinding}}</td><td>{{planFile}}</td><td>{{planWhy}}</td></tr><!-- {{/fixNext}} --></tbody></table>
       <h3 style="color:var(--accent)">🔵 Plan (medium impact / medium effort)</h3>
-      <table><thead><tr><th>#</th><th>Finding</th><th>File / config</th><th>Why</th></tr></thead><tbody><!-- rows --></tbody></table>
+      <table><thead><tr><th>#</th><th>Finding</th><th>File / config</th><th>Why</th></tr></thead><tbody><!-- {{#plan}} --><tr><td>{{planIndex}}</td><td>{{planFinding}}</td><td>{{planFile}}</td><td>{{planWhy}}</td></tr><!-- {{/plan}} --></tbody></table>
     </section>
 
     <!-- 9. Next steps -->

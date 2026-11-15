@@ -24,10 +24,10 @@ This skill is the *Measure* step in AgentRC's **Measure → Generate → Maintai
    ```bash
    npx -y github:microsoft/agentrc readiness --json [--policy <source>] [--per-area]
    ```
-   The `CommandResult<T>` JSON envelope is your input for the next step.
+   The `CommandResult<T>` JSON envelope is your input for the next step. Save it to a file in the OS temp directory (not in the repository).
 
-4. **Hand off to the `ai-readiness-reporter` custom agent** to interpret the JSON and produce `reports/index.html`. The agent renders via the bundled template `report-template.html` (shipped alongside this skill) so every report has an identical look & feel. The agent:
-   - Reads the bundled `report-template.html` and substitutes placeholders with real data.
+4. **Hand off to the `ai-readiness-reporter` custom agent** to interpret the JSON and produce `reports/index.html`. The agent renders the bundled template `report-template.html` with the bundled `render-report.mjs` (both shipped alongside this skill) so every report has an identical look & feel. The agent:
+   - Writes its interpretation (scores, pillar text, policy summary, plan rows) to a values JSON file in the OS temp directory and runs `node render-report.mjs --values <values.json> --raw <agentrc.json> --out reports/index.html`. The renderer encodes every value for the place it lands, including the embedded AgentRC JSON. Never fill in the template by hand or with string replacement: scan output and repository text can contain markup that would run when the report is opened.
    - Inlines all CSS, ships a single static file (works under `file://`).
    - Renders maturity level, overall score, grade, pass-rate vs threshold.
    - Breaks down all 9 pillars across **Repo Health** (8) and **AI Setup** (1) with *what it measures*, *why it matters for AI*, *current state*, and *a specific recommendation*.
