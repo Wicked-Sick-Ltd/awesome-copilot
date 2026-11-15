@@ -1,6 +1,7 @@
 #:package GitHub.Copilot.SDK@*
 
 // The GitHub.Copilot.SDK package exposes the GitHub.Copilot namespace.
+using System.Runtime.CompilerServices;
 using GitHub.Copilot;
 
 // Create and start client
@@ -28,6 +29,11 @@ if (!url.StartsWith("http://") && !url.StartsWith("https://"))
 Console.WriteLine($"\nAnalyzing: {url}");
 Console.WriteLine("Please wait...\n");
 
+// Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+var playwrightMcpCli = Path.GetFullPath(Path.Combine(
+  Path.GetDirectoryName(SourceFilePath())!,
+  "..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js"));
+
 // Create a session with Playwright MCP server
 await using var session = await client.CreateSessionAsync(new SessionConfig
 {
@@ -39,8 +45,8 @@ await using var session = await client.CreateSessionAsync(new SessionConfig
     ["playwright"] =
         new McpStdioServerConfig
         {
-          Command = "npx",
-          Args = ["@playwright/mcp@latest"],
+          Command = "node",
+          Args = [playwrightMcpCli],
           Tools = ["*"]
         }
   },
@@ -183,3 +189,5 @@ if (generateTests == "y" || generateTests == "yes")
 
   Console.WriteLine("\n\n=== Tests Generated ===");
 }
+
+static string SourceFilePath([CallerFilePath] string path = "") => path;

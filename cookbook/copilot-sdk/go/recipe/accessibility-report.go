@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	copilot "github.com/github/copilot-sdk/go"
@@ -43,6 +45,10 @@ func main() {
 	}
 	defer client.Stop()
 
+	// Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+	_, thisFile, _, _ := runtime.Caller(0)
+	playwrightMCPCLI := filepath.Join(filepath.Dir(thisFile), "..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js")
+
 	session, err := client.CreateSession(ctx, &copilot.SessionConfig{
 		OnPermissionRequest: copilot.PermissionHandler.ApproveAll,
 		Model:               "claude-opus-4.6",
@@ -50,8 +56,8 @@ func main() {
 		MCPServers: map[string]copilot.MCPServerConfig{
 			"playwright": {
 				"type":    "local",
-				"command": "npx",
-				"args":    []string{"@playwright/mcp@latest"},
+				"command": "node",
+				"args":    []string{playwrightMCPCLI},
 				"tools":   []string{"*"},
 			},
 		},

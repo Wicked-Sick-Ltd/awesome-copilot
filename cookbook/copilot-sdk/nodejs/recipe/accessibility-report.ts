@@ -2,6 +2,12 @@
 
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
 import * as readline from "node:readline";
+import { fileURLToPath } from "node:url";
+
+// Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+const playwrightMcpCli = fileURLToPath(
+    new URL("../../playwright-mcp/node_modules/@playwright/mcp/cli.js", import.meta.url)
+);
 
 // ============================================================================
 // Main Application
@@ -44,8 +50,8 @@ async function main() {
         mcpServers: {
             playwright: {
                 type: "local",
-                command: "npx",
-                args: ["@playwright/mcp@latest"],
+                command: "node",
+                args: [playwrightMcpCli],
                 tools: ["*"],
             },
         },

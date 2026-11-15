@@ -1,0 +1,9 @@
+{
+  "name": "copilot-sdk-cookbook-playwright-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned Playwright MCP server used by the accessibility-report recipes. Install with `npm ci` so every package is verified against package-lock.json.",
+  "dependencies": {
+    "@playwright/mcp": "0.0.85"
+  }
+}
