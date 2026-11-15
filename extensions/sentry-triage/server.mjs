@@ -39,12 +39,17 @@ function readBody(req, res) {
   })
 }
 
+// Callers destructure the result inside promise callbacks with no rejection
+// handler, so anything other than a plain object (e.g. a `null` body) must be
+// normalized here or the throw would take down the extension process.
 function parseJson(body) {
+  let value
   try {
-    return body ? JSON.parse(body) : {}
+    value = body ? JSON.parse(body) : {}
   } catch {
     return {}
   }
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
 // Localhost trust model for this per-instance, unauthenticated API.
