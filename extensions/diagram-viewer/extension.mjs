@@ -73,7 +73,13 @@ function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
     req.on("error", reject);
   });
 }
@@ -85,7 +91,26 @@ function json(res, code, data) {
 
 // HTTP server
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  try {
+    await handleRequest(req, res);
+  } catch {
+    if (!res.headersSent) {
+      res.writeHead(400);
+      res.end("Bad request");
+    } else {
+      res.destroy();
+    }
+  }
+});
+
+async function handleRequest(req, res) {
+  const expectedHost = `127.0.0.1:${port}`;
+  if (String(req.headers.host || "").toLowerCase() !== expectedHost) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+  const url = new URL(req.url, `http://${expectedHost}`);
   const token = url.searchParams.get("token");
   const instanceId = url.searchParams.get("instance");
 
@@ -203,7 +228,7 @@ If you cannot create a meaningful sub-diagram (e.g. the node is already a leaf c
 
   res.writeHead(404);
   res.end("Not found");
-});
+}
 
 function validateToken(instanceId, token) {
   const inst = instances.get(instanceId);
