@@ -1,10 +1,14 @@
 import { execFile } from "node:child_process";
-import { basename, resolve } from "node:path";
+import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
+import { basename, posix, resolve, win32 } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const FIELD_SEPARATOR = "\x1f";
 const RECORD_SEPARATOR = "\x1e";
+// libuv only launches .com and .exe images when shell is false, in this order.
+const WINDOWS_EXECUTABLE_EXTENSIONS = [".com", ".exe"];
 
 export class CommandError extends Error {
     constructor(command, args, cause) {
@@ -18,9 +22,56 @@ export class CommandError extends Error {
     }
 }
 
+function readPathVariable(env, windows) {
+    if (!windows) return env.PATH || "";
+    const key = Object.keys(env).find((name) => name.toLowerCase() === "path");
+    return key ? env[key] || "" : "";
+}
+
+function searchDirectories(pathValue, windows) {
+    return String(pathValue).split(windows ? ";" : ":")
+        .map((entry) => windows ? entry.trim().replace(/^"(.*)"$/, "$1") : entry)
+        // Empty, relative, and drive-relative entries resolve against a working
+        // directory, which may be the repository being inspected.
+        .filter((entry) => windows ? /^(?:[a-zA-Z]:[\\/]|\\\\[^\\/])/.test(entry) : posix.isAbsolute(entry));
+}
+
+async function isExecutableFile(candidate, windows) {
+    try {
+        if (!(await stat(candidate)).isFile()) return false;
+        if (!windows) await access(candidate, constants.X_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// Spawning a bare name lets Windows run a same-named .com/.exe from the child's
+// working directory before PATH, so commands are always launched by absolute path.
+export async function resolveExecutable(name, options = {}) {
+    const windows = (options.platform ?? process.platform) === "win32";
+    if (!name || /[\\/]/.test(name) || (windows && name.includes(":"))) {
+        throw new Error(`Refusing to resolve non-bare command name: ${name}`);
+    }
+    const pathApi = windows ? win32 : posix;
+    const candidates = windows
+        ? WINDOWS_EXECUTABLE_EXTENSIONS.map((extension) => `${name}${extension}`)
+        : [name];
+    for (const directory of searchDirectories(readPathVariable(options.env ?? process.env, windows), windows)) {
+        for (const candidate of candidates) {
+            const fullPath = pathApi.join(directory, candidate);
+            if (await isExecutableFile(fullPath, windows)) return fullPath;
+        }
+    }
+    const error = new Error(`${name} was not found in an absolute PATH directory.`);
+    error.code = "ENOENT";
+    throw error;
+}
+
 export async function runCommand(command, args, cwd, options = {}) {
     try {
-        const { stdout, stderr } = await execFileAsync(command, args, {
+        const executable = await resolveExecutable(command);
+        const { stdout, stderr } = await execFileAsync(executable, args, {
             cwd,
             encoding: "utf8",
             timeout: options.timeout ?? 15_000,
