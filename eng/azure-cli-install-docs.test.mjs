@@ -12,7 +12,8 @@ const SKILLS = ["skills/azure-devops-cli/SKILL.md", "skills/azure-container-regi
 // Microsoft (Release signing) <gpgsecurity@microsoft.com>, the key that signs packages.microsoft.com.
 const MICROSOFT_KEY_FPR = "BC528686B50D79E339D3721CEB3E94ADBE1229CF";
 const GENUINE_KEY = path.join(ROOT, "eng/fixtures/microsoft-release-signing.asc");
-const DIST = "noble";
+// Suites that actually published azure-cli 2.81.0-1~<suite>.
+const PUBLISHED_SUITES = ["noble", "jammy", "bookworm", "bullseye"];
 
 const STUBS = {
   // Serves the configured body for the signing key URL and the attacker payload for anything else.
@@ -46,7 +47,18 @@ esac
 printf 'unprivileged apt-get %s\\n' "$*" >> "$SANDBOX/sudo.log"
 `,
   lsb_release: `#!/usr/bin/env bash
-echo ${DIST}
+case "\${1:-}" in
+  -is) printf '%s\\n' "\${DIST_ID:-Ubuntu}" ;;
+  *) printf '%s\\n' "\${DIST_CODENAME:-noble}" ;;
+esac
+`,
+  grep: `#!/usr/bin/env bash
+for a in "$@"; do
+  case "$a" in
+    *UBUNTU_CODENAME*) printf '%s\\n' "\${UBUNTU_CODENAME:-}"; exit 0 ;;
+  esac
+done
+exec /usr/bin/grep "$@"
 `,
   dpkg: `#!/usr/bin/env bash
 echo amd64
@@ -105,7 +117,7 @@ after(() => {
   fs.rmSync(work, { recursive: true, force: true });
 });
 
-function runPrerequisites(skillPath, keyFile) {
+function runPrerequisites(skillPath, keyFile, distro = {}) {
   const sandbox = fs.mkdtempSync(path.join(work, "run-"));
   const bin = path.join(sandbox, "bin");
   fs.mkdirSync(bin);
@@ -127,6 +139,9 @@ function runPrerequisites(skillPath, keyFile) {
       TMPDIR: path.join(sandbox, "tmp"),
       KEY_FILE: keyFile,
       PAYLOAD_FILE: payload,
+      DIST_ID: distro.id ?? "Ubuntu",
+      DIST_CODENAME: distro.codename ?? "noble",
+      UBUNTU_CODENAME: distro.ubuntuCodename ?? "",
     },
   });
   const read = (p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "");
@@ -183,13 +198,41 @@ for (const skillPath of SKILLS) {
       assert.equal(installs.length, 1, run.sudoCalls.join("\n"));
       const pinned = installs[0].match(/\bazure-cli=(\d+\.\d+\.\d+)-1~(\S+)/);
       assert.ok(pinned, `azure-cli is not version-pinned: ${installs[0]}`);
-      assert.equal(pinned[2], DIST);
+      const suite = run.sources.match(/^Suites: (\S+)$/m);
+      assert.ok(suite, run.sources);
+      assert.equal(pinned[2], suite[1], "version suffix and apt suite disagree");
+      assert.ok(PUBLISHED_SUITES.includes(pinned[2]), `unpublished suite ${pinned[2]}`);
 
       const stated = fs
         .readFileSync(path.join(ROOT, skillPath), "utf8")
         .match(/^\*\*CLI Version:\*\*\s*(\d+\.\d+\.\d+)/m);
       if (stated) assert.equal(pinned[1], stated[1], "pinned version differs from the skill's CLI Version");
       assert.deepEqual(run.leftoverTmp, [], "temporary gpg home was not cleaned up");
+    });
+
+    test("falls back when the running codename never published the pinned revision", () => {
+      const cases = [
+        { id: "Ubuntu", codename: "resolute", suite: "noble" },
+        { id: "Debian", codename: "trixie", suite: "bookworm" },
+        { id: "Debian", codename: "bullseye", suite: "bullseye" },
+        { id: "LinuxMint", codename: "xia", ubuntuCodename: "jammy", suite: "jammy" },
+        { id: "LinuxMint", codename: "zara", ubuntuCodename: "resolute", suite: "noble" },
+      ];
+      for (const distro of cases) {
+        const run = runPrerequisites(skillPath, genuinePlusAttackerKey, distro);
+        assert.equal(run.result.status, 0, `${distro.codename}: ${run.result.stderr}`);
+        const installs = run.sudoCalls.filter((call) => /^apt-get\b.*\binstall\b/.test(call));
+        assert.equal(installs.length, 1, run.sudoCalls.join("\n"));
+        const pinned = installs[0].match(/\bazure-cli=(\d+\.\d+\.\d+)-1~(\S+)/);
+        assert.ok(pinned, installs[0]);
+        assert.equal(pinned[1], "2.81.0");
+        assert.equal(pinned[2], distro.suite, `${distro.id} ${distro.codename}`);
+        assert.match(run.sources, new RegExp(`^Suites: ${distro.suite}$`, "m"));
+        if (distro.codename !== distro.suite) {
+          assert.equal(installs[0].includes(`~${distro.codename}`), false, installs[0]);
+          assert.equal(run.sources.includes(distro.codename), false, run.sources);
+        }
+      }
     });
   });
 }

@@ -22,7 +22,25 @@ winget install Microsoft.AzureCLI  # Windows
 (
   set -euo pipefail
   AZ_VER=2.81.0
+  # 2.81.0-1~<suite> exists only for noble, jammy, bookworm, and bullseye.
+  # Ubuntu 26.04 (resolute), Debian 13 (trixie), and Mint's own codename were
+  # never published. Keep a published suite; Mint uses UBUNTU_CODENAME first.
+  AZ_ID=$(lsb_release -is)
   AZ_DIST=$(lsb_release -cs)
+  case "$AZ_ID" in
+    LinuxMint|Linuxmint)
+      AZ_DIST=$(grep -Po 'UBUNTU_CODENAME=\K.*' /etc/os-release || true)
+      ;;
+  esac
+  case "$AZ_DIST" in
+    noble|jammy|bookworm|bullseye) ;;
+    *)
+      case "$AZ_ID" in
+        Debian|debian) AZ_DIST=bookworm ;;
+        *) AZ_DIST=noble ;;
+      esac
+      ;;
+  esac
   # Microsoft (Release signing) <gpgsecurity@microsoft.com>
   MS_KEY_FPR=BC528686B50D79E339D3721CEB3E94ADBE1229CF
   GNUPGHOME=$(mktemp -d); export GNUPGHOME
