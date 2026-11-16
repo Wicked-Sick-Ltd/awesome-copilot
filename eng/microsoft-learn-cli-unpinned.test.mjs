@@ -58,6 +58,7 @@ const procedures = SOURCES.flatMap((relativePath) =>
   extractProcedures(relativePath, fs.readFileSync(path.join(repoRoot, relativePath), "utf8")),
 );
 
+const distTags = { latest: LATEST };
 const hostileVersions = collectHostileVersions(procedures);
 const tarballs = new Map(
   hostileVersions.map((version) => [version, packCanary(version)]),
@@ -337,6 +338,9 @@ function versionsForSpec(raw) {
     return [exact];
   }
   if (!semver.validRange(raw)) {
+    // npm treats this spec as a dist-tag. Point the tag at the hostile tarball
+    // so the lookup installs it instead of failing before any script runs.
+    distTags[raw] = LATEST;
     return [LATEST];
   }
   const found = new Set([LATEST]);
@@ -409,7 +413,7 @@ function packument(port) {
   }
   return {
     name: PACKAGE,
-    "dist-tags": { latest: LATEST },
+    "dist-tags": distTags,
     versions,
   };
 }
