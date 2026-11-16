@@ -36,7 +36,7 @@ bash scripts/install.sh
 | Option | Description |
 |---|---|
 | `--workspace <path>` | Path to directory containing `package.json` (auto-detected if omitted) |
-| `--playwright` | Also install Playwright Chromium browser for E2E testing |
+| `--playwright` | Also install Playwright Chromium browser for E2E testing. Requires `package-lock.json` and `@playwright/test` (or `playwright`) in the project's dependencies |
 
 ### What the Script Does
 
@@ -44,7 +44,7 @@ bash scripts/install.sh
 2. Runs `npm ci` (or `npm install` if no lockfile) on the local filesystem
 3. Symlinks `node_modules` back into the workspace
 4. Verifies known native binaries (esbuild, rollup, lightningcss, vite) if present
-5. Optionally installs Playwright browsers and system dependencies (uses `sudo` when available)
+5. Optionally installs Playwright browsers and system dependencies using only the Playwright version pinned in `package-lock.json` (never `npx`). Playwright itself runs as the current user; with passwordless `sudo`, only `apt-get` runs as root, installing the package names Playwright reports
 
 If verification fails, run the script again — crashes can be intermittent during initial setup.
 
@@ -74,6 +74,7 @@ npm run dev          # Start dev server
 | `node_modules` not found after install | Check that the symlink exists: `ls -la node_modules` |
 | Permission errors during install | Ensure the local deps directory is writable by the current user |
 | Verification fails intermittently | Run the script again — native binary crashes can be non-deterministic on first load |
+| `Playwright is not installed from package-lock.json` | Add `@playwright/test` to `devDependencies`, update `package-lock.json`, and re-run with `--playwright` |
 
 ## Vite Compatibility
 

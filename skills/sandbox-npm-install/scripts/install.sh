@@ -74,6 +74,12 @@ if [[ -z "$WORKSPACE_CLIENT" || ! -f "$WORKSPACE_CLIENT/package.json" ]]; then
   exit 1
 fi
 
+if [[ "$INSTALL_PLAYWRIGHT" == "true" && ! -f "$WORKSPACE_CLIENT/package-lock.json" ]]; then
+  echo "ERROR: --playwright requires $WORKSPACE_CLIENT/package-lock.json so Playwright is"
+  echo "       pinned to a locked version and integrity digest. Commit a lockfile and re-run."
+  exit 1
+fi
+
 echo "=== Sandbox npm Install ==="
 echo "Workspace: $WORKSPACE_CLIENT"
 
@@ -172,19 +178,85 @@ if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
 
+# Reads the apt packages Chromium needs from the locked Playwright, run as the
+# invoking user, into APT_PACKAGES. Only names that look like distro package names
+# are accepted, because they are later passed to apt-get as root.
+read_playwright_apt_packages() {
+  local dry_run line pkg format="" in_missing_list=false
+  local legacy_marker='apt-get install -y --no-install-recommends '
+  local name_re='^[a-z0-9][a-z0-9.+-]*(:[a-z0-9][a-z0-9-]*)?$'
+  local -a words names=()
+  APT_PACKAGES=()
+
+  # Exits 1 when packages are missing (Playwright >= 1.60), so the status is not an error signal.
+  dry_run="$("$PLAYWRIGHT_BIN" install-deps --dry-run chromium)" || true
+
+  while IFS= read -r line; do
+    if [[ "$line" == *"$legacy_marker"* ]]; then
+      # Playwright < 1.60 prints: sudo -- sh -c "apt-get update&& apt-get install -y --no-install-recommends pkg..."
+      format="legacy"
+      line="${line#*"$legacy_marker"}"
+      line="${line%%\"*}"
+      read -r -a words <<< "$line"
+      names+=("${words[@]}")
+    elif [[ "$line" == "Missing system dependencies"* ]]; then
+      format="missing"
+      in_missing_list=true
+    elif [[ "$in_missing_list" == true && "$line" =~ ^[[:space:]]+[^[:space:]] ]]; then
+      read -r -a words <<< "$line"
+      if [[ "${#words[@]}" -eq 1 ]]; then
+        names+=("${words[0]}")
+      else
+        names+=("$line")
+      fi
+    elif [[ "$line" == "All system dependencies are installed."* ]]; then
+      format="none"
+    fi
+  done <<< "$dry_run"
+
+  if [[ -z "$format" ]]; then
+    echo "✗ Could not read system dependencies from '$PLAYWRIGHT_BIN install-deps --dry-run chromium'."
+    return 1
+  fi
+
+  for pkg in "${names[@]}"; do
+    if [[ ! "$pkg" =~ $name_re ]]; then
+      echo "✗ Refusing unexpected package name from Playwright: '$pkg'"
+      return 1
+    fi
+    APT_PACKAGES+=("$pkg")
+  done
+}
+
 # Step 5: Optionally install Playwright
 if [[ "$INSTALL_PLAYWRIGHT" == "true" ]]; then
   echo "→ Installing Playwright browsers..."
+  # Never use npx here: it fetches the latest published playwright when the project
+  # does not provide one. Only the copy installed from package-lock.json is run.
+  PLAYWRIGHT_BIN="$DEPS_DIR/node_modules/.bin/playwright"
+  if [[ ! -x "$PLAYWRIGHT_BIN" ]]; then
+    echo "✗ Playwright is not installed from package-lock.json."
+    echo "  Add @playwright/test (or playwright) to devDependencies, update the lockfile, and re-run."
+    exit 1
+  fi
+
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-    npx playwright install --with-deps chromium
-  elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-    # Non-root but passwordless sudo available — install browsers then system deps
-    npx playwright install chromium
-    sudo npx playwright install-deps chromium
+    "$PLAYWRIGHT_BIN" install --with-deps chromium
+  elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null && command -v apt-get &>/dev/null; then
+    # Playwright's own install-deps would elevate a shell command it builds itself.
+    # Instead only apt-get runs as root, with names read from Playwright as this user.
+    "$PLAYWRIGHT_BIN" install chromium
+    sudo -n apt-get update
+    read_playwright_apt_packages
+    if [[ "${#APT_PACKAGES[@]}" -gt 0 ]]; then
+      sudo -n apt-get install -y --no-install-recommends -- "${APT_PACKAGES[@]}"
+    fi
   else
-    npx playwright install chromium
-    echo "⚠ System dependencies not installed (no root/sudo access)."
-    echo "  Playwright tests may fail. Run: sudo npx playwright install-deps chromium"
+    "$PLAYWRIGHT_BIN" install chromium
+    echo "⚠ System dependencies not installed (no root, passwordless sudo, or apt-get)."
+    echo "  Playwright tests may fail. Re-run this script as root, or list the packages with"
+    echo "  '$PLAYWRIGHT_BIN install-deps --dry-run chromium' as your normal user and install"
+    echo "  them with your distro package manager as root."
   fi
 fi
 
