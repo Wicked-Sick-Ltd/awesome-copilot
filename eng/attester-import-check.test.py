@@ -112,10 +112,33 @@ class AllowlistTests(unittest.TestCase):
         for command in (
             f"echo {FAKE_PACKAGE} >> ~/.config/attester-import-check/allowlist",
             f"cd ~/.config && echo {FAKE_PACKAGE} >> attester-import-check/allowlist",
+            f"echo {FAKE_PACKAGE} >> ~/.config/./attester-import-check/./allowlist",
+            f'echo {FAKE_PACKAGE} >> ~/.config/./"attester-import-check"/./allowlist',
+            f"echo {FAKE_PACKAGE} >> ~/.config//attester-import-check//allowlist",
+            f"echo {FAKE_PACKAGE} >> ~/.config/foo/../attester-import-check/bar/../allowlist",
+            f"cd ~/.config && echo {FAKE_PACKAGE} >> attester-import-check/./allowlist",
+            f"cd ~/.config/./. && echo {FAKE_PACKAGE} >> attester-import-check//allowlist",
+            f"echo {FAKE_PACKAGE} >> ~/.Config/./Attester-Import-Check/./allowlist",
+            f"echo {FAKE_PACKAGE} >> ~//.config///attester-import-check//allowlist",
+            "echo {} > ~/.cache/./attester-import-check/./cache.json",
+            "echo {} > ~/.cache/foo/../attester-import-check/cache.json",
+            "echo {} > ~/.cache//attester-import-check//cache.json",
+            "echo x >> ~/.config\\.\\attester-import-check\\.\\allowlist",
+            f"echo x >> file://{self.home}/.config/./attester-import-check/./allowlist",
+            f"echo x >> https://example.com/../../../../.config/./attester-import-check/./allowlist",
         ):
             with self.subTest(command=command):
                 result = self.run_hook({"command": command})
                 self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_shell_unrelated_dot_segments_are_allowed(self):
+        for command in (
+            "mkdir -p ./notes/./today && echo hi >> notes/../notes/log.txt",
+            "curl -fsSL https://example.com/foo/../bar.tar.gz",
+        ):
+            with self.subTest(command=command):
+                result = self.run_hook({"command": command})
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_other_casing_of_user_allowlist_is_blocked(self):
         result = self.run_hook(

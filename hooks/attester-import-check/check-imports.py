@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import posixpath
 import re
 import sys
 import time
@@ -193,12 +194,25 @@ def _inside(path: Path, directory: Path) -> bool:
     return path_s == dir_s or path_s.startswith(dir_s + "/")
 
 
+def _collapsed_path_targets_state(value: str, markers: list[str]) -> bool:
+    # ".", "..", and repeated slashes are the same file, but they split the raw markers.
+    # Quotes are shell syntax, so they are removed before the path is collapsed.
+    text = value.replace("\\", "/").replace("'", "").replace('"', "")
+    for word in re.split(r"[\s`|&;<>()]+", text):
+        if "/" not in word:
+            continue
+        folded = _fold(posixpath.normpath(word))
+        if any(marker in folded for marker in markers):
+            return True
+    return False
+
+
 def targets_hook_state(tool_input) -> str | None:
     """Return the offending string when a tool call reaches the allowlist or cache."""
     state_dirs = [d.resolve() for d in STATE_DIRS]
     markers = [_fold(m) for m in STATE_MARKERS] + [_fold(str(d)) for d in STATE_DIRS]
     for key, value in walk_strings(tool_input):
-        if any(m in _fold(value) for m in markers):
+        if any(m in _fold(value) for m in markers) or _collapsed_path_targets_state(value, markers):
             return value
         if key in PATH_KEYS and value.strip():
             try:
