@@ -33,8 +33,8 @@ export async function createInstanceServer(options) {
     let rec;
 
     const server = createServer(async (req, res) => {
-        const url = new URL(req.url, "http://127.0.0.1");
         try {
+            const url = new URL(req.url, "http://127.0.0.1");
             if (req.method === "GET" && url.pathname === "/") {
                 const state = await getWorkflowState(options.workspace, options.stateId);
                 res.writeHead(200, {

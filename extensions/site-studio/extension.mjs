@@ -1729,7 +1729,13 @@ async function handleApi(req, res, instanceId) {
 async function startServer(instanceId) {
     const clients = new Set();
     const server = createServer((req, res) => {
-        handleApi(req, res, instanceId);
+        handleApi(req, res, instanceId).catch(() => {
+            if (!res.headersSent) {
+                sendJson(res, 400, { error: "Bad request" });
+            } else {
+                res.destroy();
+            }
+        });
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
