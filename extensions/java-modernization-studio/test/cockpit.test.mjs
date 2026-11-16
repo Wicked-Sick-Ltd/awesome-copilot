@@ -7,13 +7,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, rm, chmod } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter, isAbsolute, relative } from "node:path";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 
-import { scanRepo } from "../scan.mjs";
+import { scanRepo, resolveGit } from "../scan.mjs";
 import { PREDEFINED_TASKS, catalogWithRelevance, VALIDATION_GATES } from "../catalog.mjs";
 import { buildPrompt, ACTION_LABELS } from "../prompts.mjs";
 import { renderHtml } from "../renderer.mjs";
@@ -495,6 +496,82 @@ test("scan: git branch + migration detection + dirty flag", async () => {
         s = await scanRepo(dir);
         assert.equal(s.git.dirty, true);
         assert.equal(s.git.changedFiles, 1);
+    });
+});
+
+// Plant an executable `git` at `relDir` inside the repo that records that it ran.
+async function plantGit(repo, relDir) {
+    const markerDir = await mkdtemp(join(tmpdir(), "appmod-marker-"));
+    const marker = join(markerDir, "planted-git-ran");
+    const target = join(repo, relDir, "git");
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, `#!/bin/sh\necho ran > '${marker}'\necho planted-branch\n`);
+    await chmod(target, 0o755);
+    return { marker, cleanup: () => rm(markerDir, { recursive: true, force: true }) };
+}
+
+async function withPathPrefix(prefix, fn) {
+    const original = process.env.PATH;
+    process.env.PATH = prefix + delimiter + (original || "");
+    try {
+        return await fn();
+    } finally {
+        process.env.PATH = original;
+    }
+}
+
+async function gitRepo(dir) {
+    git(dir, "init", "-b", "main");
+    git(dir, "config", "user.email", "t@example.com");
+    git(dir, "config", "user.name", "Test");
+    git(dir, "add", "pom.xml");
+    git(dir, "commit", "-m", "init", "--no-gpg-sign");
+}
+
+// Windows resolves a bare executable name in the child's working directory before
+// PATH. A relative PATH entry reproduces that lookup on POSIX: it is resolved
+// against the child's cwd.
+test("scan: a git planted in the repo is not run when the cwd is searched", { skip: process.platform === "win32" }, async () => {
+    await withRepo({ "pom.xml": "<project/>" }, async (dir) => {
+        await gitRepo(dir);
+        const planted = await plantGit(dir, ".");
+        try {
+            const s = await withPathPrefix(".", () => scanRepo(dir));
+            assert.equal(existsSync(planted.marker), false, "planted git in the repo was executed");
+            assert.equal(s.git.branch, "main");
+        } finally {
+            await planted.cleanup();
+        }
+    });
+});
+
+test("resolveGit: ignores relative and in-repo PATH entries", { skip: process.platform === "win32" }, async () => {
+    await withRepo({}, async (dir) => {
+        const planted = await plantGit(dir, "tools");
+        await plantGit(dir, ".").then((p) => p.cleanup());
+        try {
+            const onlyRepo = [".", "tools", join(dir, "tools"), dir].join(delimiter);
+            assert.equal(await resolveGit(dir, { PATH: onlyRepo }), null);
+            const found = await resolveGit(dir, { PATH: onlyRepo + delimiter + process.env.PATH });
+            assert.ok(found && isAbsolute(found), "expected an absolute git path");
+            assert.ok(relative(dir, found).startsWith(".."), "resolved git must be outside the repo");
+        } finally {
+            await planted.cleanup();
+        }
+    });
+});
+
+test("scan: a git under an absolute PATH entry inside the repo is not run", { skip: process.platform === "win32" }, async () => {
+    await withRepo({ "pom.xml": "<project/>" }, async (dir) => {
+        await gitRepo(dir);
+        const planted = await plantGit(dir, "tools");
+        try {
+            const s = await withPathPrefix(join(dir, "tools"), () => scanRepo(dir));
+            assert.equal(existsSync(planted.marker), false, "planted git in the repo was executed");
+            assert.equal(s.git.branch, "main");
+        } finally {
+            await planted.cleanup();
+        }
     });
 });
 
