@@ -84,7 +84,7 @@ These work without a running AppHost.
 
 ### Tools added in 13.2+ (documentation search)
 
-> **Version gate:** These tools were added in [PR #14028](https://github.com/dotnet/aspire/pull/14028) and ship in Aspire CLI **13.2**. If you are on 13.1, these tools will NOT appear. To get them early, update to the daily channel: `aspire update --self --channel daily`.
+> **Version gate:** These tools were added in [PR #14028](https://github.com/dotnet/aspire/pull/14028) and ship in Aspire CLI **13.2**. If you are on 13.1, these tools will NOT appear. To get them, update the CLI to 13.2: `dotnet tool update -g Aspire.Cli --version 13.2.0`.
 
 | Tool          | Description                                                              |
 | ------------- | ------------------------------------------------------------------------ |
