@@ -147,17 +147,37 @@ static bool IsInsideFolder(string folder, string path)
         || (relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar) && !Path.IsPathRooted(relative));
 }
 
-// Returns the path with every symlink resolved, or null if it does not exist
+// Returns the path with every symlink resolved, or null if it does not exist.
+// Each link is followed before ".." is applied, as the OS does; Path.GetFullPath
+// would collapse "link/.." as text first.
 static string? RealPath(string path, int depth = 0)
 {
     if (depth > 32)
     {
         return null;
     }
-    var full = Path.GetFullPath(path);
-    var current = Path.GetPathRoot(full)!;
-    foreach (var part in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+    if (!Path.IsPathRooted(path))
     {
+        path = Path.Combine(Environment.CurrentDirectory, path);
+    }
+    var current = Path.GetPathRoot(path)!;
+    var parts = path[current.Length..].Split(
+        [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+    foreach (var part in parts)
+    {
+        if (part == ".")
+        {
+            continue;
+        }
+        if (part == "..")
+        {
+            if (!Directory.Exists(current))
+            {
+                return null;
+            }
+            current = Path.GetDirectoryName(current) ?? current;
+            continue;
+        }
         current = Path.Combine(current, part);
         if (new FileInfo(current).LinkTarget is { } link)
         {

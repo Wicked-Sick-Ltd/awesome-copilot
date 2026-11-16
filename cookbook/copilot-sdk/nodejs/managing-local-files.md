@@ -42,13 +42,17 @@ const exampleFolder = path.join(os.tmpdir(), "example-files");
 if (!folderArg) {
     fs.mkdirSync(exampleFolder, { recursive: true });
 }
-const targetFolder = fs.realpathSync(folderArg ?? exampleFolder);
+const targetFolder = fs.realpathSync.native(folderArg ?? exampleFolder);
 
-// Resolves symlinks so a link inside the folder cannot point outside it
+// Resolves symlinks so a link inside the folder cannot point outside it.
+// realpathSync.native follows each link before applying "..", as the OS does;
+// path.resolve and plain realpathSync collapse "link/.." as text first.
 function isInsideTargetFolder(filePath: string): boolean {
     let resolved: string;
     try {
-        resolved = fs.realpathSync(path.resolve(targetFolder, filePath));
+        resolved = fs.realpathSync.native(
+            path.isAbsolute(filePath) ? filePath : `${targetFolder}${path.sep}${filePath}`,
+        );
     } catch {
         return false;
     }

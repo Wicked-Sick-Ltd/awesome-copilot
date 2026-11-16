@@ -194,12 +194,17 @@ class ManagingLocalFilesRecipeTest(unittest.TestCase):
         target.mkdir()
         (target / "..notes.txt").touch()
         (target / "keys").symlink_to(self.ssh_key.parent)
+        # Decoy at the spot a lexical "keys/.." collapse would land on
+        (target / ".ssh").mkdir()
+        (target / ".ssh" / self.ssh_key.name).touch()
+        through_link_parent = os.sep.join([str(target), "keys", "..", ".ssh", self.ssh_key.name])
         refused = [
             {"kind": "mcp", "intention": "MCP"},
             {"kind": "custom-tool", "intention": "Custom tool"},
             {"kind": "memory", "intention": "Memory"},
             {"kind": "read", "path": str(target / ".." / "home" / ".ssh" / "id_ed25519"), "intention": "Read file"},
             {"kind": "read", "path": str(target / "keys" / "id_ed25519"), "intention": "Read file"},
+            {"kind": "read", "path": through_link_parent, "intention": "Read file"},
             {
                 "kind": "read",
                 "path": str(target / "..notes.txt"),

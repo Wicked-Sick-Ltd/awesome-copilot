@@ -15,9 +15,11 @@ import (
 )
 
 // isInsideFolder resolves symlinks so a link inside the folder cannot point outside it.
+// EvalSymlinks follows each link before applying "..", as the OS does, so the
+// path must not go through filepath.Join, which would collapse "link/.." first.
 func isInsideFolder(folder, path string) bool {
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(folder, path)
+		path = folder + string(filepath.Separator) + path
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {

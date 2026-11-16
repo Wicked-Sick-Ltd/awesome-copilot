@@ -190,6 +190,10 @@ test("other tool kinds and path tricks are refused, with or without --apply", ()
   fs.mkdirSync(target);
   fs.writeFileSync(path.join(target, "..notes.txt"), "");
   fs.symlinkSync(path.dirname(env.sshKey), path.join(target, "keys"));
+  // Decoy at the spot a lexical "keys/.." collapse would land on
+  fs.mkdirSync(path.join(target, ".ssh"));
+  fs.writeFileSync(path.join(target, ".ssh", path.basename(env.sshKey)), "");
+  const throughLinkParent = [target, "keys", "..", ".ssh", path.basename(env.sshKey)].join(path.sep);
   const refused = [
     { kind: "mcp", serverName: "github", toolName: "create_gist", args: {}, intention: "MCP" },
     { kind: "custom-tool", toolName: "upload", args: {}, intention: "Custom tool" },
@@ -197,6 +201,7 @@ test("other tool kinds and path tricks are refused, with or without --apply", ()
     { kind: "hook", toolName: "shell", intention: "Hook" },
     { kind: "read", path: path.join(target, "..", "home", ".ssh", "id_ed25519"), intention: "Read file" },
     { kind: "read", path: path.join(target, "keys", "id_ed25519"), intention: "Read file" },
+    { kind: "read", path: throughLinkParent, intention: "Read file" },
     {
       kind: "read",
       path: path.join(target, "..notes.txt"),
