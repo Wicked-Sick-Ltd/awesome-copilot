@@ -1,5 +1,49 @@
 export const CAPABILITY_TOKEN_HEADER = "x-pr-artifact-explorer-token";
 
+const REQUEST_BASE = new URL("http://127.0.0.1");
+
+// Only origin-form targets ("/path?query") are served. Scheme-relative ("//x",
+// "/\\x") and absolute-form targets either throw in the URL parser or replace
+// the base authority, so they are refused rather than parsed. Returns null for
+// any target that is not a plain path on the loopback base.
+export function parseRequestTarget(target) {
+  if (typeof target !== "string" || !/^\/(?![/\\])/.test(target)) return null;
+  let url;
+  try {
+    url = new URL(target, REQUEST_BASE);
+  } catch {
+    return null;
+  }
+  if (url.origin !== REQUEST_BASE.origin || url.username || url.password) return null;
+  return url;
+}
+
+// Last-resort handler for a rejected request promise. It must never throw:
+// an escaping rejection terminates the process hosting the canvas.
+export function abortRequest(res, error, log) {
+  try {
+    log?.(`Request failed: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    // Logging must not turn a failed request into a process crash.
+  }
+  try {
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    const body = JSON.stringify({ error: "Internal server error.", status: 500 });
+    res.writeHead(500, {
+      "Cache-Control": "no-store",
+      "Content-Length": Buffer.byteLength(body),
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end(body);
+  } catch {
+    res.destroy();
+  }
+}
+
 export function isCanonicalHost(req, canonicalHost) {
   return (
     String(req.headers.host ?? "").toLowerCase() ===
