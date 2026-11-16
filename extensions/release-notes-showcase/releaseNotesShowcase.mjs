@@ -1104,8 +1104,16 @@ ${state.callToAction.label}: ${state.callToAction.url}`;
 async function startServer(initialState) {
     let state = initialState;
 
-    const server = createServer(async (req, res) => {
-        const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
+    const server = createServer((req, res) => {
+        handleRequest(req, res).catch((error) => respondWithError(res, error));
+    });
+
+    async function handleRequest(req, res) {
+        const requestUrl = parseRequestUrl(req.url);
+        if (!requestUrl) {
+            respondJson(res, { error: "Bad request" }, 400);
+            return;
+        }
 
         if (req.method === "GET" && requestUrl.pathname === "/") {
             respondHtml(res, renderHtml(state));
@@ -1146,7 +1154,7 @@ async function startServer(initialState) {
         }
 
         respondJson(res, { error: "Not found" }, 404);
-    });
+    }
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
@@ -2241,12 +2249,44 @@ function readJsonBody(req) {
 
             try {
                 resolve(JSON.parse(body));
-            } catch (error) {
-                reject(error);
+            } catch {
+                reject(new BadRequestError("Request body must be valid JSON."));
             }
         });
         req.on("error", reject);
     });
+}
+
+class BadRequestError extends Error {}
+
+const REQUEST_URL_BASE = "http://127.0.0.1";
+
+// Targets such as "//" or "/\\" either throw or resolve to a different
+// authority against the base, so anything that leaves the base origin is refused.
+function parseRequestUrl(target) {
+    let url;
+    try {
+        url = new URL(target ?? "/", REQUEST_URL_BASE);
+    } catch {
+        return null;
+    }
+    return url.origin === REQUEST_URL_BASE ? url : null;
+}
+
+function respondWithError(res, error) {
+    try {
+        if (res.headersSent || res.destroyed) {
+            res.destroy();
+            return;
+        }
+        if (error instanceof BadRequestError) {
+            respondJson(res, { error: error.message }, 400);
+            return;
+        }
+        respondJson(res, { error: "Internal server error" }, 500);
+    } catch {
+        res.destroy();
+    }
 }
 
 function respondHtml(res, html) {
