@@ -43,6 +43,33 @@ const BLOCK_OR_PLACEHOLDER =
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 const BLOCK_MARKER = /^<!--\s*\{\{[#/]\w+\}\}\s*-->$/;
 
+/**
+ * Drops documentation comments and keeps block markers (`<!-- {{#name}} -->`).
+ * Walks the markers directly so a comment is removed in one pass, including
+ * comments whose text would reassemble an opener after a single replace.
+ */
+function stripNonMarkerComments(html) {
+  let out = "";
+  let cursor = 0;
+  while (cursor < html.length) {
+    const start = html.indexOf("<!--", cursor);
+    if (start === -1) {
+      out += html.slice(cursor);
+      break;
+    }
+    const end = html.indexOf("-->", start + 4);
+    if (end === -1) {
+      out += html.slice(cursor);
+      break;
+    }
+    out += html.slice(cursor, start);
+    const comment = html.slice(start, end + 3);
+    if (BLOCK_MARKER.test(comment)) out += comment;
+    cursor = end + 3;
+  }
+  return out;
+}
+
 export function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -158,9 +185,7 @@ export function renderReadinessReport(templateHtml, values) {
     return escapeHtml(scalar(name, scope[name]));
   };
 
-  const template = templateHtml.replace(/<!--[\s\S]*?-->/g, (comment) =>
-    BLOCK_MARKER.test(comment) ? comment : "",
-  );
+  const template = stripNonMarkerComments(templateHtml);
 
   return template.replace(BLOCK_OR_PLACEHOLDER, (match, blockName, body, name) => {
     if (name) return encode(name, top);
