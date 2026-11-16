@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execWindowsProgram } from "./windows-processes.mjs";
 
 const COMMAND_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 1_048_576;
@@ -48,8 +48,8 @@ const COMMANDS = {
             description: "Checks npm cache integrity offline and removes invalid cache content when npm identifies it.",
             requiresElevation: false,
             requiresConfirmation: false,
-            executable: "cmd.exe",
-            arguments: ["/d", "/s", "/c", "npm.cmd cache verify"],
+            executable: "npm.cmd",
+            arguments: ["cache", "verify"],
         },
         {
             id: "npm-cache-clean",
@@ -59,8 +59,8 @@ const COMMANDS = {
             description: "Removes cached package data to reclaim disk space. Future package installs download required data again.",
             requiresElevation: false,
             requiresConfirmation: true,
-            executable: "cmd.exe",
-            arguments: ["/d", "/s", "/c", "npm.cmd cache clean --force"],
+            executable: "npm.cmd",
+            arguments: ["cache", "clean", "--force"],
         },
     ],
     "uv-cache": [
@@ -141,7 +141,7 @@ function runProcess(command) {
     let childProcess;
     const promise = new Promise((resolve, reject) => {
         try {
-            childProcess = execFile(command.executable, command.arguments, {
+            childProcess = execWindowsProgram(command.executable, command.arguments, {
                 windowsHide: true,
                 timeout: COMMAND_TIMEOUT_MS,
                 maxBuffer: MAX_OUTPUT_BYTES,
@@ -164,21 +164,25 @@ function runProcess(command) {
             }
             if (process.platform === "win32" && Number.isInteger(childProcess.pid)) {
                 return new Promise((resolve, reject) => {
-                    execFile(
-                        "taskkill.exe",
-                        ["/pid", String(childProcess.pid), "/t", "/f"],
-                        { windowsHide: true, timeout: 10_000 },
-                        (error, stdout, stderr) => {
-                            if (error) {
-                                reject(commandError(
-                                    "analyzer_command_cancellation_failed",
-                                    String(stderr || stdout || error.message).trim(),
-                                ));
-                                return;
-                            }
-                            resolve();
-                        },
-                    );
+                    try {
+                        execWindowsProgram(
+                            "taskkill.exe",
+                            ["/pid", String(childProcess.pid), "/t", "/f"],
+                            { windowsHide: true, timeout: 10_000 },
+                            (error, stdout, stderr) => {
+                                if (error) {
+                                    reject(commandError(
+                                        "analyzer_command_cancellation_failed",
+                                        String(stderr || stdout || error.message).trim(),
+                                    ));
+                                    return;
+                                }
+                                resolve();
+                            },
+                        );
+                    } catch (error) {
+                        reject(commandError("analyzer_command_cancellation_failed", error.message));
+                    }
                 });
             }
             childProcess.kill();

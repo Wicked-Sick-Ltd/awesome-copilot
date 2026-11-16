@@ -201,6 +201,8 @@ A blocking modal displays the command, an indeterminate progress bar, and a **Ca
 
 Destructive commands require an explicit confirmation and use non-interactive, scoped CLI arguments. The canvas never executes arbitrary command text received from the browser.
 
+Every process the extension starts, including analyzer commands and its PowerShell helpers, is launched by absolute path from `src\core\windows-processes.mjs`. PowerShell, `cmd.exe`, and `taskkill.exe` come from `%SystemRoot%\System32`. `docker.exe`, `uv.exe`, and `npm.cmd` come from the first absolute `PATH` directory that contains them, and relative `PATH` entries are ignored. Processes run with `%SystemRoot%\System32` as their working directory, so programs and tool configuration files (such as `.npmrc` or `uv.toml`) in the Copilot working directory are never used.
+
 ### Create an analyzer
 
 1. Create a module under `src\analyzers`, for example `src\analyzers\example-app.mjs`.
@@ -300,12 +302,14 @@ The extension does not persist general scan inventories or folder explanations b
 | `src\core\cleanup.mjs`               | Shared path validation and Windows Recycle Bin execution                       |
 | `src\core\categorizers.mjs`          | Built-in rules and persistent custom categorizer store                         |
 | `src\core\analyzer-commands.mjs`     | Fixed analyzer command allowlist and singleton command execution               |
+| `src\core\windows-processes.mjs`     | Absolute program resolution and fixed working directory for every launch       |
 | `src\analyzers\custom-analyzers.mjs` | Analyzer registry and dispatch                                                 |
 | `src\analyzers\vscode-insiders.mjs`  | VS Code Insiders analyzer                                                      |
 | `src\analyzers\microsoft-scout.mjs`  | Microsoft Scout analyzer                                                       |
 | `src\analyzers\docker-images.mjs`    | Docker image and managed-storage analyzer                                      |
 | `src\core\folder-explanation.mjs`    | Structured Copilot prompt and response validation                              |
 | `test\self-test.mjs`                 | Regression tests for scanning, classification, cleanup, and explanations       |
+| `test\process-launch.test.mjs`       | Regression tests that no launch resolves a program from the working directory  |
 
 ## Validate changes
 
@@ -316,6 +320,7 @@ node --check .\extension.mjs
 node --check .\src\ui\renderer.mjs
 node --check .\src\core\storage-service.mjs
 node .\test\self-test.mjs
+node --test .\test\process-launch.test.mjs
 ```
 
 After changing extension code, reload extensions and reopen the canvas to load the new provider and iframe.

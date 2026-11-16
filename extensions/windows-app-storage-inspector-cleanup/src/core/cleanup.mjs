@@ -1,12 +1,10 @@
-import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
+import { execWindowsProgramAsync, spawnWindowsProgram } from "./windows-processes.mjs";
 
 const MAX_CLEANUP_ITEMS = 500;
 const PREVIEW_LIFETIME_MS = 10 * 60 * 1000;
-const execFileAsync = promisify(execFile);
 
 const KNOWN_FOLDERS_SCRIPT = `
 $ErrorActionPreference = 'Stop'
@@ -132,7 +130,7 @@ function isWithinRoot(candidatePath, rootPath) {
 }
 
 async function resolveKnownFolderPaths() {
-    const { stdout } = await execFileAsync("powershell.exe", [
+    const { stdout } = await execWindowsProgramAsync("powershell.exe", [
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
@@ -347,11 +345,17 @@ async function revalidateCandidate(candidate, validationContext) {
 function runRecycleBin(paths, onResult) {
     return new Promise((resolve) => {
         const encodedCommand = Buffer.from(RECYCLE_SCRIPT, "utf16le").toString("base64");
-        const child = spawn(
-            "powershell.exe",
-            ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedCommand],
-            { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
-        );
+        let child;
+        try {
+            child = spawnWindowsProgram(
+                "powershell.exe",
+                ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedCommand],
+                { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
+            );
+        } catch (error) {
+            resolve({ results: [], interruption: { code: "cleanup_process_failed", message: error.message } });
+            return;
+        }
         let stdout = "";
         let stderr = "";
         const results = [];
