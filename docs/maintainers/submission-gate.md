@@ -136,6 +136,7 @@ The status comment includes a collapsed "Why this tier" list with the reasons th
 How approvals are counted:
 
 - A reviewer's **latest** decisive review counts: `APPROVED`, `CHANGES_REQUESTED`, or `DISMISSED`. A later comment-only review does not reset an approval.
+- An approval only counts for the commit it was given on. After a new push, earlier approvals show as needing re-approval and the gate waits for an approval of the current head.
 - The PR author and bots never count.
 - An approval qualifies if the reviewer has write, maintain, or admin permission, or is listed in any pool in `.github/review-routing.yml`. If the permission lookup fails, the reviewer counts as having no permission. `author_association` is never used as a substitute.
 - Any outstanding `CHANGES_REQUESTED` from a qualified reviewer blocks the gate and sets the state to `requires-submitter-fixes`.

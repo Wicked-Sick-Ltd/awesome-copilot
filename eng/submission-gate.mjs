@@ -31,6 +31,7 @@ export const STATE_LABEL_OWNERS = ["external-plugin"];
 
 const WRITE_PERMISSIONS = new Set(["admin", "maintain", "write"]);
 const MAINTAINER_PERMISSIONS = new Set(["admin", "maintain"]);
+const STALE_APPROVAL = "STALE_APPROVAL";
 const RERUNNABLE_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "startup_failure"]);
 
 const STATE_DISPLAY = {
@@ -275,8 +276,10 @@ export function touchedDomains(files, domains = {}) {
 /**
  * Evaluate reviews against the approval policy of a tier.
  * `permissions` maps lowercase login -> repository permission (admin|maintain|write|triage|read|none).
+ * `headSha` is the commit being gated: an APPROVED review only counts when its `commit_id` is
+ * that commit, so an approval of an earlier push never covers code pushed after it.
  */
-export function evaluateApprovals({ tier, tiers, reviews = [], author, permissions = new Map(), routing = null, files = [] }) {
+export function evaluateApprovals({ tier, tiers, reviews = [], author, permissions = new Map(), routing = null, files = [], headSha }) {
   const policy = tiers[tier]?.approvals || {};
   const required = Number(policy.required || 1);
   const pools = normalizeRouting(routing);
@@ -293,10 +296,14 @@ export function evaluateApprovals({ tier, tiers, reviews = [], author, permissio
     if (!login || login === authorLogin || review.user?.type === "Bot") continue;
     if (review.state === "PENDING") continue;
     reviewed.add(login);
-    if (["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state)) latest.set(login, review.state);
+    if (review.state === "APPROVED" && review.commit_id !== headSha) latest.set(login, STALE_APPROVAL);
+    else if (["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state)) latest.set(login, review.state);
   }
 
   const approvers = [...latest].filter(([login, state]) => state === "APPROVED" && qualified(login)).map(([login]) => login);
+  const staleApprovers = [...latest]
+    .filter(([login, state]) => state === STALE_APPROVAL && qualified(login))
+    .map(([login]) => login);
   const changesRequestedBy = [...latest]
     .filter(([login, state]) => state === "CHANGES_REQUESTED" && qualified(login))
     .map(([login]) => login);
@@ -341,12 +348,16 @@ export function evaluateApprovals({ tier, tiers, reviews = [], author, permissio
   }
 
   if (changesRequestedBy.length > 0) missing.push(`resolution of changes requested by ${changesRequestedBy.join(", ")}`);
+  if (staleApprovers.length > 0) {
+    notes.push(`Approved an earlier commit and must re-approve the current head: ${staleApprovers.join(", ")}.`);
+  }
 
   return {
     tier,
     required,
     requirement: requirements.join(", "),
     approvers,
+    staleApprovers,
     changesRequestedBy,
     reviewers,
     missing,
@@ -1012,6 +1023,7 @@ export async function evaluateSubmission(github, options) {
     permissions,
     routing: config.routing,
     files,
+    headSha,
   });
   const automation = summarizeChecks(results);
   const state = computeState({ automation, approvals });
@@ -1130,9 +1142,12 @@ export function riskLabelSignature(labels, inputs = []) {
   return [...new Set(labels)].filter((label) => watched.has(label)).sort().join(",");
 }
 
-/** Stable fingerprint of the review list, used to detect reviews that arrive mid-evaluation. */
+/**
+ * Stable fingerprint of the review list, used to detect reviews that arrive mid-evaluation.
+ * Includes the reviewed commit because approvals are bound to it.
+ */
 export function reviewsSignature(reviews) {
-  return reviews.map((review) => `${review.id}:${review.state}`).join(",");
+  return reviews.map((review) => `${review.id}:${review.state}:${review.commit_id ?? ""}`).join(",");
 }
 
 async function listGateCheckRuns(github, { owner, repo, headSha }) {
