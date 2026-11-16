@@ -615,7 +615,12 @@ async function readJson(req) {
 
 async function handleRequest(entry, req, res) {
     const projectId = entry.projectId;
-    const url = new URL(req.url, "http://localhost");
+    let url;
+    try {
+        url = new URL(req.url, "http://localhost");
+    } catch {
+        return send(res, 400, "text/plain", "bad request");
+    }
     const path = url.pathname;
     const method = req.method || "GET";
 
@@ -758,7 +763,12 @@ async function handleRequest(entry, req, res) {
 async function startServer(entry) {
     entry.token = randomBytes(16).toString("hex");
     entry.sse = new Set();
-    const server = createServer((req, res) => handleRequest(entry, req, res));
+    const server = createServer((req, res) => {
+        handleRequest(entry, req, res).catch(() => {
+            if (!res.headersSent) send(res, 500, "text/plain", "internal error");
+            else res.destroy();
+        });
+    });
     await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", () => {

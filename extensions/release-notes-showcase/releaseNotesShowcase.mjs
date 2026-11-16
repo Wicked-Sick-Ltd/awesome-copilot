@@ -1104,8 +1104,14 @@ ${state.callToAction.label}: ${state.callToAction.url}`;
 async function startServer(initialState) {
     let state = initialState;
 
-    const server = createServer(async (req, res) => {
-        const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
+    const handleRequest = async (req, res) => {
+        let requestUrl;
+        try {
+            requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
+        } catch {
+            respondJson(res, { error: "Bad request" }, 400);
+            return;
+        }
 
         if (req.method === "GET" && requestUrl.pathname === "/") {
             respondHtml(res, renderHtml(state));
@@ -1146,6 +1152,13 @@ async function startServer(initialState) {
         }
 
         respondJson(res, { error: "Not found" }, 404);
+    };
+
+    const server = createServer((req, res) => {
+        handleRequest(req, res).catch(() => {
+            if (!res.headersSent) respondJson(res, { error: "Request failed" }, 500);
+            else res.destroy();
+        });
     });
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -285,7 +285,13 @@ async function handleApi(req, res, url, entry) {
 }
 
 async function handleRequest(req, res, entry) {
-    const url = new URL(req.url || "/", entry.origin);
+    let url;
+    try {
+        url = new URL(req.url || "/", entry.origin);
+    } catch {
+        json(res, 400, { error: "Bad request." });
+        return;
+    }
     try {
         if (url.pathname.startsWith("/api/")) {
             await handleApi(req, res, url, entry);
@@ -321,7 +327,12 @@ export async function startServer(instanceId, options) {
         origin: null,
         url: null,
     };
-    const server = createServer((req, res) => handleRequest(req, res, entry));
+    const server = createServer((req, res) => {
+        handleRequest(req, res, entry).catch(() => {
+            if (!res.headersSent) json(res, 500, { error: "Unexpected server error." });
+            else res.destroy();
+        });
+    });
     entry.server = server;
 
     await new Promise((resolve, reject) => {

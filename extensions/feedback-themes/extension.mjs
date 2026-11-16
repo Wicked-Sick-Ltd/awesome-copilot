@@ -67,7 +67,13 @@ function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (error) {
+        reject(error);
+      }
+    });
     req.on("error", reject);
   });
 }
@@ -79,8 +85,14 @@ function json(res, code, data) {
 
 // ─── HTTP server ───
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+async function handleRequest(req, res) {
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host}`);
+  } catch {
+    json(res, 400, { error: "Bad request" });
+    return;
+  }
 
   if (url.pathname === "/events") {
     res.writeHead(200, {
@@ -131,6 +143,13 @@ Please help the user explore this theme. Summarize the key patterns, identify wh
 
   res.writeHead(404);
   res.end("Not found");
+}
+
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch(() => {
+    if (!res.headersSent) json(res, 500, { error: "Request failed" });
+    else res.destroy();
+  });
 });
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
