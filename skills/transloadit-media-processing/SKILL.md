@@ -2,7 +2,7 @@
 name: transloadit-media-processing
 description: 'Process media files (video, audio, images, documents) using Transloadit. Use when asked to encode video to HLS/MP4, generate thumbnails, resize or watermark images, extract audio, concatenate clips, add subtitles, OCR documents, or run any media processing pipeline. Covers 86+ processing robots for file transformation at scale.'
 license: MIT
-compatibility: Requires a free Transloadit account (https://transloadit.com/signup). Uses the @transloadit/mcp-server MCP server or the @transloadit/node CLI.
+compatibility: Requires a free Transloadit account (https://transloadit.com/signup). Uses a pinned local install of the @transloadit/mcp-server MCP server or the @transloadit/node CLI.
 ---
 
 # Transloadit Media Processing
@@ -28,6 +28,33 @@ Use this skill when you need to:
 
 ## Setup
 
+### Install pinned versions once
+
+The MCP server and the CLI receive your Transloadit credentials, so run them from a
+local install at an exact version, never through `npx`, `npm exec`, `pnpm dlx`,
+`yarn dlx`, or `bunx`. Those launchers download whatever version the registry serves
+at each start and run it with your credentials in its environment.
+
+```bash
+mkdir -p ~/.transloadit-tools
+cd ~/.transloadit-tools
+printf '{ "private": true }\n' > package.json
+npm install --save-exact --ignore-scripts @transloadit/mcp-server@0.8.9 @transloadit/node@6.9.1
+```
+
+`--save-exact` records the exact versions, and the generated `package-lock.json` records
+the integrity hash of every installed package. Keep that lockfile. To reinstall, run
+`npm ci --ignore-scripts` in `~/.transloadit-tools`, which refuses packages whose
+contents do not match the lockfile. Upgrade only by changing a version above on purpose
+after reviewing the release.
+
+This installs two binaries:
+
+- `~/.transloadit-tools/node_modules/.bin/transloadit-mcp` (MCP server)
+- `~/.transloadit-tools/node_modules/.bin/transloadit` (CLI)
+
+On Windows, use the `.cmd` files with the same names in that folder.
+
 ### Option A: MCP Server (recommended for Copilot)
 
 Add the Transloadit MCP server to your IDE config. This gives the agent direct access
@@ -37,31 +64,54 @@ to Transloadit tools (`create_template`, `create_assembly`, `list_assembly_notif
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "transloadit-key",
+      "description": "Transloadit Auth Key"
+    },
+    {
+      "type": "promptString",
+      "id": "transloadit-secret",
+      "description": "Transloadit Auth Secret",
+      "password": true
+    }
+  ],
   "servers": {
     "transloadit": {
-      "command": "npx",
-      "args": ["-y", "@transloadit/mcp-server", "stdio"],
+      "type": "stdio",
+      "command": "${userHome}/.transloadit-tools/node_modules/.bin/transloadit-mcp",
+      "args": ["stdio"],
       "env": {
-        "TRANSLOADIT_KEY": "YOUR_AUTH_KEY",
-        "TRANSLOADIT_SECRET": "YOUR_AUTH_SECRET"
+        "TRANSLOADIT_KEY": "${input:transloadit-key}",
+        "TRANSLOADIT_SECRET": "${input:transloadit-secret}"
       }
     }
   }
 }
 ```
 
+The `command` points at the pinned local binary, so nothing is fetched from the registry
+when the server starts. VS Code prompts for the key and secret and stores them in its
+secret storage instead of writing them into `mcp.json`. Do not replace the inputs with
+literal credential values, and do not change `command` back to `npx`.
+
 Get your API credentials at https://transloadit.com/c/-/api-credentials
 
 ### Option B: CLI
 
-If you prefer running commands directly:
+If you prefer running commands directly, use the pinned `transloadit` binary:
 
 ```bash
-npx -y @transloadit/node assemblies create \
+~/.transloadit-tools/node_modules/.bin/transloadit assemblies create \
   --steps '{"encoded": {"robot": "/video/encode", "use": ":original", "preset": "hls-1080p"}}' \
   --wait \
   --input ./my-video.mp4
 ```
+
+If a tool result or error message suggests a command such as `npx -y @transloadit/node upload`,
+run the same subcommand with `~/.transloadit-tools/node_modules/.bin/transloadit` instead
+of the suggested `npx` command.
 
 ## Core Workflows
 
