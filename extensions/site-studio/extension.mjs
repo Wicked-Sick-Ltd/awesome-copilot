@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
+import { accessSync, constants as fsConstants, realpathSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -401,14 +402,78 @@ function safeString(value, fallback = "") {
     return typeof value === "string" ? value : fallback;
 }
 
+function realpathOrNull(path) {
+    try {
+        return realpathSync.native(path);
+    } catch {
+        return null;
+    }
+}
+
+function isPathInside(child, parent) {
+    const fold = (path) => (process.platform === "win32" || process.platform === "darwin" ? path.toLowerCase() : path);
+    const rel = relative(fold(parent), fold(child));
+    return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+function isFullyQualifiedDir(dir) {
+    return process.platform === "win32" ? /^(?:[A-Za-z]:[\\/]|\\\\)/.test(dir) : isAbsolute(dir);
+}
+
+// The opened folder may contain a planted git, and both cmd.exe and libuv's
+// bare-name lookup on Windows check the child's cwd before PATH. Resolve git to
+// an absolute path from fully qualified PATH entries only, and refuse any binary
+// that really lives inside the folders we were opened in.
+function resolveTrustedGit() {
+    const untrustedRoots = [workspacePath, process.cwd()]
+        .filter(Boolean)
+        .map((dir) => realpathOrNull(resolve(dir)))
+        .filter((dir) => dir && dir !== parse(dir).root);
+    const name = process.platform === "win32" ? "git.exe" : "git";
+    for (const entry of (process.env.PATH || "").split(delimiter)) {
+        const dir = entry.trim().replace(/^"(.*)"$/, "$1");
+        if (!dir || !isFullyQualifiedDir(dir)) {
+            continue;
+        }
+        const real = realpathOrNull(join(dir, name));
+        if (!real || untrustedRoots.some((root) => isPathInside(real, root))) {
+            continue;
+        }
+        try {
+            if (!statSync(real).isFile()) {
+                continue;
+            }
+            if (process.platform !== "win32") {
+                accessSync(real, fsConstants.X_OK);
+            }
+        } catch {
+            continue;
+        }
+        return real;
+    }
+    return null;
+}
+
 function readBranchFromGit() {
     if (process.env.COPILOT_WORKSPACE_BRANCH) {
         return process.env.COPILOT_WORKSPACE_BRANCH;
     }
+    const git = resolveTrustedGit();
+    if (!git) {
+        return "unknown";
+    }
+    const env = process.platform === "win32" ? { ...process.env, NoDefaultCurrentDirectoryInExePath: "1" } : process.env;
     const candidates = [workspacePath, process.cwd(), REPO_ROOT_FALLBACK].filter((value, index, all) => value && all.indexOf(value) === index);
-    for (const cwd of candidates) {
+    for (const repoDir of candidates) {
         try {
-            const branch = execSync("git --no-pager rev-parse --abbrev-ref HEAD", { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 2000, maxBuffer: 1024 * 1024 })
+            const branch = execFileSync(git, ["-C", repoDir, "--no-pager", "rev-parse", "--abbrev-ref", "HEAD"], {
+                cwd: dirname(git),
+                env,
+                stdio: ["ignore", "pipe", "ignore"],
+                timeout: 2000,
+                maxBuffer: 1024 * 1024,
+                windowsHide: true,
+            })
                 .toString()
                 .trim();
             if (branch) {
