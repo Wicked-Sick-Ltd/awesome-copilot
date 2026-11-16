@@ -18,9 +18,22 @@ Options:
 
 import argparse
 import os
+import re
 import sys
 import textwrap
 from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:  # Python < 3.11
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ImportError:
+        tomllib = None  # type: ignore[assignment]
+
+
+DEFAULT_AUTHOR = "Your Name"
+DEFAULT_EMAIL = "you@example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -32,9 +45,40 @@ def pkg_name(pypi_name: str) -> str:
     return pypi_name.replace("-", "_")
 
 
+_TOML_ESCAPES = {
+    "\b": "\\b",
+    "\t": "\\t",
+    "\n": "\\n",
+    "\f": "\\f",
+    "\r": "\\r",
+    '"': '\\"',
+    "\\": "\\\\",
+}
+
+
+def toml_string(value: str) -> str:
+    """Return *value* as a quoted TOML basic string."""
+    out = []
+    for ch in value:
+        code = ord(ch)
+        if ch in _TOML_ESCAPES:
+            out.append(_TOML_ESCAPES[ch])
+        elif 0xD800 <= code <= 0xDFFF:
+            raise ValueError("value contains characters that are not valid Unicode")
+        elif code < 0x20 or code == 0x7F:
+            out.append(f"\\u{code:04X}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def render(content: str) -> str:
+    return textwrap.dedent(content).lstrip()
+
+
 def write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
+    path.write_text(render(content), encoding="utf-8")
     print(f"  created  {path}")
 
 
@@ -67,7 +111,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {{text = "MIT"}}
 authors = [
-    {{name = "{author}", email = "{email}"}},
+    {{name = {toml_string(author)}, email = {toml_string(email)}}},
 ]
 keywords = [
     "python",
@@ -89,7 +133,6 @@ classifiers = [
 dependencies = [
     # List your runtime dependencies here. Keep them minimal.
     # Example: "httpx>=0.24", "pydantic>=2.0"
-]
 ]
 
 [project.optional-dependencies]
@@ -185,7 +228,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {{text = "MIT"}}
 authors = [
-    {{name = "{author}", email = "{email}"}},
+    {{name = {toml_string(author)}, email = {toml_string(email)}}},
 ]
 keywords = ["python"]
 classifiers = [
@@ -740,6 +783,35 @@ SOFTWARE.
 # Main scaffold
 # ---------------------------------------------------------------------------
 
+def gen_pyproject(name: str, mod: str, author: str, email: str, layout: str, build: str) -> str:
+    if build == "setuptools":
+        return gen_pyproject_setuptools(name, mod, author, email, layout)
+    return gen_pyproject_hatchling(name, mod, author, email)
+
+
+def checked_pyproject(name: str, mod: str, author: str, email: str, layout: str, build: str) -> str:
+    """Render pyproject.toml and confirm author/email changed nothing but `authors`.
+
+    The result is compared with the same template rendered from the default
+    author and email, so a value that alters any other key (dependencies,
+    build-system, tool tables) is refused before any file is written.
+    """
+    content = gen_pyproject(name, mod, author, email, layout, build)
+    if tomllib is None:
+        return content
+    try:
+        data = tomllib.loads(render(content))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"generated pyproject.toml is not valid TOML: {exc}") from exc
+    expected = tomllib.loads(
+        render(gen_pyproject(name, mod, DEFAULT_AUTHOR, DEFAULT_EMAIL, layout, build))
+    )
+    expected["project"]["authors"] = [{"name": author, "email": email}]
+    if data != expected:
+        raise ValueError("--author/--email changed pyproject.toml beyond the authors entry")
+    return content
+
+
 def scaffold(
     name: str,
     layout: str,
@@ -751,6 +823,8 @@ def scaffold(
     mod = pkg_name(name)
     root = Path(output) / name
     pkg_root = root / "src" / mod if layout == "src" else root / mod
+
+    pyproject = checked_pyproject(name, mod, author, email, layout, build)
 
     print(f"\nScaffolding {name!r} ({layout} layout, {build} build backend)\n")
 
@@ -819,11 +893,9 @@ labels: enhancement
     write(root / "LICENSE", gen_license(author))
 
     # pyproject.toml + setup.py
+    write(root / "pyproject.toml", pyproject)
     if build == "setuptools":
-        write(root / "pyproject.toml", gen_pyproject_setuptools(name, mod, author, email, layout))
         write(root / "setup.py", gen_setup_py())
-    else:
-        write(root / "pyproject.toml", gen_pyproject_hatchling(name, mod, author, email))
 
     # .gitignore
     write(
@@ -887,14 +959,13 @@ def main() -> None:
         default="setuptools",
         help="Build backend: 'setuptools' (default, uses setuptools_scm) or 'hatchling'.",
     )
-    parser.add_argument("--author", default="Your Name", help="Author name.")
-    parser.add_argument("--email", default="you@example.com", help="Author email.")
+    parser.add_argument("--author", default=DEFAULT_AUTHOR, help="Author name.")
+    parser.add_argument("--email", default=DEFAULT_EMAIL, help="Author email.")
     parser.add_argument("--output", default=".", help="Output directory (default: .).")
     args = parser.parse_args()
 
     # Validate name
-    import re
-    if not re.match(r"^[a-z][a-z0-9\-]*$", args.name):
+    if not re.fullmatch(r"[a-z][a-z0-9\-]*", args.name):
         print(
             f"Error: --name must be lowercase letters, digits, and hyphens only. Got: {args.name!r}",
             file=sys.stderr,
@@ -906,14 +977,18 @@ def main() -> None:
         print(f"Error: {target} already exists.", file=sys.stderr)
         sys.exit(1)
 
-    scaffold(
-        name=args.name,
-        layout=args.layout,
-        build=args.build,
-        author=args.author,
-        email=args.email,
-        output=args.output,
-    )
+    try:
+        scaffold(
+            name=args.name,
+            layout=args.layout,
+            build=args.build,
+            author=args.author,
+            email=args.email,
+            output=args.output,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
