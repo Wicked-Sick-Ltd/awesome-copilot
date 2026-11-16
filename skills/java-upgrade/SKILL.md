@@ -17,14 +17,7 @@ The Microsoft plugin [`modernize-java`](https://github.com/microsoft/modernize-j
 - validate the application against known CVEs after the upgrade;
 - output a detailed summary (file changes, updated dependencies, test results, remaining issues) suitable for PRs or CI logs.
 
-This skill provides lightweight, step-by-step guidance and works without the plugin; the plugin is the more powerful option for large or multi-step upgrades. It is a separate Microsoft plugin, not part of this repository's skills. To try it (see the [plugin README](https://github.com/microsoft/modernize-java) for the recommended model):
-
-```bash
-npm install -g @github/copilot
-copilot plugin marketplace add microsoft/modernize-java
-copilot plugin install modernize-java@modernize-java
-copilot --agent modernize-java:modernize-java
-```
+This skill provides lightweight, step-by-step guidance and works without the plugin; the plugin is the more powerful option for large or multi-step upgrades. It is a separate Microsoft plugin, not part of this repository's skills. If the user wants to try it, point them to the [plugin README](https://github.com/microsoft/modernize-java) for installation and the recommended model. Do not install the Copilot CLI or the plugin on the user's behalf: those commands fetch whatever is currently published or committed, unpinned, and the agent would then run it.
 
 ## Workflow
 

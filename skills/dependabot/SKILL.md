@@ -425,7 +425,7 @@ Create a separate ecosystem entry with its own `directory` pointing to that loca
 
 For scanning code changes for vulnerable dependencies inside an AI coding agent before committing, the GitHub MCP Server's `dependabot` toolset can check your dependency additions against the GitHub Advisory Database and return structured results with affected packages, severity, and recommended fixed versions. For more thorough post-commit checks, it can also run the Dependabot CLI locally to diff dependency graphs before and after your changes.
 
-Install the **Advanced Security plugin** which provides dedicated dependency scanning tools and the `/dependency-scanning` skill.
+The **Advanced Security plugin** (`advanced-security` in the `copilot-plugins` marketplace) adds dedicated dependency scanning tools and the `/dependency-scanning` skill. Use it if it is already installed. If it is not, tell the user it is available and let them install it themselves; do not install it on their behalf. Marketplace plugins track their source repository's default branch and update automatically, so the agent cannot pin what it would install.
 
 **GitHub Copilot CLI (shell):**
 ```bash
@@ -433,14 +433,9 @@ Install the **Advanced Security plugin** which provides dedicated dependency sca
 copilot --add-github-mcp-toolset dependabot
 ```
 
-**GitHub Copilot CLI (inside `copilot`):**
-```text
-> /plugin install advanced-security@copilot-plugins
-```
-
 **Visual Studio Code:**
 - Add `"X-MCP-Toolsets": "dependabot"` to your GitHub MCP Server headers, or pick **Dependabot** from the toolset selector in Copilot Chat
-- Install the `advanced-security` plugin, then use `/dependency-scanning` in Copilot Chat
+- If the `advanced-security` plugin is installed, use `/dependency-scanning` in Copilot Chat
 
 **Example prompt:**
 > Scan the dependencies I added on this branch for known vulnerabilities and tell me which versions to upgrade to before I commit.
