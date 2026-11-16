@@ -129,6 +129,8 @@ checks:
     paths:
       - "skills/**"
       - "eng/validate-skills.mjs"
+      - "eng/validate-skills.test.mjs"
+      - "eng/skill-content-checks.mjs"
       - "eng/yaml-parser.mjs"
       - ".github/workflows/validate-skills.yml"
     required: true
