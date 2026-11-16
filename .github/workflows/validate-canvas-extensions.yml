@@ -7,6 +7,7 @@ on:
     paths:
       - "extensions/**"
       - "eng/validate-plugins.mjs"
+      - "eng/edit-tutorial-install.test.mjs"
       - ".github/workflows/validate-canvas-extensions.yml"
 
 permissions:
@@ -34,3 +35,6 @@ jobs:
         run: |
           set -euo pipefail
           npm run plugin:validate
+
+      - name: Check edit-tutorial installs only locked dependencies
+        run: node --test eng/edit-tutorial-install.test.mjs
