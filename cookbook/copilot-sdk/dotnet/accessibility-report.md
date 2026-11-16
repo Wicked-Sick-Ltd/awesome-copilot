@@ -66,9 +66,9 @@ Console.WriteLine($"\nAnalyzing: {url}");
 Console.WriteLine("Please wait...\n");
 
 // Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
-var playwrightMcpCli = Path.GetFullPath(Path.Combine(
-    Path.GetDirectoryName(SourceFilePath())!,
-    "..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js"));
+var baseDirectory = Path.GetDirectoryName(SourceFilePath())!;
+var playwrightRelativePath = Path.Join("..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js");
+var playwrightMcpCli = Path.GetFullPath(playwrightRelativePath, baseDirectory);
 
 // Create a session with Playwright MCP server
 await using var session = await client.CreateSessionAsync(new SessionConfig
