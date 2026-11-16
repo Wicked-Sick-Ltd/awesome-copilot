@@ -666,6 +666,129 @@ if resource is not None:
         resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
     except (AttributeError, OSError, ValueError):
         pass
+
+# Audit events are not emitted by the C helpers that actually create processes
+# (_posixsubprocess.fork_exec, _winapi.CreateProcess), so process creation is
+# blocked by the operating system before any cell runs. Cells never run unlocked.
+def lock_linux_process_creation(ctypes):
+    import platform
+    import struct
+    machine = platform.machine().lower()
+    if machine in {"x86_64", "amd64"}:
+        arch = 0xC000003E
+        clone_nr = 56
+        denied = [57, 58, 59, 322, 101, 310, 311]
+        x32_bit = 0x40000000
+    elif machine in {"aarch64", "arm64"}:
+        arch = 0xC00000B7
+        clone_nr = 220
+        denied = [221, 281, 117, 270, 271]
+        x32_bit = None
+    else:
+        raise OSError(f"unsupported architecture {machine}")
+    clone3_nr = 435
+    ld_abs, jeq, jge, jset, ret = 0x20, 0x15, 0x35, 0x45, 0x06
+    allow, kill = 0x7FFF0000, 0x80000000
+    eperm, enosys = 0x00050000 | 1, 0x00050000 | 38
+    clone_thread = 0x00010000
+    program = [
+        (ld_abs, 0, 0, 4),
+        (jeq, 1, 0, arch),
+        (ret, 0, 0, kill),
+        (ld_abs, 0, 0, 0),
+    ]
+    if x32_bit is not None:
+        program += [(jge, 0, 1, x32_bit), (ret, 0, 0, eperm)]
+    for nr in denied:
+        program += [(jeq, 0, 1, nr), (ret, 0, 0, eperm)]
+    program += [(jeq, 0, 1, clone3_nr), (ret, 0, 0, enosys)]
+    program += [
+        (jeq, 0, 4, clone_nr),
+        (ld_abs, 0, 0, 16),
+        (jset, 0, 1, clone_thread),
+        (ret, 0, 0, allow),
+        (ret, 0, 0, eperm),
+        (ret, 0, 0, allow),
+    ]
+    raw = b"".join(struct.pack("=HBBI", *instruction) for instruction in program)
+    filters = ctypes.create_string_buffer(raw, len(raw))
+
+    class SockFprog(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]
+
+    fprog = SockFprog(len(program), ctypes.cast(filters, ctypes.c_void_p))
+    libc = ctypes.CDLL(None, use_errno=True)
+    prctl = libc.prctl
+    prctl.restype = ctypes.c_int
+    prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong]
+    if prctl(38, 1, None, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "PR_SET_NO_NEW_PRIVS failed")
+    if prctl(22, 2, ctypes.addressof(fprog), 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "PR_SET_SECCOMP failed")
+
+def lock_windows_process_creation(ctypes):
+    from ctypes import wintypes
+
+    class BasicLimits(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
+    limits = BasicLimits()
+    limits.LimitFlags = 0x00000008
+    limits.ActiveProcessLimit = 1
+    if not kernel32.SetInformationJobObject(job, 2, ctypes.byref(limits), ctypes.sizeof(limits)):
+        raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
+    if not kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
+        raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject failed")
+    return job
+
+def lock_macos_process_creation(ctypes):
+    libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+    sandbox_init = libsystem.sandbox_init
+    sandbox_init.restype = ctypes.c_int
+    sandbox_init.argtypes = [ctypes.c_char_p, ctypes.c_uint64, ctypes.POINTER(ctypes.c_char_p)]
+    error = ctypes.c_char_p()
+    profile = b"(version 1)(allow default)(deny process-fork)(deny process-exec*)"
+    if sandbox_init(profile, 0, ctypes.byref(error)) != 0:
+        detail = error.value.decode("utf-8", "replace") if error.value else "sandbox_init failed"
+        raise OSError(detail)
+
+def lock_process_creation():
+    import ctypes
+    if sys.platform.startswith("linux"):
+        return lock_linux_process_creation(ctypes)
+    if sys.platform == "win32":
+        return lock_windows_process_creation(ctypes)
+    if sys.platform == "darwin":
+        return lock_macos_process_creation(ctypes)
+    raise OSError(f"unsupported platform {sys.platform}")
+
+try:
+    PROCESS_LOCK = lock_process_creation()
+except Exception as exc:
+    sys.stderr.write(f"Notebook execution is unavailable because process creation could not be blocked: {exc}\n")
+    sys.exit(3)
+
 READ_ROOTS = [WORKSPACE]
 for entry in [sys.base_prefix, sys.prefix, *sys.path]:
     if entry:
@@ -713,7 +836,7 @@ def under(path_value, roots):
 
 def audit(event, args):
     if event.startswith(("socket.", "subprocess.", "ctypes.", "pty.")) or event in {
-        "os.system", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty"
+        "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty"
     }:
         raise PermissionError(f"{event} is disabled in notebook execution")
     if event == "open":
