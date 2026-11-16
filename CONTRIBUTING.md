@@ -136,7 +136,7 @@ Skills are self-contained folders in the `skills/` directory that include a `SKI
 
 1. **Create a new skill folder**: Run `npm run skill:create -- --name <skill-name> --description "<skill description>"`
 2. **Edit `SKILL.md`**: Ensure the `name` matches the folder name (lowercase with hyphens) and the `description` is clear and non-empty
-3. **Add optional assets**: Keep bundled assets reasonably sized (under 5MB each) and reference them from `SKILL.md`
+3. **Add optional assets**: Keep bundled assets reasonably sized (under 5MB each) and reference them from `SKILL.md`. Do not tell agents to run a downloaded script as root (for example `curl … | sudo bash`); point to a signed package repository or a pinned, checksum-verified release instead
 4. **Validate and update docs**: Run `npm run skill:validate` and then `npm run build` to update the generated README tables
 
 ### Adding Canvas Extensions

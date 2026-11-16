@@ -14,8 +14,26 @@ Manage Azure Container Registry (ACR) resources using the `az acr` command group
 ```bash
 # Install Azure CLI
 brew install azure-cli  # macOS
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash  # Linux
 winget install Microsoft.AzureCLI  # Windows
+
+# Linux (Debian/Ubuntu): install from Microsoft's signed apt repository.
+# Only the key with Microsoft's published fingerprint is trusted; never pipe a
+# downloaded install script into `sudo bash`.
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg lsb-release
+AZ_TMP=$(mktemp -d)
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc -o "$AZ_TMP/microsoft.asc"
+gpg --batch --no-default-keyring --keyring "$AZ_TMP/import.kbx" --import "$AZ_TMP/microsoft.asc"
+gpg --batch --no-default-keyring --keyring "$AZ_TMP/import.kbx" \
+  --export BC528686B50D79E339D3721CEB3E94ADBE1229CF > "$AZ_TMP/microsoft.gpg"
+test -s "$AZ_TMP/microsoft.gpg" && sudo install -D -m 644 "$AZ_TMP/microsoft.gpg" /etc/apt/keyrings/microsoft.gpg
+echo "Types: deb
+URIs: https://packages.microsoft.com/repos/azure-cli/
+Suites: $(lsb_release -cs)
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources > /dev/null
+sudo apt-get update && sudo apt-get install -y azure-cli
+rm -rf "$AZ_TMP"
 
 # Sign in and select subscription
 az login

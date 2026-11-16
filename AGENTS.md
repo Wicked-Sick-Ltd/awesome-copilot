@@ -80,6 +80,7 @@ All agent files (`*.agent.md`) and instruction files (`*.instructions.md`) must 
 - Skills can include bundled assets (scripts, templates, data files)
 - Bundled assets should be referenced in the SKILL.md instructions
 - Asset files should be reasonably sized (under 5MB per file)
+- Skill markdown and bundled shell scripts must not run a downloaded script as root (for example `curl … | sudo bash`); install tools from a signed package repository or a pinned, checksum-verified release. `npm run skill:validate` enforces this
 - Skills follow the [Agent Skills specification](https://agentskills.io/specification)
 
 #### Canvas Extensions (extensions/\*)
@@ -298,6 +299,7 @@ For skills (skills/\*/):
 - [ ] Folder name is lower case with hyphens
 - [ ] Any bundled assets are referenced in SKILL.md
 - [ ] Bundled assets are under 5MB per file
+- [ ] No instruction or script runs a downloaded script as root (`curl … | sudo bash`)
 
 For hook folders (hooks/\*/):
 
