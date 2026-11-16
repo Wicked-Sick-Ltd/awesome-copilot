@@ -404,10 +404,13 @@ public class AccessibilityReport {
                 .setArgs(List.of("@playwright/mcp@latest", "--isolated", "--config", playwrightConfig.toString()))
                 .setTools(PLAYWRIGHT_TOOLS);
 
-            PermissionHandler onPermissionRequest = (request, _invocation) -> CompletableFuture.supplyAsync(() ->
-                decide(request, url)
-                    ? PermissionRequestResult.approveOnce()
-                    : PermissionRequestResult.reject("Denied by the accessibility report recipe."));
+            PermissionHandler onPermissionRequest = (request, _invocation) -> {
+                Objects.requireNonNull(_invocation);
+                return CompletableFuture.supplyAsync(() ->
+                    decide(request, url)
+                        ? PermissionRequestResult.approveOnce()
+                        : PermissionRequestResult.reject("Denied by the accessibility report recipe."));
+            };
 
             var session = client.createSession(
                 new SessionConfig()
@@ -518,10 +521,13 @@ var mcpConfig = new McpStdioServerConfig()
     .setArgs(List.of("@playwright/mcp@latest", "--isolated", "--config", playwrightConfig.toString()))
     .setTools(List.of("browser_navigate", "browser_snapshot"));
 
-PermissionHandler onPermissionRequest = (request, _invocation) -> CompletableFuture.supplyAsync(() ->
-    decide(request, url)
-        ? PermissionRequestResult.approveOnce()
-        : PermissionRequestResult.reject("Denied by the accessibility report recipe."));
+PermissionHandler onPermissionRequest = (request, _invocation) -> {
+    Objects.requireNonNull(_invocation);
+    return CompletableFuture.supplyAsync(() ->
+        decide(request, url)
+            ? PermissionRequestResult.approveOnce()
+            : PermissionRequestResult.reject("Denied by the accessibility report recipe."));
+};
 
 var session = client.createSession(
     new SessionConfig()
