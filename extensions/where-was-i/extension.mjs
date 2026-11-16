@@ -7,6 +7,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
+import { resolveExecutable } from "./executables.mjs";
 import { gatherGitContext, getFileDiff } from "./git-context.mjs";
 
 const servers = new Map();
@@ -36,9 +37,16 @@ async function activeCwd(ctx) {
     return workspaceCwd;
 }
 
-function runGhJson(cwd, args) {
+function runGhJson(cwd, args, excludedRoots = []) {
     return new Promise((resolve, reject) => {
-        execFile("gh", args, { cwd, timeout: 15000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+        let gh;
+        try {
+            gh = resolveExecutable("gh", [cwd, ...excludedRoots]);
+        } catch (error) {
+            reject(error);
+            return;
+        }
+        execFile(gh, args, { cwd, timeout: 15000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
             if (error) {
                 reject(new Error((stderr || error.message || "GitHub CLI command failed").trim()));
                 return;
@@ -61,11 +69,11 @@ async function gatherContext(cwd) {
         runGhJson(cwd, [
             "pr", "list", "--author=@me", "--state=open", "--limit=10",
             "--json", "number,title,url,updatedAt,comments",
-        ]),
+        ], [gitContext.worktreeRoot]),
         runGhJson(cwd, [
             "issue", "list", "--assignee=@me", "--state=open", "--limit=10",
             "--json", "number,title,url,updatedAt",
-        ]),
+        ], [gitContext.worktreeRoot]),
     ]);
 
     return {
