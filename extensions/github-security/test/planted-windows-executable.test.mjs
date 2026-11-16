@@ -59,7 +59,7 @@ test("opening the canvas without a repository host does not run a planted git.ex
 		});
 		const invocations = await readInvocations(fixture.logPath);
 		const git = invocations.find((invocation) => invocation.args.includes("get-url"));
-		const ssh = invocations.find((invocation) => invocation.argv0 === "ssh" || invocation.args[0] === "ssh");
+		const ssh = invocations.find((invocation) => invocation.args.includes("-G"));
 		assert.ok(git, `repository discovery did not start git remote get-url${failure ? `: ${failure.message}` : ""}`);
 		assert.ok(ssh, `a non-GitHub SSH remote did not start ssh${failure ? `: ${failure.message}` : ""}`);
 		const problems = [git, ssh].flatMap((invocation) => spawnProblem(invocation, fixture.repo));
