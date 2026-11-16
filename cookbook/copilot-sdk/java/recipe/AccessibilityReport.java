@@ -237,7 +237,9 @@ public class AccessibilityReport {
                 i += next == -1 ? 1 : 2;
                 continue;
             }
-            if (c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f)) {
+            if (c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f)
+                    || (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e)
+                    || (c >= 0x2066 && c <= 0x2069) || c == 0xfeff) {
                 i++;
                 continue;
             }
@@ -258,9 +260,12 @@ public class AccessibilityReport {
         var quoted = new StringBuilder("\"");
         for (int i = 0; i < cleaned.length(); i++) {
             char c = cleaned.charAt(i);
-            switch (c) {
-                case '\\', '"' -> quoted.append('\\').append(c);
-                default -> quoted.append(c);
+            if (c == '\\' || c == '"') {
+                quoted.append('\\').append(c);
+            } else if (c < 0x20 || c > 0x7e) {
+                quoted.append(String.format("\\u%04x", (int) c));
+            } else {
+                quoted.append(c);
             }
         }
         return quoted.append('"').toString();

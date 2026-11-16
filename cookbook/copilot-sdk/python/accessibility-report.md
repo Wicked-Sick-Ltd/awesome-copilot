@@ -79,7 +79,9 @@ def strip_terminal_controls(value) -> str:
         if c == 0x1B:
             i += 1 if code(i + 1) == -1 else 2
             continue
-        if c <= 0x1F or c == 0x7F or 0x80 <= c <= 0x9F:
+        if (c <= 0x1F or c == 0x7F or 0x80 <= c <= 0x9F
+                or 0x200B <= c <= 0x200F or 0x202A <= c <= 0x202E
+                or 0x2066 <= c <= 0x2069 or c == 0xFEFF):
             i += 1
             continue
         out.append(text[i])

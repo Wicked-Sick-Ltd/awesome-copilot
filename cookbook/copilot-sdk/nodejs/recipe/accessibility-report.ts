@@ -220,7 +220,10 @@ async function main() {
                 i += code(i + 1) === -1 ? 1 : 2;
                 continue;
             }
-            if (c <= 0x1f || c === 0x7f || (c >= 0x80 && c <= 0x9f)) {
+            // Bidi overrides/isolates/marks and the named format characters.
+            if (c <= 0x1f || c === 0x7f || (c >= 0x80 && c <= 0x9f)
+                || (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e)
+                || (c >= 0x2066 && c <= 0x2069) || c === 0xfeff) {
                 i++;
                 continue;
             }
@@ -233,8 +236,18 @@ async function main() {
     const hasTerminalControls = (value: unknown): boolean =>
         stripTerminalControls(value) !== String(value ?? "");
 
-    const quoteForTerminal = (value: unknown): string =>
-        JSON.stringify(stripTerminalControls(value));
+    const quoteForTerminal = (value: unknown): string => {
+        const text = stripTerminalControls(value);
+        let out = '"';
+        for (let i = 0; i < text.length; i++) {
+            const c = text.charCodeAt(i);
+            if (c === 0x22) out += '\\"';
+            else if (c === 0x5c) out += "\\\\";
+            else if (c < 0x20 || c > 0x7e) out += `\\u${c.toString(16).padStart(4, "0")}`;
+            else out += text[i];
+        }
+        return `${out}"`;
+    };
 
     const confirm = async (question: string): Promise<boolean> => {
         const answer = (await askQuestion(`\n${question} (y/N): `)).toLowerCase();

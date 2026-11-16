@@ -95,7 +95,9 @@ string StripTerminalControls(string? value)
       i += next == -1 ? 1 : 2;
       continue;
     }
-    if (c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f))
+    if (c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f)
+      || (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e)
+      || (c >= 0x2066 && c <= 0x2069) || c == 0xfeff)
     {
       i++;
       continue;
