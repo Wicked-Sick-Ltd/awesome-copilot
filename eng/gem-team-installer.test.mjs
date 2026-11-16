@@ -73,7 +73,8 @@ function windowsLines(body) {
     if (trimmed.startsWith("#")) {
       if (/windows|powershell/i.test(trimmed)) mode = "windows";
       else if (/mac|linux|unix/i.test(trimmed)) mode = "posix";
-      else if (/verify/i.test(trimmed)) mode = "verify";
+      // "# Verify" is the apm --version section. Checksum notes also say "verify".
+      else if (/^#\s*verify\s*$/i.test(trimmed)) mode = "verify";
       continue;
     }
     if (!trimmed || mode === "verify") continue;
@@ -84,10 +85,14 @@ function windowsLines(body) {
 }
 
 function rewriteUrls(command, port) {
-  return command.replace(/https?:\/\/[^\s'"\\]+/g, (url) => {
+  return command.replace(/https?:\/\/[^\s'"\\]+/g, (url, offset, source) => {
     const relay = new URL(`http://127.0.0.1:${port}/relay`);
     relay.searchParams.set("url", url);
-    return `'${relay.toString()}'`;
+    const relayUrl = relay.toString();
+    const before = source[offset - 1];
+    const after = source[offset + url.length];
+    if ((before === "'" || before === '"') && after === before) return relayUrl;
+    return `'${relayUrl}'`;
   });
 }
 
@@ -219,6 +224,12 @@ os.execv(real, [real, *args])
         bodies,
         bin,
         stateDir,
+        // Control downloads leave lastServed set. A host checksum must bind the
+        // next subject body, not that earlier script.
+        resetPairing() {
+          lastServed = null;
+          pending = null;
+        },
         close: () => new Promise((done) => server.close(() => done())),
       });
     });
@@ -324,6 +335,7 @@ test("gem team unix quick start does not execute a replaced APM installer", asyn
       assert.equal(blocks.some((block) => block.body.includes(UNIX_URL)), true);
     }
     for (const block of blocks) {
+      server.resetPairing();
       const workspace = makeWorkspace();
       const result = await runProcess("/usr/bin/bash", ["--noprofile", "--norc", "-c", block.body], workspace, env);
       if (block.body.includes(UNIX_URL)) {
@@ -365,6 +377,7 @@ test("gem team windows quick start does not execute a replaced APM installer", a
     }
     if (lines.length === 0) return;
 
+    server.resetPairing();
     const workspace = makeWorkspace();
     const script = rewriteUrls(lines.join("\n"), server.port);
     const result = await runProcess(pwsh, ["-NoProfile", "-NonInteractive", "-Command", script], workspace, env);
