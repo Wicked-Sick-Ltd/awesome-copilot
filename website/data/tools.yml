@@ -163,7 +163,7 @@ tools:
     featured: true
     requirements:
       - Python 3.8 or higher (for pip install)
-      - Or use the shell installer
+      - Or a checksum-verified release archive
     links:
       github: https://github.com/danielmeppiel/apm
       pypi: https://pypi.org/project/apm-cli/
@@ -176,8 +176,20 @@ tools:
     configuration:
       type: bash
       content: |
-        # Install via shell script
-        curl -sSL https://raw.githubusercontent.com/danielmeppiel/apm/main/install.sh | sh
+        # Install a pinned release archive after checking its SHA-256 (Linux x86_64;
+        # plugins/gem-team/README.md has pinned macOS and Windows steps)
+        (
+          set -eu
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          curl -fsSL -o "$tmp/apm.tar.gz" https://github.com/microsoft/apm/releases/download/v0.35.1/apm-linux-x86_64.tar.gz
+          echo "e7f06b9c80e26152ab579fe50d7dcd3d76ebbd8eacd44eed424e39880044eb3e  $tmp/apm.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/apm.tar.gz" -C "$tmp"
+          mkdir -p "$HOME/.local/lib" "$HOME/.local/bin"
+          rm -rf "$HOME/.local/lib/apm"
+          mv "$tmp/apm-linux-x86_64" "$HOME/.local/lib/apm"
+          ln -sfn "$HOME/.local/lib/apm/apm" "$HOME/.local/bin/apm"
+        )
 
         # Or install via pip
         pip install apm-cli
