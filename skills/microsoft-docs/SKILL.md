@@ -23,16 +23,17 @@ Use `microsoft_docs_fetch` after search when you need complete tutorials, all co
 
 ### CLI Alternative
 
-If the Learn MCP server is not available, use the `mslearn` CLI from your terminal or shell (for example, Bash, PowerShell, or cmd) instead:
+If the Learn MCP server is not available, use the `mslearn` CLI from your terminal or shell (for example, Bash, PowerShell, or cmd) instead. This skill pins `@microsoft/learn-cli` to an exact version and integrity hash in `scripts/package-lock.json`. Run the commands below from this skill's directory:
 
 ```bash
-# Run directly (no install needed)
-npx @microsoft/learn-cli search "BlobClient UploadAsync Azure.Storage.Blobs"
+# Install the locked CLI once; npm ci refuses any tarball whose hash differs from the lockfile
+npm ci --prefix scripts --ignore-scripts --no-audit --no-fund
 
-# Or install globally, then run
-npm install -g @microsoft/learn-cli
-mslearn search "BlobClient UploadAsync Azure.Storage.Blobs"
+# Run the locked CLI
+npm run --silent --prefix scripts mslearn -- search "BlobClient UploadAsync Azure.Storage.Blobs"
 ```
+
+Do not run the CLI through npx or install it globally with npm; both fetch whatever version the registry currently serves, without the lockfile's hash check. In the table below, `mslearn` stands for `npm run --silent --prefix scripts mslearn --`.
 
 | MCP Tool | CLI Command |
 |----------|-------------|

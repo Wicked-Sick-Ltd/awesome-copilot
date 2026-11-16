@@ -12,7 +12,7 @@ All templates below use MCP tool calls (e.g., `microsoft_docs_search`, `microsof
 | `microsoft_code_sample_search(query: "...", language: "...")` | `mslearn code-search "..." --language ...` |
 | `microsoft_docs_fetch(url: "...")` | `mslearn fetch "..."` |
 
-Run directly with `npx @microsoft/learn-cli <command>` or install globally with `npm install -g @microsoft/learn-cli`.
+Copy `scripts/package.json` and `scripts/package-lock.json` from the microsoft-skill-creator skill into the generated skill's `scripts/` folder unchanged. The lockfile pins `@microsoft/learn-cli` to an exact version and integrity hash. From the generated skill's directory, install it with `npm ci --prefix scripts --ignore-scripts --no-audit --no-fund`, then run `npm run --silent --prefix scripts mslearn -- <command>`. Do not run the CLI through npx or install it globally with npm; both skip the lockfile's hash check.
 
 ## Template 1: SDK/Library Skill
 

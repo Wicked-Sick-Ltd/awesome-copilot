@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "description": "Pinned Microsoft Learn CLI for the microsoft-code-reference skill. Install only with npm ci so package-lock.json integrity hashes are enforced.",
+  "scripts": {
+    "mslearn": "node node_modules/@microsoft/learn-cli/dist/index.js"
+  },
+  "dependencies": {
+    "@microsoft/learn-cli": "1.0.0"
+  }
+}
