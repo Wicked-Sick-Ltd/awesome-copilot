@@ -613,13 +613,38 @@ async function readJson(req) {
     }
 }
 
+// Parse a raw HTTP request-target. Node accepts targets such as "//" that the
+// URL constructor rejects as scheme-relative, so a failed parse is a 400.
+function parseRequestUrl(req) {
+    try {
+        return new URL(req.url || "/", "http://localhost");
+    } catch {
+        throw new HttpError(400, "Bad request.");
+    }
+}
+
+// Last-resort handler for a rejected request promise. An unhandled rejection
+// would exit the extension process, so this must never throw.
+function failRequest(res) {
+    try {
+        if (!res.headersSent) {
+            send(res, 500, "text/plain", "Internal error.");
+        } else {
+            res.destroy();
+        }
+    } catch {
+        res.destroy();
+    }
+}
+
 async function handleRequest(entry, req, res) {
     const projectId = entry.projectId;
-    const url = new URL(req.url, "http://localhost");
-    const path = url.pathname;
-    const method = req.method || "GET";
 
     try {
+        const url = parseRequestUrl(req);
+        const path = url.pathname;
+        const method = req.method || "GET";
+
         // Static renderer assets are public (they carry no project data). The
         // iframe is loaded with the token in its URL; app.js then reads it and
         // attaches it to every data request below.
@@ -758,7 +783,9 @@ async function handleRequest(entry, req, res) {
 async function startServer(entry) {
     entry.token = randomBytes(16).toString("hex");
     entry.sse = new Set();
-    const server = createServer((req, res) => handleRequest(entry, req, res));
+    const server = createServer((req, res) => {
+        handleRequest(entry, req, res).catch(() => failRequest(res));
+    });
     await new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", () => {
@@ -868,7 +895,7 @@ p { margin:0; font-size:13px; opacity:.7; }
 
 async function shareRequest(req, res) {
     try {
-        const url = new URL(req.url, "http://localhost");
+        const url = parseRequestUrl(req);
         const token = url.searchParams.get("t") || "";
         const match = shareForToken(token);
         if (!match) return send(res, 403, "text/plain", "Invalid or expired link.");
@@ -911,7 +938,9 @@ async function ensureShareServer(bindIp) {
     }
     if (!shareServerStarting) {
         shareServerStarting = (async () => {
-            const server = createServer(shareRequest);
+            const server = createServer((req, res) => {
+                shareRequest(req, res).catch(() => failRequest(res));
+            });
             await new Promise((resolve, reject) => {
                 server.once("error", reject);
                 // Bind only to the private LAN address, not 0.0.0.0, so the
