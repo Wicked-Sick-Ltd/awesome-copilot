@@ -63,13 +63,59 @@ function broadcast(event, data) {
 
 // ─── HTTP helpers ───
 
-function readJson(req) {
+const MAX_BODY_BYTES = 64 * 1024;
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// Never parse inside a stream listener: a throw there is an uncaught exception
+// that ends the extension process.
+function readBody(req) {
   return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
-    req.on("error", reject);
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    req.on("data", (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        settled = true;
+        chunks.length = 0;
+        reject(new HttpError(413, "Request body too large."));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
   });
+}
+
+async function readJson(req) {
+  const body = await readBody(req);
+  if (!body) return {};
+  let value;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    throw new HttpError(400, "Request body must be valid JSON.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new HttpError(400, "Request body must be a JSON object.");
+  }
+  return value;
 }
 
 function json(res, code, data) {
@@ -79,8 +125,25 @@ function json(res, code, data) {
 
 // ─── HTTP server ───
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((error) => {
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    const status = error instanceof HttpError ? error.status : 500;
+    if (status === 413) res.setHeader("Connection", "close");
+    json(res, status, { error: status === 500 ? "Request failed." : error.message });
+  });
+});
+
+async function handleRequest(req, res) {
+  let url;
+  try {
+    url = new URL(req.url, "http://127.0.0.1");
+  } catch {
+    throw new HttpError(400, "Invalid request URL.");
+  }
 
   if (url.pathname === "/events") {
     res.writeHead(200, {
@@ -131,7 +194,7 @@ Please help the user explore this theme. Summarize the key patterns, identify wh
 
   res.writeHead(404);
   res.end("Not found");
-});
+}
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 function getPort() {
