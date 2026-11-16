@@ -23,22 +23,23 @@ Use `microsoft_docs_fetch` after search when you need complete tutorials, all co
 
 ### CLI Alternative
 
-If the Learn MCP server is not available, use the `mslearn` CLI from your terminal or shell (for example, Bash, PowerShell, or cmd) instead:
+If the Learn MCP server is not available, use the `mslearn` CLI (Node.js 22+) from your terminal or shell (for example, Bash, PowerShell, or cmd) instead. Install it only from the lockfile bundled in this skill's [`learn-cli/`](learn-cli/package-lock.json) folder, which pins `@microsoft/learn-cli` 1.0.0 and every dependency to an exact version and integrity hash, then run that copy by path:
 
 ```bash
-# Run directly (no install needed)
-npx @microsoft/learn-cli search "BlobClient UploadAsync Azure.Storage.Blobs"
+# One-time install: exact versions, integrity-checked, no install scripts
+npm ci --prefix <skill-folder>/learn-cli --ignore-scripts --no-audit --no-fund
 
-# Or install globally, then run
-npm install -g @microsoft/learn-cli
-mslearn search "BlobClient UploadAsync Azure.Storage.Blobs"
+# Run the locked CLI (on Windows: <skill-folder>\learn-cli\node_modules\.bin\mslearn.cmd)
+<skill-folder>/learn-cli/node_modules/.bin/mslearn search "BlobClient UploadAsync Azure.Storage.Blobs"
 ```
 
-| MCP Tool | CLI Command |
-|----------|-------------|
-| `microsoft_docs_search(query: "...")` | `mslearn search "..."` |
-| `microsoft_code_sample_search(query: "...", language: "...")` | `mslearn code-search "..." --language ...` |
-| `microsoft_docs_fetch(url: "...")` | `mslearn fetch "..."` |
+Replace `<skill-folder>` with the folder that contains this `SKILL.md`. If that folder is read-only, copy `learn-cli/package.json` and `learn-cli/package-lock.json` to a writable folder and run the same `npm ci` there. Never run the CLI through npx, a global npm install, or an `mslearn` already on your PATH: those fetch whatever release and dependencies are currently published and execute them. If `npm ci` fails, for example with an integrity error, stop and report it instead of falling back to an unlocked install.
+
+| MCP Tool | Locked CLI Subcommand |
+|----------|-----------------------|
+| `microsoft_docs_search(query: "...")` | `search "..."` |
+| `microsoft_code_sample_search(query: "...", language: "...")` | `code-search "..." --language ...` |
+| `microsoft_docs_fetch(url: "...")` | `fetch "..."` |
 
 Pass `--json` to `search` or `code-search` to get raw JSON output for further processing.
 

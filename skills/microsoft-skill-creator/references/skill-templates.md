@@ -4,15 +4,15 @@ Ready-to-use templates for different types of Microsoft technologies.
 
 ## CLI Alternative for MCP Tools
 
-All templates below use MCP tool calls (e.g., `microsoft_docs_search`, `microsoft_docs_fetch`, `microsoft_code_sample_search`). If the Learn MCP server is not available, replace them with CLI equivalents:
+All templates below use MCP tool calls (e.g., `microsoft_docs_search`, `microsoft_docs_fetch`, `microsoft_code_sample_search`). If the Learn MCP server is not available, replace them with the locked CLI equivalents:
 
-| MCP Tool | CLI Command |
-|----------|-------------|
-| `microsoft_docs_search(query: "...")` | `mslearn search "..."` |
-| `microsoft_code_sample_search(query: "...", language: "...")` | `mslearn code-search "..." --language ...` |
-| `microsoft_docs_fetch(url: "...")` | `mslearn fetch "..."` |
+| MCP Tool | Locked CLI Subcommand |
+|----------|-----------------------|
+| `microsoft_docs_search(query: "...")` | `search "..."` |
+| `microsoft_code_sample_search(query: "...", language: "...")` | `code-search "..." --language ...` |
+| `microsoft_docs_fetch(url: "...")` | `fetch "..."` |
 
-Run directly with `npx @microsoft/learn-cli <command>` or install globally with `npm install -g @microsoft/learn-cli`.
+Every generated skill that documents this fallback must ship a copy of `learn-cli/package.json` and `learn-cli/package-lock.json` from the microsoft-skill-creator skill. Agents install it with `npm ci --prefix <skill-folder>/learn-cli --ignore-scripts --no-audit --no-fund` and run `<skill-folder>/learn-cli/node_modules/.bin/mslearn <subcommand>`. Never run the CLI through npx, a global npm install, or an `mslearn` already on your PATH, and stop if `npm ci` fails instead of falling back to an unlocked install.
 
 ## Template 1: SDK/Library Skill
 

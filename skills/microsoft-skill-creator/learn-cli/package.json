@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Locked installer for the Microsoft Learn CLI fallback. Install with npm ci so every package matches the versions and integrity hashes in package-lock.json.",
+  "dependencies": {
+    "@microsoft/learn-cli": "1.0.0"
+  }
+}
