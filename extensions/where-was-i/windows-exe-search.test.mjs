@@ -241,8 +241,35 @@ function writeExecutable(directory, name) {
     return file;
 }
 
+// A bare "git" with the worktree as cwd is the planted git.exe on Windows once
+// NoDefaultCurrentDirectoryInExePath is unset: libuv searches that directory
+// before PATH. NeedCurrentDirectoryForExePathW reads this process, not the
+// child's env block, so the fixture has to spawn the absolute PATH binary.
+let realGit;
+
 function git(cwd, args) {
-    return realExecFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    return realExecFileSync(hostGit(), args, { cwd, encoding: "utf8" }).trim();
+}
+
+function hostGit() {
+    if (realGit) return realGit;
+    const pathValue = process.env.PATH || process.env.Path || "";
+    const extensions = process.platform === "win32" ? [".com", ".exe"] : [""];
+    for (const directory of pathValue.split(path.delimiter)) {
+        if (!directory) continue;
+        for (const extension of extensions) {
+            const candidate = path.resolve(directory, `git${extension}`);
+            try {
+                if (!lstatSync(candidate).isDirectory()) {
+                    realGit = candidate;
+                    return realGit;
+                }
+            } catch {
+                // This PATH entry does not contain git.
+            }
+        }
+    }
+    throw new Error("git was not found on PATH");
 }
 
 function markerText(marker) {
