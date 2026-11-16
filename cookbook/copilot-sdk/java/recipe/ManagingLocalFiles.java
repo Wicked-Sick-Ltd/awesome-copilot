@@ -64,7 +64,7 @@ public class ManagingLocalFiles {
     }
 
     static PermissionHandler permissionHandler(Path targetFolder, boolean apply) {
-        return (request, invocation) -> {
+        return (request, unusedInvocation) -> {
             var data = request.getExtensionData() != null ? request.getExtensionData() : Map.<String, Object>of();
             var kind = request.getKind();
             if ("read".equals(kind)
