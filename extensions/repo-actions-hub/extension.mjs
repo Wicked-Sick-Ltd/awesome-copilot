@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { accessSync, constants as fsConstants, statSync } from "node:fs";
+import { delimiter, isAbsolute, join } from "node:path";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 const instanceEntries = new Map();
@@ -692,9 +694,52 @@ function toWorkflowFileUrl(repo, workflowPath) {
     return `${repo.url}/blob/${encodeURIComponent(repo.defaultBranch)}/${encodedPath}`;
 }
 
+function isTrustedSearchDirectory(directory) {
+    if (process.platform === "win32") {
+        return /^[A-Za-z]:[\\/]/.test(directory) || /^[\\/]{2}[^\\/]/.test(directory);
+    }
+    return isAbsolute(directory);
+}
+
+function isExecutableFile(file) {
+    try {
+        if (!statSync(file).isFile()) {
+            return false;
+        }
+        if (process.platform !== "win32") {
+            accessSync(file, fsConstants.X_OK);
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// Spawning a bare "gh" lets Windows pick gh.exe/gh.com from the child's cwd (the
+// session workspace) before PATH, so resolve an absolute path from absolute PATH
+// entries only and spawn that file.
+function resolveGhExecutable() {
+    const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH");
+    const searchPath = pathKey ? process.env[pathKey] ?? "" : "";
+    const fileName = process.platform === "win32" ? "gh.exe" : "gh";
+
+    for (const rawEntry of searchPath.split(delimiter)) {
+        const directory = rawEntry.trim().replace(/^"(.*)"$/, "$1");
+        if (!directory || !isTrustedSearchDirectory(directory)) {
+            continue;
+        }
+        const candidate = join(directory, fileName);
+        if (isExecutableFile(candidate)) {
+            return candidate;
+        }
+    }
+
+    throw new CanvasError("gh_not_found", "GitHub CLI (gh) was not found in an absolute PATH directory.");
+}
+
 function runGh(args, options = {}) {
     return new Promise((resolve, reject) => {
-        const child = spawn("gh", args, {
+        const child = spawn(resolveGhExecutable(), args, {
             cwd: options.cwd,
             windowsHide: true,
             env: {
