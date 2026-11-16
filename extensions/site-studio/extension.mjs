@@ -1553,7 +1553,12 @@ function renderHtml(instanceId) {
 
 async function handleApi(req, res, instanceId) {
     await loadState();
-    const { pathname } = new URL(req.url, "http://127.0.0.1");
+    let pathname;
+    try {
+        ({ pathname } = new URL(req.url, "http://127.0.0.1"));
+    } catch {
+        return sendJson(res, 400, { error: "Bad request", code: "bad_request" });
+    }
     if (req.method === "GET" && pathname === "/api/state") {
         return sendJson(res, 200, stateCache);
     }

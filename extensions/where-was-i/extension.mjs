@@ -1024,7 +1024,14 @@ async function startServer(instanceId, cwd, workspacePath) {
         origin: "",
     };
     entry.server = createServer(async (req, res) => {
-        const url = new URL(req.url, "http://localhost");
+        let url;
+        try {
+            url = new URL(req.url, "http://localhost");
+        } catch {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Bad request" }));
+            return;
+        }
         if (!requestIsAuthorized(req, url, entry)) {
             res.writeHead(403, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Forbidden" }));
