@@ -51,6 +51,8 @@ Treat Partner Center as a production publishing system.
 - `scripts/partner-center-control.mjs` - Playwright controller for a dedicated
   Edge profile. It uses `scripts/partner-center-url.mjs` to prefer a page whose
   hostname is `partner.microsoft.com` or `storedeveloper.microsoft.com`.
+- `scripts/partner-center-control.test.mjs` - tests that `launch` exposes no
+  DevTools port and that its session channel requires the session token.
 - `scripts/partner-center-url.mjs` - hostname check used by that controller.
 - `scripts/partner-center-url.test.mjs` - tests for the hostname check.
 - `scripts/inspect-msix.ps1` - unpack and inspect an MSIX before upload.
@@ -246,8 +248,12 @@ node .\partner-center-control.mjs launch
 ```
 
 Run `launch` as an attached background process. The user completes Microsoft
-authentication in the dedicated Edge window. In a separate command process,
-use read-only commands such as:
+authentication in the dedicated Edge window. `launch` keeps the browser inside
+its own process and does not open a DevTools debugging port. Other commands
+reach it through a loopback channel that requires a per-session token, which
+`launch` writes to `.partner-center-control-session.json` inside the profile
+directory. Do not copy or print that file. In a separate command process with
+the same `PARTNER_CENTER_PROFILE`, use read-only commands such as:
 
 ```powershell
 node .\partner-center-control.mjs status
@@ -267,6 +273,14 @@ $env:PARTNER_CENTER_ALLOW_WRITE = '1'
 
 Set it only after the user has authorized the exact action. Remove it after the
 action so later commands fail closed.
+
+When the publishing session ends, shut the browser down:
+
+```powershell
+node .\partner-center-control.mjs close
+```
+
+Closing the Edge window also ends `launch` and removes the session file.
 
 Read `references/partner-center-dom.md` before using selectors.
 

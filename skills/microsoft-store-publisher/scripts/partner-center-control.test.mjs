@@ -187,6 +187,7 @@ after(async () => {
     launchProcess.kill("SIGKILL");
     await launchExit;
   }
+  pageServer?.closeAllConnections();
   pageServer?.close();
   rmSync(tempDir, { recursive: true, force: true });
 });
@@ -273,7 +274,7 @@ test("close shuts the publisher browser down", { skip }, async () => {
   assert.equal(result.code, 0, result.stderr);
   const code = await Promise.race([
     launchExit,
-    new Promise((resolve) => setTimeout(() => resolve("timeout"), 30000)),
+    new Promise((resolve) => setTimeout(() => resolve("timeout"), 30000).unref()),
   ]);
   assert.equal(code, 0);
   assert.equal(existsSync(path.join(profileDir, sessionFileName)), false);
