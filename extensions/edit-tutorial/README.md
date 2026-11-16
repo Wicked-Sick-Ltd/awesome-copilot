@@ -16,8 +16,8 @@ the canvas in order to understand the updates to the source code.
 ## Install
 
 Drop this folder at `~/.copilot/extensions/edit-tutorial/` for user scope, or in a repository at
-`.github/extensions/edit-tutorial/` for project scope. Then install dependencies from inside the
-copied folder:
+`.github/extensions/edit-tutorial/` for project scope. Copy `package-lock.json` along with the rest
+of the folder, then install the locked dependencies from inside the copied folder:
 
 ```sh
 # User scope
@@ -26,8 +26,13 @@ cd ~/.copilot/extensions/edit-tutorial
 # Or project scope, from the repository root
 cd .github/extensions/edit-tutorial
 
-npm install
+npm ci
 ```
+
+`npm ci` installs the exact `@github/copilot-sdk` version pinned in `package.json` and refuses any
+package whose tarball does not match the integrity hash recorded in `package-lock.json`. To move to
+a newer SDK, change the pinned version and regenerate the lockfile in this repository rather than
+running `npm install` in the copied folder.
 
 Reload extensions in the GitHub Copilot app, then when updating a repository using the Copilot app,
 add a line like:
