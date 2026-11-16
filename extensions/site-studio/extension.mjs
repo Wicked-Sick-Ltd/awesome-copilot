@@ -388,7 +388,9 @@ const TEMPLATE_PACK_OPTIONS = Object.entries(TEMPLATE_PACKS).map(([id, pack]) =>
 let stateCache = null;
 let stateLoaded = false;
 const servers = new Map();
-let workspacePath = undefined;
+// The checkout Copilot was opened in. session.workspacePath is the session-state
+// directory (~/.copilot/session-state/<id>), not this folder.
+let openedDirectory;
 
 function nowIso() {
     return new Date().toISOString();
@@ -425,7 +427,13 @@ function isFullyQualifiedDir(dir) {
 // an absolute path from fully qualified PATH entries only, and refuse any binary
 // that really lives inside the folders we were opened in.
 function resolveTrustedGit() {
-    const untrustedRoots = [workspacePath, process.cwd()]
+    // Module load runs before any canvas callback reports the checkout. A PATH
+    // entry inside that checkout would look trusted if we only knew the
+    // session-state directory and process.cwd().
+    if (!openedDirectory) {
+        return null;
+    }
+    const untrustedRoots = [openedDirectory, process.cwd()]
         .filter(Boolean)
         .map((dir) => realpathOrNull(resolve(dir)))
         .filter((dir) => dir && dir !== parse(dir).root);
@@ -463,7 +471,7 @@ function readBranchFromGit() {
         return "unknown";
     }
     const env = process.platform === "win32" ? { ...process.env, NoDefaultCurrentDirectoryInExePath: "1" } : process.env;
-    const candidates = [workspacePath, process.cwd(), REPO_ROOT_FALLBACK].filter((value, index, all) => value && all.indexOf(value) === index);
+    const candidates = [openedDirectory, process.cwd(), REPO_ROOT_FALLBACK].filter((value, index, all) => value && all.indexOf(value) === index);
     for (const repoDir of candidates) {
         try {
             const branch = execFileSync(git, ["-C", repoDir, "--no-pager", "rev-parse", "--abbrev-ref", "HEAD"], {
@@ -485,8 +493,9 @@ function readBranchFromGit() {
 }
 
 function captureWorkingDirectory(ctx) {
-    if (!workspacePath && ctx?.session?.workingDirectory) {
-        workspacePath = ctx.session.workingDirectory;
+    const dir = ctx?.session?.workingDirectory;
+    if (typeof dir === "string" && dir) {
+        openedDirectory = dir;
     }
 }
 
@@ -1807,7 +1816,7 @@ function summarizeProgress() {
     return `${approved}/${stateCache.sections.length} approved`;
 }
 
-const session = await joinSession({
+await joinSession({
     hooks: {
         onSessionStart: async () => ({ additionalContext: INTERACTIVE_FILL_CONTEXT }),
         onUserPromptSubmitted: async (input) => {
@@ -2387,5 +2396,4 @@ const session = await joinSession({
     ],
 });
 
-workspacePath = session.workspacePath;
 await loadState();

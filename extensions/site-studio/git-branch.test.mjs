@@ -84,7 +84,8 @@ async function openSiteStudio(t, workspace) {
                 createCanvas: (definition) => definition,
                 joinSession: async (options) => {
                     [canvas] = options.canvases;
-                    return { workspacePath: workspace };
+                    // session.workspacePath is Copilot session state, not the checkout.
+                    return { workspacePath: join(workspace, "..", "session-state") };
                 },
                 CanvasError: class CanvasError extends Error {},
             };
