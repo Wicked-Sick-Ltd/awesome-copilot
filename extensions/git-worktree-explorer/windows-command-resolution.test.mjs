@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -146,8 +146,19 @@ export function resolveWindowsExecutable(file, cwd, options = {}) {
     return null;
 }
 
+// git rev-parse --show-toplevel is symlink-free. mkdtemp keeps the os.tmpdir()
+// path, and path.resolve does not follow that link (for example /var -> /private/var).
+function canonical(filePath) {
+    const resolved = path.resolve(filePath);
+    try {
+        return realpathSync(resolved);
+    } catch {
+        return resolved;
+    }
+}
+
 function isInside(parent, child) {
-    const relative = path.relative(path.resolve(parent), path.resolve(child));
+    const relative = path.relative(canonical(parent), canonical(child));
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
@@ -332,11 +343,11 @@ test("opening the canvas gathers git and gh from the repository working director
         await mkdir(nested);
         await plant(nested, "git.exe");
         const snapshot = await gatherRepository(root);
-        assert.equal(path.resolve(snapshot.repository.root), path.resolve(root));
+        assert.equal(canonical(snapshot.repository.root), canonical(root));
         assert.equal(snapshot.repository.remote.github, true);
         const nestedSnapshot = await gatherRepository(nested);
-        assert.equal(path.resolve(nestedSnapshot.repository.root), path.resolve(root));
-        const nestedCalls = callsFor(root).filter((call) => path.resolve(call.cwd) === path.resolve(nested));
+        assert.equal(canonical(nestedSnapshot.repository.root), canonical(root));
+        const nestedCalls = callsFor(root).filter((call) => canonical(call.cwd) === canonical(nested));
         assert.ok(nestedCalls.some((call) => call.args[0] === "rev-parse"));
         for (const pattern of [
             /^git rev-parse --show-toplevel$/,
@@ -369,7 +380,7 @@ test("canvas startup and refresh gather through the same repository commands", a
             cwd: root,
             sendPrompt: async () => {},
         });
-        assert.equal(path.resolve(entry.snapshot.repository.root), path.resolve(root));
+        assert.equal(canonical(entry.snapshot.repository.root), canonical(root));
         await refreshServer(instanceId);
         assertCommandRan(root, /^git rev-parse --show-toplevel$/);
         assertCommandRan(root, /^gh pr list /);
