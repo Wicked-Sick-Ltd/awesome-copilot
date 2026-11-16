@@ -150,6 +150,77 @@ func untrustedData(value string) string {
 	return "<untrusted-data>\n" + string(encoded) + "\n</untrusted-data>"
 }
 
+func stripTerminalControls(value string) string {
+	runes := []rune(value)
+	var b strings.Builder
+	code := func(n int) rune {
+		if n < len(runes) {
+			return runes[n]
+		}
+		return -1
+	}
+	for i := 0; i < len(runes); {
+		c := code(i)
+		if (c == 0x1b && code(i+1) == 0x5b) || c == 0x9b {
+			if c == 0x9b {
+				i++
+			} else {
+				i += 2
+			}
+			for i < len(runes) && !(code(i) >= 0x40 && code(i) <= 0x7e) {
+				i++
+			}
+			if i < len(runes) {
+				i++
+			}
+			continue
+		}
+		if (c == 0x1b && code(i+1) == 0x5d) || c == 0x9d {
+			if c == 0x9d {
+				i++
+			} else {
+				i += 2
+			}
+			for i < len(runes) {
+				p := code(i)
+				if p == 0x07 || p == 0x9c {
+					i++
+					break
+				}
+				if p == 0x1b && code(i+1) == 0x5c {
+					i += 2
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if c == 0x1b {
+			if code(i+1) == -1 {
+				i++
+			} else {
+				i += 2
+			}
+			continue
+		}
+		if c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f) {
+			i++
+			continue
+		}
+		b.WriteRune(c)
+		i++
+	}
+	return b.String()
+}
+
+func hasTerminalControls(value string) bool {
+	return stripTerminalControls(value) != value
+}
+
+func quoteForTerminal(value string) string {
+	return strconv.Quote(stripTerminalControls(value))
+}
+
 func main() {
 	ctx := context.Background()
 	reader := bufio.NewReader(os.Stdin)
@@ -199,7 +270,7 @@ func main() {
 		switch r := request.(type) {
 		case *rpc.PermissionRequestMCP:
 			if r.ServerName != "playwright" || !slices.Contains(playwrightTools, r.ToolName) {
-				return refuse(fmt.Sprintf("Copilot asked to run %s/%s, which this recipe does not allow.", r.ServerName, r.ToolName))
+				return refuse(fmt.Sprintf("Copilot asked to run %s/%s, which this recipe does not allow.", quoteForTerminal(r.ServerName), quoteForTerminal(r.ToolName)))
 			}
 			if r.ToolName == "browser_snapshot" {
 				return true
@@ -207,17 +278,26 @@ func main() {
 			args, _ := r.Args.(map[string]any)
 			requested, _ := args["url"].(string)
 			if requested != url {
-				return refuse(fmt.Sprintf("Copilot asked to navigate to %q, which is not the URL you entered.", requested))
+				return refuse(fmt.Sprintf("Copilot asked to navigate to %s, which is not the URL you entered.", quoteForTerminal(requested)))
 			}
 			return confirm("Confirm navigation to " + url + "?")
 		case *rpc.PermissionRequestShell:
-			return confirm("Allow Copilot to run this shell command?\n  " + r.FullCommandText + "\n")
+			if hasTerminalControls(r.FullCommandText) {
+				return refuse("Copilot asked to run a shell command containing terminal control characters: " + quoteForTerminal(r.FullCommandText))
+			}
+			return confirm("Allow Copilot to run this shell command? " + quoteForTerminal(r.FullCommandText))
 		case *rpc.PermissionRequestRead:
-			return confirm("Allow Copilot to read " + r.Path + "?")
+			if hasTerminalControls(r.Path) {
+				return refuse("Copilot asked to read a path containing terminal control characters: " + quoteForTerminal(r.Path))
+			}
+			return confirm("Allow Copilot to read " + quoteForTerminal(r.Path) + "?")
 		case *rpc.PermissionRequestWrite:
-			return confirm("Allow Copilot to write " + r.FileName + "?")
+			if hasTerminalControls(r.FileName) {
+				return refuse("Copilot asked to write a file whose name contains terminal control characters: " + quoteForTerminal(r.FileName))
+			}
+			return confirm("Allow Copilot to write " + quoteForTerminal(r.FileName) + "?")
 		default:
-			return refuse(fmt.Sprintf("Copilot asked for a %q permission, which this recipe does not allow.", request.Kind()))
+			return refuse(fmt.Sprintf("Copilot asked for a %s permission, which this recipe does not allow.", quoteForTerminal(request.Kind())))
 		}
 	}
 

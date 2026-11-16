@@ -12,6 +12,57 @@ import tempfile
 from copilot import CopilotClient, SessionEvent
 from copilot.generated.rpc import PermissionDecisionApproveOnce, PermissionDecisionReject
 
+def strip_terminal_controls(value) -> str:
+    """Remove C0, DEL, C1, and CSI/OSC sequences so a prompt stays one line."""
+    text = "" if value is None else str(value)
+    out = []
+    i = 0
+    length = len(text)
+
+    def code(n):
+        return ord(text[n]) if n < length else -1
+
+    while i < length:
+        c = code(i)
+        if (c == 0x1B and code(i + 1) == 0x5B) or c == 0x9B:
+            i += 1 if c == 0x9B else 2
+            while i < length and not (0x40 <= code(i) <= 0x7E):
+                i += 1
+            if i < length:
+                i += 1
+            continue
+        if (c == 0x1B and code(i + 1) == 0x5D) or c == 0x9D:
+            i += 1 if c == 0x9D else 2
+            while i < length:
+                p = code(i)
+                if p in (0x07, 0x9C):
+                    i += 1
+                    break
+                if p == 0x1B and code(i + 1) == 0x5C:
+                    i += 2
+                    break
+                i += 1
+            continue
+        if c == 0x1B:
+            i += 1 if code(i + 1) == -1 else 2
+            continue
+        if c <= 0x1F or c == 0x7F or 0x80 <= c <= 0x9F:
+            i += 1
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def has_terminal_controls(value) -> bool:
+    text = "" if value is None else str(value)
+    return strip_terminal_controls(text) != text
+
+
+def quote_for_terminal(value) -> str:
+    """One quoted line with terminal controls removed, for a confirmation prompt."""
+    return json.dumps(strip_terminal_controls(value))
+
 # ============================================================================
 # Target URL validation
 # ============================================================================
@@ -165,25 +216,41 @@ async def main():
         if request.kind == "mcp":
             if request.server_name != "playwright" or request.tool_name not in PLAYWRIGHT_TOOLS:
                 return await refuse(
-                    f"Copilot asked to run {request.server_name}/{request.tool_name}, "
+                    "Copilot asked to run "
+                    f"{quote_for_terminal(request.server_name)}/{quote_for_terminal(request.tool_name)}, "
                     "which this recipe does not allow.")
             if request.tool_name == "browser_snapshot":
                 return True
             requested = request.args.get("url") if isinstance(request.args, dict) else None
             if requested != url:
+                shown = requested if isinstance(requested, str) else json.dumps(requested)
                 return await refuse(
-                    f"Copilot asked to navigate to {json.dumps(requested)}, "
+                    f"Copilot asked to navigate to {quote_for_terminal(shown)}, "
                     "which is not the URL you entered.")
             return await confirm(f"Confirm navigation to {url}?")
         if request.kind == "shell":
+            command = request.full_command_text
+            if has_terminal_controls(command):
+                return await refuse(
+                    "Copilot asked to run a shell command containing terminal control characters: "
+                    f"{quote_for_terminal(command)}")
             return await confirm(
-                f"Allow Copilot to run this shell command?\n  {request.full_command_text}\n")
+                f"Allow Copilot to run this shell command? {quote_for_terminal(command)}")
         if request.kind == "read":
-            return await confirm(f"Allow Copilot to read {request.path}?")
+            if has_terminal_controls(request.path):
+                return await refuse(
+                    "Copilot asked to read a path containing terminal control characters: "
+                    f"{quote_for_terminal(request.path)}")
+            return await confirm(f"Allow Copilot to read {quote_for_terminal(request.path)}?")
         if request.kind == "write":
-            return await confirm(f"Allow Copilot to write {request.file_name}?")
+            if has_terminal_controls(request.file_name):
+                return await refuse(
+                    "Copilot asked to write a file whose name contains terminal control characters: "
+                    f"{quote_for_terminal(request.file_name)}")
+            return await confirm(f"Allow Copilot to write {quote_for_terminal(request.file_name)}?")
         return await refuse(
-            f'Copilot asked for a "{request.kind}" permission, which this recipe does not allow.')
+            f"Copilot asked for a {quote_for_terminal(request.kind)} permission, "
+            "which this recipe does not allow.")
 
     async def on_permission_request(request, invocation):
         if await decide(request):

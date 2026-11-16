@@ -92,12 +92,23 @@ public class AccessibilityReport {
     }
 
     static boolean inNetwork(byte[] address, String cidr) throws UnknownHostException {
-        String[] parts = cidr.split("/");
+        String[] parts = cidr.split("/", -1);
+        if (parts.length != 2) {
+            return false;
+        }
         byte[] network = InetAddress.getByName(parts[0]).getAddress();
         if (network.length != address.length) {
             return false;
         }
-        int bits = Integer.parseInt(parts[1]);
+        int bits;
+        try {
+            bits = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        if (bits < 0 || bits > address.length * 8) {
+            return false;
+        }
         for (int i = 0; i < bits; i++) {
             int mask = 0x80 >> (i % 8);
             if ((address[i / 8] & mask) != (network[i / 8] & mask)) {
@@ -185,6 +196,76 @@ public class AccessibilityReport {
         }
     }
 
+    /** Removes C0, DEL, C1, and CSI/OSC sequences so a prompt stays one line. */
+    static String stripTerminalControls(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        var out = new StringBuilder();
+        int i = 0;
+        while (i < text.length()) {
+            int c = text.charAt(i);
+            int next = i + 1 < text.length() ? text.charAt(i + 1) : -1;
+            if ((c == 0x1b && next == 0x5b) || c == 0x9b) {
+                i += c == 0x9b ? 1 : 2;
+                while (i < text.length()) {
+                    int p = text.charAt(i);
+                    if (p >= 0x40 && p <= 0x7e) {
+                        i++;
+                        break;
+                    }
+                    i++;
+                }
+                continue;
+            }
+            if ((c == 0x1b && next == 0x5d) || c == 0x9d) {
+                i += c == 0x9d ? 1 : 2;
+                while (i < text.length()) {
+                    int p = text.charAt(i);
+                    int after = i + 1 < text.length() ? text.charAt(i + 1) : -1;
+                    if (p == 0x07 || p == 0x9c) {
+                        i++;
+                        break;
+                    }
+                    if (p == 0x1b && after == 0x5c) {
+                        i += 2;
+                        break;
+                    }
+                    i++;
+                }
+                continue;
+            }
+            if (c == 0x1b) {
+                i += next == -1 ? 1 : 2;
+                continue;
+            }
+            if (c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f)) {
+                i++;
+                continue;
+            }
+            out.append((char) c);
+            i++;
+        }
+        return out.toString();
+    }
+
+    static boolean hasTerminalControls(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        return !stripTerminalControls(text).equals(text);
+    }
+
+    /** One quoted line with terminal controls removed, for a confirmation prompt. */
+    static String quoteForTerminal(Object value) {
+        String cleaned = stripTerminalControls(value);
+        var quoted = new StringBuilder("\"");
+        for (int i = 0; i < cleaned.length(); i++) {
+            char c = cleaned.charAt(i);
+            switch (c) {
+                case '\\', '"' -> quoted.append('\\').append(c);
+                default -> quoted.append(c);
+            }
+        }
+        return quoted.append('"').toString();
+    }
+
     static boolean confirm(String question) {
         String answer = ask("\n" + question + " (y/N): ").toLowerCase(Locale.ROOT);
         return answer.equals("y") || answer.equals("yes");
@@ -202,28 +283,46 @@ public class AccessibilityReport {
                 Object server = data.get("serverName");
                 Object tool = data.get("toolName");
                 if (!"playwright".equals(server) || !PLAYWRIGHT_TOOLS.contains(tool)) {
-                    return refuse("Copilot asked to run " + server + "/" + tool + ", which this recipe does not allow.");
+                    return refuse("Copilot asked to run " + quoteForTerminal(server) + "/" + quoteForTerminal(tool)
+                        + ", which this recipe does not allow.");
                 }
                 if ("browser_snapshot".equals(tool)) {
                     return true;
                 }
                 Object requested = data.get("args") instanceof Map<?, ?> a ? a.get("url") : null;
                 if (!url.equals(requested)) {
-                    return refuse("Copilot asked to navigate to \"" + requested + "\", which is not the URL you entered.");
+                    return refuse("Copilot asked to navigate to " + quoteForTerminal(requested)
+                        + ", which is not the URL you entered.");
                 }
                 return confirm("Confirm navigation to " + url + "?");
             }
             case "shell" -> {
-                return confirm("Allow Copilot to run this shell command?\n  " + data.get("fullCommandText") + "\n");
+                Object command = data.get("fullCommandText");
+                if (hasTerminalControls(command)) {
+                    return refuse("Copilot asked to run a shell command containing terminal control characters: "
+                        + quoteForTerminal(command));
+                }
+                return confirm("Allow Copilot to run this shell command? " + quoteForTerminal(command));
             }
             case "read" -> {
-                return confirm("Allow Copilot to read " + data.get("path") + "?");
+                Object path = data.get("path");
+                if (hasTerminalControls(path)) {
+                    return refuse("Copilot asked to read a path containing terminal control characters: "
+                        + quoteForTerminal(path));
+                }
+                return confirm("Allow Copilot to read " + quoteForTerminal(path) + "?");
             }
             case "write" -> {
-                return confirm("Allow Copilot to write " + data.get("fileName") + "?");
+                Object fileName = data.get("fileName");
+                if (hasTerminalControls(fileName)) {
+                    return refuse("Copilot asked to write a file whose name contains terminal control characters: "
+                        + quoteForTerminal(fileName));
+                }
+                return confirm("Allow Copilot to write " + quoteForTerminal(fileName) + "?");
             }
             default -> {
-                return refuse("Copilot asked for a \"" + request.getKind() + "\" permission, which this recipe does not allow.");
+                return refuse("Copilot asked for a " + quoteForTerminal(request.getKind())
+                    + " permission, which this recipe does not allow.");
             }
         }
     }
@@ -263,7 +362,7 @@ public class AccessibilityReport {
                 .setArgs(List.of("@playwright/mcp@latest", "--isolated", "--config", playwrightConfig.toString()))
                 .setTools(PLAYWRIGHT_TOOLS);
 
-            PermissionHandler onPermissionRequest = (request, invocation) -> CompletableFuture.supplyAsync(() ->
+            PermissionHandler onPermissionRequest = (request, _invocation) -> CompletableFuture.supplyAsync(() ->
                 decide(request, url)
                     ? PermissionRequestResult.approveOnce()
                     : PermissionRequestResult.reject("Denied by the accessibility report recipe."));

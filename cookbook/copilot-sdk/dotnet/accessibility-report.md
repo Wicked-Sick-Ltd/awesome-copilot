@@ -35,6 +35,7 @@ dotnet run recipe/accessibility-report.cs
 // The GitHub.Copilot.SDK package exposes the GitHub.Copilot namespace.
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -80,6 +81,67 @@ catch (ArgumentException error)
 Console.WriteLine($"\nAnalyzing: {url}");
 Console.WriteLine("Please wait...\n");
 
+string StripTerminalControls(string? value)
+{
+  var text = value ?? "";
+  var cleaned = new StringBuilder();
+  var i = 0;
+  while (i < text.Length)
+  {
+    int c = text[i];
+    int next = i + 1 < text.Length ? text[i + 1] : -1;
+    if ((c == 0x1b && next == 0x5b) || c == 0x9b)
+    {
+      i += c == 0x9b ? 1 : 2;
+      while (i < text.Length)
+      {
+        int p = text[i];
+        i++;
+        if (p >= 0x40 && p <= 0x7e) break;
+      }
+      continue;
+    }
+    if ((c == 0x1b && next == 0x5d) || c == 0x9d)
+    {
+      i += c == 0x9d ? 1 : 2;
+      while (i < text.Length)
+      {
+        int p = text[i];
+        int after = i + 1 < text.Length ? text[i + 1] : -1;
+        if (p == 0x07 || p == 0x9c)
+        {
+          i++;
+          break;
+        }
+        if (p == 0x1b && after == 0x5c)
+        {
+          i += 2;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (c == 0x1b)
+    {
+      i += next == -1 ? 1 : 2;
+      continue;
+    }
+    if (c <= 0x1f || c == 0x7f || (c >= 0x80 && c <= 0x9f))
+    {
+      i++;
+      continue;
+    }
+    cleaned.Append((char)c);
+    i++;
+  }
+  return cleaned.ToString();
+}
+
+bool HasTerminalControls(string? value) => StripTerminalControls(value) != (value ?? "");
+
+string QuoteForTerminal(string? value) => JsonSerializer.Serialize(StripTerminalControls(value));
+
 bool Confirm(string question)
 {
   var answer = Ask($"\n{question} (y/N): ").ToLowerInvariant();
@@ -97,7 +159,7 @@ bool Decide(PermissionRequest request)
   switch (request)
   {
     case PermissionRequestMcp mcp when mcp.ServerName != "playwright" || !playwrightTools.Contains(mcp.ToolName):
-      return Refuse($"Copilot asked to run {mcp.ServerName}/{mcp.ToolName}, which this recipe does not allow.");
+      return Refuse($"Copilot asked to run {QuoteForTerminal(mcp.ServerName)}/{QuoteForTerminal(mcp.ToolName)}, which this recipe does not allow.");
     case PermissionRequestMcp { ToolName: "browser_snapshot" }:
       return true;
     case PermissionRequestMcp mcp:
@@ -108,15 +170,21 @@ bool Decide(PermissionRequest request)
           : null;
       return requested == url
         ? Confirm($"Confirm navigation to {url}?")
-        : Refuse($"Copilot asked to navigate to \"{requested}\", which is not the URL you entered.");
+        : Refuse($"Copilot asked to navigate to {QuoteForTerminal(requested)}, which is not the URL you entered.");
     case PermissionRequestShell shell:
-      return Confirm($"Allow Copilot to run this shell command?\n  {shell.FullCommandText}\n");
+      return HasTerminalControls(shell.FullCommandText)
+        ? Refuse($"Copilot asked to run a shell command containing terminal control characters: {QuoteForTerminal(shell.FullCommandText)}")
+        : Confirm($"Allow Copilot to run this shell command? {QuoteForTerminal(shell.FullCommandText)}");
     case PermissionRequestRead read:
-      return Confirm($"Allow Copilot to read {read.Path}?");
+      return HasTerminalControls(read.Path)
+        ? Refuse($"Copilot asked to read a path containing terminal control characters: {QuoteForTerminal(read.Path)}")
+        : Confirm($"Allow Copilot to read {QuoteForTerminal(read.Path)}?");
     case PermissionRequestWrite write:
-      return Confirm($"Allow Copilot to write {write.FileName}?");
+      return HasTerminalControls(write.FileName)
+        ? Refuse($"Copilot asked to write a file whose name contains terminal control characters: {QuoteForTerminal(write.FileName)}")
+        : Confirm($"Allow Copilot to write {QuoteForTerminal(write.FileName)}?");
     default:
-      return Refuse($"Copilot asked for a \"{request.Kind}\" permission, which this recipe does not allow.");
+      return Refuse($"Copilot asked for a {QuoteForTerminal(request.Kind)} permission, which this recipe does not allow.");
   }
 }
 
@@ -424,7 +492,7 @@ static class TargetUrl
         },
       },
     };
-    var path = Path.Combine(directory, "playwright-mcp.json");
+    var path = Path.Join(directory, "playwright-mcp.json");
     File.WriteAllText(path, config.ToJsonString());
     return path;
   }
@@ -471,7 +539,7 @@ The session can open only the URL you entered:
 
 - Before any session starts, the recipe accepts only an `https://` URL whose host is a public DNS name. IP addresses, user names and passwords, and local names such as `localhost`, `*.local`, or `*.internal` are rejected.
 - The recipe resolves the host once and stops if any address is loopback, private, link-local, or otherwise non-public. The browser is launched with `--host-resolver-rules` that map the host to that address and make every other host name and IP literal fail to resolve, so redirects and page scripts cannot reach other hosts. Resources served from other hosts, such as a CDN, are not loaded.
-- Only `browser_navigate` and `browser_snapshot` are exposed. The permission handler asks you to confirm navigation to that exact URL, and any shell command, file read, or file write. It refuses every other request.
+- Only `browser_navigate` and `browser_snapshot` are exposed. The permission handler asks you to confirm navigation to that exact URL, and any shell command, file read, or file write. It shows those commands, paths, and file names as a single quoted line, and refuses the request when that text contains terminal control characters. It refuses every other request.
 - The prompt passes the URL as a JSON string inside an `<untrusted-data>` block and tells the model not to follow instructions in it or in the page.
 
 ### Streaming with events

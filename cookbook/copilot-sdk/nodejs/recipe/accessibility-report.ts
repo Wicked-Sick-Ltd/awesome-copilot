@@ -185,6 +185,57 @@ async function main() {
     console.log(`\nAnalyzing: ${url}`);
     console.log("Please wait...\n");
 
+    // C0, DEL, C1, and whole CSI/OSC sequences (ESC [ / U+009B, ESC ] / U+009D).
+    // Approve-once still runs the original text, so callers reject when this changes it.
+    const stripTerminalControls = (value: unknown): string => {
+        const text = String(value ?? "");
+        let out = "";
+        let i = 0;
+        const code = (n: number) => (n < text.length ? text.charCodeAt(n) : -1);
+        while (i < text.length) {
+            const c = code(i);
+            if ((c === 0x1b && code(i + 1) === 0x5b) || c === 0x9b) {
+                i += c === 0x9b ? 1 : 2;
+                while (i < text.length && !(code(i) >= 0x40 && code(i) <= 0x7e)) i++;
+                if (i < text.length) i++;
+                continue;
+            }
+            if ((c === 0x1b && code(i + 1) === 0x5d) || c === 0x9d) {
+                i += c === 0x9d ? 1 : 2;
+                while (i < text.length) {
+                    const p = code(i);
+                    if (p === 0x07 || p === 0x9c) {
+                        i++;
+                        break;
+                    }
+                    if (p === 0x1b && code(i + 1) === 0x5c) {
+                        i += 2;
+                        break;
+                    }
+                    i++;
+                }
+                continue;
+            }
+            if (c === 0x1b) {
+                i += code(i + 1) === -1 ? 1 : 2;
+                continue;
+            }
+            if (c <= 0x1f || c === 0x7f || (c >= 0x80 && c <= 0x9f)) {
+                i++;
+                continue;
+            }
+            out += text[i];
+            i++;
+        }
+        return out;
+    };
+
+    const hasTerminalControls = (value: unknown): boolean =>
+        stripTerminalControls(value) !== String(value ?? "");
+
+    const quoteForTerminal = (value: unknown): string =>
+        JSON.stringify(stripTerminalControls(value));
+
     const confirm = async (question: string): Promise<boolean> => {
         const answer = (await askQuestion(`\n${question} (y/N): `)).toLowerCase();
         return answer === "y" || answer === "yes";
@@ -199,25 +250,34 @@ async function main() {
         switch (request.kind) {
             case "mcp": {
                 if (request.serverName !== "playwright" || !PLAYWRIGHT_TOOLS.includes(request.toolName)) {
-                    return refuse(`Copilot asked to run ${request.serverName}/${request.toolName}, which this recipe does not allow.`);
+                    return refuse(`Copilot asked to run ${quoteForTerminal(request.serverName)}/${quoteForTerminal(request.toolName)}, which this recipe does not allow.`);
                 }
                 if (request.toolName === "browser_snapshot") {
                     return true;
                 }
                 const requested = (request.args as { url?: unknown } | undefined)?.url;
                 if (requested !== url) {
-                    return refuse(`Copilot asked to navigate to ${JSON.stringify(requested)}, which is not the URL you entered.`);
+                    return refuse(`Copilot asked to navigate to ${quoteForTerminal(typeof requested === "string" ? requested : JSON.stringify(requested))}, which is not the URL you entered.`);
                 }
                 return confirm(`Confirm navigation to ${url}?`);
             }
             case "shell":
-                return confirm(`Allow Copilot to run this shell command?\n  ${request.fullCommandText}\n`);
+                if (hasTerminalControls(request.fullCommandText)) {
+                    return refuse(`Copilot asked to run a shell command containing terminal control characters: ${quoteForTerminal(request.fullCommandText)}`);
+                }
+                return confirm(`Allow Copilot to run this shell command? ${quoteForTerminal(request.fullCommandText)}`);
             case "read":
-                return confirm(`Allow Copilot to read ${request.path}?`);
+                if (hasTerminalControls(request.path)) {
+                    return refuse(`Copilot asked to read a path containing terminal control characters: ${quoteForTerminal(request.path)}`);
+                }
+                return confirm(`Allow Copilot to read ${quoteForTerminal(request.path)}?`);
             case "write":
-                return confirm(`Allow Copilot to write ${request.fileName}?`);
+                if (hasTerminalControls(request.fileName)) {
+                    return refuse(`Copilot asked to write a file whose name contains terminal control characters: ${quoteForTerminal(request.fileName)}`);
+                }
+                return confirm(`Allow Copilot to write ${quoteForTerminal(request.fileName)}?`);
             default:
-                return refuse(`Copilot asked for a "${request.kind}" permission, which this recipe does not allow.`);
+                return refuse(`Copilot asked for a ${quoteForTerminal(request.kind)} permission, which this recipe does not allow.`);
         }
     };
 
