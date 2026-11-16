@@ -1,6 +1,8 @@
 import { joinSession, createCanvas } from '@github/copilot-sdk/extension'
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { accessSync, constants as fsConstants, statSync } from 'node:fs'
+import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { startServer } from './server.mjs'
 import { scanIssues, listOrgs, listProjects, findProject } from './sentry.mjs'
 import { checkConnections, checkConnectionsOnce, installDependencies, authenticate } from './preflight.mjs'
@@ -313,9 +315,51 @@ function hostFromEnv() {
   }
 }
 
+const GIT_TIMEOUT_MS = 3000
+
+// The session checkout is untrusted: cmd.exe (and libuv's own Windows lookup)
+// search the working directory for git.cmd/git.bat/git.exe before PATH, and a
+// relative or empty POSIX PATH entry does the same. Resolve git to an absolute
+// path from fully-qualified PATH entries only, once, launch that file directly
+// (no shell) from its own directory, and hand git the checkout with -C so the
+// checkout is never the directory a process is created in.
+let gitExecutable
+function trustedGitPath() {
+  if (gitExecutable !== undefined) return gitExecutable
+  gitExecutable = ''
+  const windows = process.platform === 'win32'
+  const name = windows ? 'git.exe' : 'git'
+  const isQualified = windows ? (dir) => /^(?:[A-Za-z]:[\\/]|\\\\[^\\/])/.test(dir) : (dir) => isAbsolute(dir)
+  for (const entry of String(process.env.PATH || '').split(delimiter)) {
+    const dir = windows ? entry.trim().replace(/^"(.*)"$/, '$1') : entry
+    if (!dir || !isQualified(dir)) continue
+    const candidate = join(dir, name)
+    try {
+      if (!statSync(candidate).isFile()) continue
+      if (!windows) accessSync(candidate, fsConstants.X_OK)
+    } catch {
+      continue
+    }
+    gitExecutable = candidate
+    break
+  }
+  return gitExecutable
+}
+
+function runGit(localPath, args) {
+  const git = trustedGitPath()
+  if (!git || !localPath) return ''
+  return execFileSync(git, ['-C', localPath, ...args], {
+    cwd: dirname(git),
+    encoding: 'utf-8',
+    timeout: GIT_TIMEOUT_MS,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim()
+}
+
 function gitRemoteUrl(localPath) {
   try {
-    return execSync('git config --get remote.origin.url', { cwd: localPath, encoding: 'utf-8' }).trim()
+    return runGit(localPath, ['config', '--get', 'remote.origin.url'])
   } catch {
     return ''
   }
@@ -331,7 +375,7 @@ function hostFromPath(localPath) {
 
 function baseBranchFromPath(localPath) {
   try {
-    const head = execSync('git symbolic-ref refs/remotes/origin/HEAD', { cwd: localPath, encoding: 'utf-8' }).trim()
+    const head = runGit(localPath, ['symbolic-ref', 'refs/remotes/origin/HEAD'])
     // Strip ONLY the fixed remote-ref prefix — a naive split('/').pop() would turn
     // a branch like "release/2026" into "2026" and target a nonexistent base.
     return head.replace(/^refs\/remotes\/origin\//, '') || ''
