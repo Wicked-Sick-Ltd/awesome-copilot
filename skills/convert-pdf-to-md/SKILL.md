@@ -117,6 +117,15 @@ user provides only a filename with no directory, or the path is ambiguous —
 use `ask_user` to confirm the full absolute path before running the
 conversion. Never guess or assume the directory.
 
+**The destination folder must be new.** The script only writes into a
+`<name>/` folder it creates itself. If that folder (or the `-o` path)
+already exists — from an earlier conversion or because it is an unrelated
+folder with the same name — the file fails with `output folder ... already
+exists` and the existing folder is left untouched. Do NOT delete or move
+that folder yourself; ask the user whether to remove it or where else the
+output should go (then pass a new path with `-o`). Files whose name has no
+usable stem, such as `..pdf`, are rejected and must be renamed first.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -125,6 +134,8 @@ conversion. Never guess or assume the directory.
 | `ERROR: Unsupported file type '...'` / exit code 3 | Not a `.pdf` file | Ask the user for the correct file, or if it's `.doc`/`.docx`/`.xlsx`, use the matching sibling skill instead |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
+| `FAILED <file> -> output folder ... already exists` / exit code 1 | The `<name>/` folder or `-o` path already exists (earlier run, or an unrelated folder with the same name) | The existing folder was not modified; ask the user before removing it, or pass `-o` with a new folder path |
+| `FAILED <file> -> file name has no usable stem` / exit code 1 | The file is named like `..pdf`, so its output folder would be the containing folder | Ask the user to rename the file |
 | `NOTE: skipped N non-.pdf file(s)` | Folder contains non-PDF files | Expected — those files are intentionally ignored |
 | Markdown body is empty or near-empty despite images being extracted | The PDF is scanned/image-only with no embedded text layer; MarkItDown does not perform OCR | Tell the user OCR isn't supported — the extracted page images are still available for them to view |
 | Images appear in an appendix instead of inline with the text | Deliberate limitation — MarkItDown's PDF text has no reliable per-page markers to place images inline | Expected behavior; cross-reference the `### Page N` heading with the surrounding text context if needed |

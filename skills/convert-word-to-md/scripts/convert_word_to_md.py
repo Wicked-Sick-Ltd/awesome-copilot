@@ -30,16 +30,20 @@ Output:
     missing) if given, preserving relative subfolder structure when
     --recursive is used.
   - If a document has no embedded images, no "img/" folder is created.
+  - The "<name>/" destination folder must not already exist. If it does
+    (for example from an earlier run, or an unrelated folder with the same
+    name), that document fails and the existing folder is left untouched.
+    Documents whose name has no usable stem (e.g. "..docx") are rejected.
 
 Exit codes:
   0 - all requested conversions succeeded
-  1 - one or more conversions failed (partial success in batch mode)
+  1 - one or more conversions failed (partial success in batch mode),
+      including when a destination folder already exists
   2 - required dependency ("markitdown") is not installed
   3 - invalid input (path not found, or single-file input is not .docx)
 """
 import argparse
 import re
-import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -139,6 +143,7 @@ def _extract_images(docx_path: Path, img_dir: Path):
         return []
 
     written = []
+    img_dir_created = False
     with zipfile.ZipFile(docx_path) as z:
         names_in_zip = set(z.namelist())
         for idx, (rid, media_path) in enumerate(ordered_media, start=1):
@@ -149,8 +154,11 @@ def _extract_images(docx_path: Path, img_dir: Path):
             if ext == "jpg":
                 ext = "jpeg"
             out_name = f"img{idx:03d}.{ext}"
-            img_dir.mkdir(parents=True, exist_ok=True)
-            (img_dir / out_name).write_bytes(z.read(media_path))
+            if not img_dir_created:
+                img_dir.mkdir()
+                img_dir_created = True
+            with open(img_dir / out_name, "xb") as fh:
+                fh.write(z.read(media_path))
             written.append(out_name)
     return written
 
@@ -182,10 +190,29 @@ def _rewrite_image_refs(markdown_text: str, image_files) -> str:
     return _PLACEHOLDER_IMAGE_RE.sub(_replace, markdown_text)
 
 
+def _has_usable_stem(source: Path) -> bool:
+    """Reject stems such as "." or ".." (from "..docx" / "...docx") that
+    would make "<parent>/<stem>" resolve to an existing ancestor folder.
+    Trailing dots and spaces are stripped by Windows, so those count too."""
+    return bool(source.stem.strip(". "))
+
+
 def convert_one(md, source: Path, dest_dir: Path) -> bool:
     """Convert a single .docx file to a "<name>/" folder containing the
     Markdown file and an "img/" folder of extracted images. Returns True on
-    success."""
+    success.
+
+    dest_dir must not exist yet: it is created here, and everything is written
+    with exclusive-create opens inside it, so an existing folder (including the
+    source's own folder) is never deleted from, merged into, or overwritten."""
+    if not _has_usable_stem(source):
+        print(
+            f"FAILED  {source} -> file name has no usable stem for an output "
+            "folder; rename the file and try again",
+            file=sys.stderr,
+        )
+        return False
+
     try:
       result = md.convert(str(source))
     except ImportError as exc:
@@ -202,13 +229,26 @@ def convert_one(md, source: Path, dest_dir: Path) -> bool:
         return False
 
     try:
-        if dest_dir.exists():
-            shutil.rmtree(dest_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
+        dest_dir.mkdir()
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return False
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not create output folder {dest_dir}: {exc}", file=sys.stderr)
+        return False
+
+    try:
         image_files = _extract_images(source, dest_dir / "img")
         text = _rewrite_image_refs(result.text_content, image_files)
         md_path = dest_dir / f"{source.stem}.md"
-        md_path.write_text(text, encoding="utf-8")
+        with open(md_path, "x", encoding="utf-8") as fh:
+            fh.write(text)
     except OSError as exc:
         print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
         return False

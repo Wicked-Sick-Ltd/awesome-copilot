@@ -119,6 +119,15 @@ user provides only a filename with no directory, or the path is ambiguous —
 use `ask_user` to confirm the full absolute path before running the
 conversion. Never guess or assume the directory.
 
+**The destination folder must be new.** The script only writes into a
+`<name>/` folder it creates itself. If that folder (or the `-o` path)
+already exists — from an earlier conversion or because it is an unrelated
+folder with the same name — the file fails with `output folder ... already
+exists` and the existing folder is left untouched. Do NOT delete or move
+that folder yourself; ask the user whether to remove it or where else the
+output should go (then pass a new path with `-o`). Files whose name has no
+usable stem, such as `..xlsx`, are rejected and must be renamed first.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -127,5 +136,7 @@ conversion. Never guess or assume the directory.
 | `ERROR: Unsupported file type '.xls'` / exit code 3 | Legacy `.xls`, not `.xlsx` | Ask the user to re-save as `.xlsx` |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
+| `FAILED <file> -> output folder ... already exists` / exit code 1 | The `<name>/` folder or `-o` path already exists (earlier run, or an unrelated folder with the same name) | The existing folder was not modified; ask the user before removing it, or pass `-o` with a new folder path |
+| `FAILED <file> -> file name has no usable stem` / exit code 1 | The file is named like `..xlsx`, so its output folder would be the containing folder | Ask the user to rename the file |
 | `NOTE: skipped N non-.xlsx file(s)` | Folder contains non-Excel files | Expected — those files are intentionally ignored |
 | A sheet's charts don't appear as images | Charts are chart objects, not embedded pictures — this skill only extracts real embedded raster images | Expected; mention this limitation if the user specifically needs chart images |
