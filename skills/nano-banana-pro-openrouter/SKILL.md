@@ -21,7 +21,7 @@ Generate or edit images with OpenRouter using the `google/gemini-3-pro-image-pre
 ### Prompt-only generation
 
 ```
-uv run {baseDir}/scripts/generate_image.py \
+uv run --locked {baseDir}/scripts/generate_image.py \
   --prompt "A cinematic sunset over snow-capped mountains" \
   --filename sunset.png
 ```
@@ -29,7 +29,7 @@ uv run {baseDir}/scripts/generate_image.py \
 ### Edit a single image
 
 ```
-uv run {baseDir}/scripts/generate_image.py \
+uv run --locked {baseDir}/scripts/generate_image.py \
   --prompt "Replace the sky with a dramatic aurora" \
   --input-image input.jpg \
   --filename aurora.png
@@ -38,7 +38,7 @@ uv run {baseDir}/scripts/generate_image.py \
 ### Compose multiple images
 
 ```
-uv run {baseDir}/scripts/generate_image.py \
+uv run --locked {baseDir}/scripts/generate_image.py \
   --prompt "Combine the subjects into a single studio portrait" \
   --input-image face1.jpg \
   --input-image face2.jpg \
@@ -60,6 +60,7 @@ The skill reads an optional system prompt from `assets/SYSTEM_TEMPLATE`. This al
 - `--filename` accepts relative paths (saves to current directory) or absolute paths.
 - If multiple images are returned, append `-1`, `-2`, etc. to the filename.
 - Print `MEDIA: <path>` for each saved image. Do not read images back into the response.
+- Dependencies are pinned with hashes in `scripts/generate_image.py.lock`, which must ship next to the script. Always pass `--locked` so uv refuses to re-resolve. To update, change the pin in the script header and run `uv lock --script scripts/generate_image.py`.
 
 ## Troubleshooting
 
