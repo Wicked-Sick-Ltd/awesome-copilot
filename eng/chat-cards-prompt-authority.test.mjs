@@ -103,6 +103,19 @@ function cardRevision(card) {
   return /data-card-revision="([^"]+)"/.exec(card.articleHtml)?.[1] ?? card.config?.revision;
 }
 
+// What a browser posts for an attribute value escaped into HTML.
+function browserAttributeValue(escaped) {
+  return String(escaped).replace(
+    /&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/g,
+    (entity, ref) => {
+      const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+      if (ref[0] !== "#") return Object.hasOwn(named, ref) ? named[ref] : entity;
+      const codePoint = /^#[xX]/.test(ref) ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+    },
+  );
+}
+
 async function waitForPrompts(count, timeoutMs = 5000) {
   const started = Date.now();
   while (session.sent.length < count) {
@@ -393,6 +406,66 @@ test("invisible Unicode in card text does not reach the conversation", async (t)
   assertSentWhatWasShown(prompt, shown);
 });
 
+test("submitting a form saved before the review step shows the stale-card error", async (t) => {
+  if (browserSkip) return t.skip(browserSkip);
+  const { ctx, url } = await openDeck();
+  act(ctx, "create_form_card", {
+    title: "Pick a topic",
+    fields: [{ name: "topic", label: "Topic", value: "Rust" }],
+  });
+  const { page } = await showDeck(url);
+  await page.evaluate(`(() => {
+    const form = document.querySelector(".mcc-form");
+    form.removeAttribute("data-card-revision");
+    form.querySelector(".mcc-form-review")?.remove();
+    form.querySelector(".mcc-form-preview")?.remove();
+  })()`);
+  await page.evaluate(`document.querySelector(".mcc-form button[type=submit]").click()`);
+  const status = await page.waitFor(`() => {
+    const text = document.querySelector(".mcc-form-status")?.textContent ?? "";
+    return text.startsWith("Could not prepare") ? text : "";
+  }`);
+  await page.close();
+  assert.match(status, /This card changed after it was shown/);
+  assert.equal(session.sent.length, 0);
+});
+
+test("a select whose option value contains a character reference submits its label", async (t) => {
+  if (browserSkip) return t.skip(browserSkip);
+  const { ctx, url } = await openDeck();
+  act(ctx, "create_form_card", {
+    title: "Pick one",
+    fields: [
+      {
+        name: "who",
+        label: "Who",
+        type: "select",
+        options: [{ label: "Amp label", value: "choice-entity-amp-&amp;" }],
+      },
+    ],
+  });
+  const { page } = await showDeck(url);
+  const outcome = await page.evaluate(`(async () => {
+    document.querySelector(".mcc-form button[type=submit]").click();
+    const started = Date.now();
+    while (Date.now() - started < 4000) {
+      const review = document.querySelector(".mcc-form-review.mcc-visible pre");
+      if (review && review.textContent) return { shown: review.textContent };
+      const status = document.querySelector(".mcc-form-status").textContent;
+      if (status.startsWith("Could not prepare") || status.startsWith("This card cannot")) return { error: status };
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return { error: document.querySelector(".mcc-form-status").textContent || "timed out" };
+  })()`);
+  assert.equal(outcome.error, undefined, outcome.error);
+  await page.evaluate(`document.querySelector(".mcc-confirm-send").click()`);
+  const [prompt] = await waitForPrompts(1);
+  await page.close();
+  assert.equal(prompt, outcome.shown);
+  assert.match(prompt, /Amp label/);
+  assert.ok(!prompt.includes("choice-entity-amp"));
+});
+
 test("editing an answer after review discards the reviewed message", async (t) => {
   if (browserSkip) return t.skip(browserSkip);
   const { ctx, url } = await openDeck();
@@ -527,6 +600,45 @@ test("/api/submit refuses a card that changed after it was reviewed", async () =
   const response = await post(url, "/api/submit", { ...body, confirm: review.json?.confirm ?? "" });
   assert.equal(response.status, 409);
   assert.equal(session.sent.length, 0, `A prompt was sent for a card the user had not seen: ${JSON.stringify(session.sent)}`);
+});
+
+test("a choice value that already contains a character reference is accepted", async () => {
+  const selectValue = "choice-entity-amp-&amp;";
+  const radioValue = "choice-entity-apos-&#39;";
+  const { ctx, url } = await openDeck();
+  const { cardId } = act(ctx, "create_form_card", {
+    title: "Pick one",
+    fields: [
+      {
+        name: "who",
+        label: "Who",
+        type: "select",
+        options: [{ label: "Amp label", value: selectValue }],
+      },
+      {
+        name: "tone",
+        label: "Tone",
+        type: "radio",
+        options: [{ label: "Apos label", value: radioValue }],
+      },
+    ],
+  });
+  const [card] = (await deckState(url)).cards;
+  const selectPosted = browserAttributeValue(/value="(choice-entity-amp-[^"]*)"/.exec(card.articleHtml)[1]);
+  const radioPosted = browserAttributeValue(/value="(choice-entity-apos-[^"]*)"/.exec(card.articleHtml)[1]);
+  assert.equal(selectPosted, selectValue);
+  assert.equal(radioPosted, radioValue);
+  const response = await submitViaApi(url, {
+    cardId,
+    revision: cardRevision(card),
+    values: { who: [selectPosted], tone: [radioPosted] },
+  });
+  assert.equal(response.status, 200, JSON.stringify(response.json));
+  const [prompt] = await waitForPrompts(1);
+  assert.match(prompt, /Amp label/);
+  assert.match(prompt, /Apos label/);
+  assert.ok(!prompt.includes(selectValue), `The option value reached the conversation: ${JSON.stringify(prompt)}`);
+  assert.ok(!prompt.includes(radioValue), `The option value reached the conversation: ${JSON.stringify(prompt)}`);
 });
 
 test("/api/submit refuses values that differ from the reviewed message", async () => {

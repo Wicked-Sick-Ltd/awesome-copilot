@@ -764,9 +764,14 @@ img { max-width: 100%; height: auto; }
 
   function closeReview(form) {
     pendingReviews.delete(form);
+    // Decks saved before the review step have no .mcc-form-review node.
+    // Submit still has to reach the server so a stale card can report why
+    // it cannot be sent.
     var review = form.querySelector(".mcc-form-review");
+    if (!review) return;
     review.classList.remove("mcc-visible");
-    review.querySelector("pre").textContent = "";
+    var preview = review.querySelector("pre");
+    if (preview) preview.textContent = "";
   }
 
   function sendReviewed(form) {
@@ -793,7 +798,8 @@ img { max-width: 100%; height: auto; }
     var form = event.target.form;
     if (!form || !pendingReviews.has(form)) return;
     closeReview(form);
-    form.querySelector(".mcc-form-status").textContent = "Answers changed. Submit again to review the message.";
+    var changed = form.querySelector(".mcc-form-status");
+    if (changed) changed.textContent = "Answers changed. Submit again to review the message.";
   });
 
   document.addEventListener("submit", function (event) {
@@ -807,21 +813,27 @@ img { max-width: 100%; height: auto; }
     }
     var status = form.querySelector(".mcc-form-status");
     var review = form.querySelector(".mcc-form-review");
-    form.querySelector(".mcc-form-fallback").classList.remove("mcc-visible");
+    var fallback = form.querySelector(".mcc-form-fallback");
+    if (fallback) fallback.classList.remove("mcc-visible");
     closeReview(form);
     var values = collectValues(form);
-    status.textContent = "Preparing the message...";
+    if (status) status.textContent = "Preparing the message...";
     submitRequest(form, values).then(function (result) {
+      if (!review) {
+        if (status) status.textContent = "This card cannot be submitted. Ask the agent to create the form again.";
+        return;
+      }
       if (!result.prompt) {
-        status.textContent = "The agent could not be reached automatically.";
+        if (status) status.textContent = "The agent could not be reached automatically.";
         return;
       }
       pendingReviews.set(form, { values: values, confirm: result.confirm });
-      review.querySelector("pre").textContent = result.prompt;
+      var preview = review.querySelector("pre");
+      if (preview) preview.textContent = result.prompt;
       review.classList.add("mcc-visible");
-      status.textContent = "Review the message, then choose Send.";
+      if (status) status.textContent = "Review the message, then choose Send.";
     }).catch(function (error) {
-      status.textContent = "Could not prepare the message: " + errorText(error);
+      if (status) status.textContent = "Could not prepare the message: " + errorText(error);
     });
   });
 

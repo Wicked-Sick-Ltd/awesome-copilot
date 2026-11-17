@@ -1297,6 +1297,14 @@ function fieldChoices(field, type) {
   return normalizeFieldOptions(field.options ?? [{ label: field.label ?? field.name, value: "yes" }]);
 }
 
+// Choice values are keys the page posts back, not text the card shows.
+// escapeHtml leaves a character reference in place, and the browser then
+// decodes it, so the posted key would not match the stored value. Exact
+// escaping makes the control submit the stored value unchanged.
+function choiceValueAttribute(option) {
+  return escapeHtmlExact(option.value ?? option.label ?? "");
+}
+
 function renderFormField(field, formId) {
   const type = field.type ?? "text";
   const fieldId = `${formId}-${String(field.name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
@@ -1319,7 +1327,7 @@ function renderFormField(field, formId) {
     const optionTags = fieldChoices(field, type)
       .map((option) => {
         const selected = option.value === field.value ? " selected" : "";
-        return `<option value="${escapeHtml(option.value ?? option.label)}"${selected}>${escapeHtml(option.label)}</option>`;
+        return `<option value="${choiceValueAttribute(option)}"${selected}>${escapeHtml(option.label)}</option>`;
       })
       .join("");
     return `<div class="mcc-field"><label for="${fieldId}">${label}${requiredMark}</label>
@@ -1338,7 +1346,7 @@ function renderFormField(field, formId) {
         const choiceId = `${fieldId}-${index}`;
         const checked = option.value === field.value ? " checked" : "";
         return `<label class="mcc-choice" for="${choiceId}">
-<input type="${type}" id="${choiceId}" name="${name}" value="${escapeHtml(option.value ?? option.label)}"${checked}${nativeRequired}>
+<input type="${type}" id="${choiceId}" name="${name}" value="${choiceValueAttribute(option)}"${checked}${nativeRequired}>
 ${escapeHtml(option.label)}</label>`;
       })
       .join("\n");
