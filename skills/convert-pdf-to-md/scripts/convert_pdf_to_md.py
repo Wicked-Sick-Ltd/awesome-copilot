@@ -294,8 +294,11 @@ def _install_output(build_dir: Path, dest_dir: Path, work_dir: Path, stem: str):
         if os.path.lexists(previous) and not os.path.lexists(dest_dir):
             try:
                 os.rename(previous, dest_dir)
-            except OSError:
-                pass
+            except OSError as exc:
+                print(
+                    f"WARNING: could not restore {dest_dir} after a failed replace: {exc}",
+                    file=sys.stderr,
+                )
         raise
 
 
