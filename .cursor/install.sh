@@ -83,8 +83,12 @@ install_python_skills() {
     rm -rf "$ROOT/.venv"
     if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
       log "Installing python3-venv so skill packages can be installed"
-      sudo apt-get update
-      sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv
+      # Optional. A mirror or sudo failure must not abort catalog install.
+      if ! sudo apt-get update \
+        || ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv; then
+        warn "Could not install python3-venv. Skipped skill packages in skills/*/scripts/requirements.txt. Catalog install does not need them."
+        return 0
+      fi
     fi
   fi
 

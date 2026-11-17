@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { access, constants, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -67,4 +69,37 @@ test("node_meets_minimum enforces Astro's Node 22.12.0 floor", () => {
     { cwd: root },
   );
   assert.equal(result.status, 0, result.stderr?.toString());
+});
+
+test("apt failure while installing python3-venv does not abort catalog install", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ac-install-"));
+  try {
+    mkdirSync(path.join(dir, ".cursor"), { recursive: true });
+    mkdirSync(path.join(dir, "skills/demo/scripts"), { recursive: true });
+    mkdirSync(path.join(dir, "bin"), { recursive: true });
+    writeFileSync(path.join(dir, "skills/demo/scripts/requirements.txt"), "unused\n");
+    writeFileSync(
+      path.join(dir, ".cursor/install.sh"),
+      await readFile(path.join(root, ".cursor/install.sh")),
+    );
+    for (const name of ["python3", "sudo", "apt-get"]) {
+      const file = path.join(dir, "bin", name);
+      writeFileSync(file, "#!/bin/bash\nexit 1\n");
+      chmodSync(file, 0o755);
+    }
+
+    const result = spawnSync(
+      "bash",
+      ["-c", "source .cursor/install.sh\ninstall_python_skills\necho CONTINUED\n"],
+      {
+        cwd: dir,
+        env: { ...process.env, PATH: `${path.join(dir, "bin")}:${process.env.PATH}` },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr?.toString());
+    assert.match(result.stdout.toString(), /CONTINUED/);
+    assert.match(result.stderr.toString(), /Could not install python3-venv/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
