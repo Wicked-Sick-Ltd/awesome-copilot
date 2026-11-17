@@ -17,7 +17,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest import mock
+import unittest.mock as mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "convert_pdf_to_md.py"
 
@@ -153,6 +153,26 @@ class ConvertPdfOutputTests(unittest.TestCase):
 
         self.assert_user_folder_intact(folder)
         self.assertEqual(code, self.module.EXIT_CONVERSION_FAILED)
+
+    def test_inspect_failure_during_replace_keeps_earlier_output(self):
+        source = self.tmp / "report.pdf"
+        _write_pdf(source)
+        self.assertEqual(self.run_main(source)[0], self.module.EXIT_OK)
+        dest = self.tmp / "report"
+        earlier = (dest / "report.md").read_text(encoding="utf-8")
+        real_owned = self.module._owned_files
+
+        def flaky(folder, stem):
+            if Path(folder).name == "previous":
+                raise OSError("simulated inspect failure")
+            return real_owned(folder, stem)
+
+        with mock.patch.object(self.module, "_owned_files", flaky):
+            code, _, _ = self.run_main(source)
+
+        self.assertEqual(code, self.module.EXIT_CONVERSION_FAILED)
+        self.assertTrue(dest.is_dir())
+        self.assertEqual((dest / "report.md").read_text(encoding="utf-8"), earlier)
 
     def test_destination_swapped_after_check_is_restored_not_deleted(self):
         source = self.tmp / "report.pdf"

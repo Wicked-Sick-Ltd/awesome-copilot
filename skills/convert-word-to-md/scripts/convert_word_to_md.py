@@ -259,34 +259,41 @@ def _install_output(build_dir: Path, dest_dir: Path, work_dir: Path, stem: str):
         return
     previous = work_dir / "previous"
     os.rename(dest_dir, previous)
-    moved = os.lstat(previous)
-    if (moved.st_dev, moved.st_ino) != (before.st_dev, before.st_ino) \
-            or not _is_plain_dir(moved) or _owned_files(previous, stem) is None:
-        os.rename(previous, dest_dir)
-        raise UnsafeDestinationError(f"{dest_dir} changed while it was being replaced; left as is")
     try:
+        moved = os.lstat(previous)
+        if (moved.st_dev, moved.st_ino) != (before.st_dev, before.st_ino) \
+                or not _is_plain_dir(moved) or _owned_files(previous, stem) is None:
+            raise UnsafeDestinationError(f"{dest_dir} changed while it was being replaced; left as is")
         os.rename(build_dir, dest_dir)
-    except OSError:
-        os.rename(previous, dest_dir)
+    except BaseException:
+        if os.path.lexists(previous) and not os.path.lexists(dest_dir):
+            try:
+                os.rename(previous, dest_dir)
+            except OSError:
+                pass
         raise
 
 
-def _discard_work_dir(work_dir: Path, stem: str):
-    """Remove the temporary work_dir: the unused build (written only by this
-    run) and the converter-owned files of a replaced output folder."""
+def _discard_work_dir(work_dir: Path, dest_dir: Path, stem: str):
+    """Remove the temporary work_dir. If the new folder never landed, put the
+    previous output back instead of deleting it."""
     build_dir = work_dir / "new"
     if build_dir.exists():
         shutil.rmtree(build_dir)
     previous = work_dir / "previous"
     try:
-        owned = _owned_files(previous, stem) if os.path.lexists(previous) else []
-        for path in owned or []:
-            path.unlink()
-        if owned is not None:
-            for folder in (previous / "img", previous):
-                if os.path.lexists(folder):
-                    folder.rmdir()
-        work_dir.rmdir()
+        if os.path.lexists(previous) and not os.path.lexists(dest_dir):
+            os.rename(previous, dest_dir)
+        elif os.path.lexists(previous):
+            owned = _owned_files(previous, stem)
+            for path in owned or []:
+                path.unlink()
+            if owned is not None:
+                for folder in (previous / "img", previous):
+                    if os.path.lexists(folder):
+                        folder.rmdir()
+        if os.path.lexists(work_dir):
+            work_dir.rmdir()
     except OSError as exc:
         print(f"WARNING: could not clean up temporary folder {work_dir}: {exc}", file=sys.stderr)
 
@@ -348,7 +355,7 @@ def convert_one(md, source: Path, dest_dir: Path) -> bool:
         return False
     finally:
         if work_dir is not None:
-            _discard_work_dir(work_dir, stem)
+            _discard_work_dir(work_dir, dest_dir, stem)
 
     img_note = f", {len(image_files)} image(s)" if image_files else ""
     print(f"OK      {source} -> {md_path}{img_note}")
