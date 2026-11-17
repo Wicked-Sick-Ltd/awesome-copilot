@@ -29,6 +29,81 @@ if resource is not None:
         resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
     except (AttributeError, OSError, ValueError):
         pass
+
+SANDBOX_UNAVAILABLE_EXIT = 78
+
+def confine_linux(workspace):
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    syscall = libc.syscall
+    syscall.restype = ctypes.c_long
+
+    def check(result, what):
+        if result < 0:
+            error = ctypes.get_errno()
+            raise OSError(error, f"{what}: {os.strerror(error)}")
+        return result
+
+    abi = check(syscall(ctypes.c_long(444), None, ctypes.c_size_t(0), ctypes.c_uint32(1)), "Landlock is unavailable")
+    # Every filesystem write, create, remove, and rename right; reads stay governed by the audit hook.
+    access = 0x2 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400 | 0x800 | 0x1000
+    if abi >= 2:
+        access |= 0x2000
+    if abi >= 3:
+        access |= 0x4000
+
+    class RulesetAttr(ctypes.Structure):
+        _fields_ = [("handled_access_fs", ctypes.c_uint64)]
+
+    class PathBeneathAttr(ctypes.Structure):
+        _pack_ = 1
+        _fields_ = [("allowed_access", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
+
+    ruleset = RulesetAttr(access)
+    ruleset_fd = check(syscall(ctypes.c_long(444), ctypes.byref(ruleset), ctypes.c_size_t(ctypes.sizeof(ruleset)), ctypes.c_uint32(0)), "landlock_create_ruleset")
+    try:
+        workspace_fd = os.open(workspace, os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            rule = PathBeneathAttr(access, workspace_fd)
+            check(syscall(ctypes.c_long(445), ctypes.c_int(ruleset_fd), ctypes.c_int(1), ctypes.byref(rule), ctypes.c_uint32(0)), "landlock_add_rule")
+        finally:
+            os.close(workspace_fd)
+        check(libc.prctl(ctypes.c_int(38), ctypes.c_ulong(1), ctypes.c_ulong(0), ctypes.c_ulong(0), ctypes.c_ulong(0)), "PR_SET_NO_NEW_PRIVS")
+        check(syscall(ctypes.c_long(446), ctypes.c_int(ruleset_fd), ctypes.c_uint32(0)), "landlock_restrict_self")
+    finally:
+        os.close(ruleset_fd)
+
+def confine_darwin(workspace):
+    import ctypes
+    libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    sandbox_init = libsystem.sandbox_init
+    sandbox_init.argtypes = [ctypes.c_char_p, ctypes.c_uint64, ctypes.POINTER(ctypes.c_char_p)]
+    sandbox_init.restype = ctypes.c_int
+    quoted = str(workspace).replace("\\", "\\\\").replace('"', '\\"')
+    profile = f'(version 1)(allow default)(deny file-write* (require-not (subpath "{quoted}")))'
+    error = ctypes.c_char_p()
+    if sandbox_init(profile.encode("utf-8"), 0, ctypes.byref(error)) != 0:
+        detail = error.value.decode("utf-8", "replace") if error.value else "unknown error"
+        raise OSError(f"sandbox_init: {detail}")
+
+# The audit hook cannot see every call that creates filesystem nodes (os.mkfifo and os.mknod raise
+# no audit event, and exec'd programs run without the hook), so writes are confined by the kernel.
+# The confinement is inherited across exec and cannot be lifted by the cell.
+if sys.platform != "win32":
+    try:
+        if sys.platform.startswith("linux"):
+            confine_linux(WORKSPACE)
+        elif sys.platform == "darwin":
+            confine_darwin(WORKSPACE)
+        else:
+            raise OSError(f"no filesystem sandbox is available on {sys.platform}")
+    except Exception as exc:
+        sys.stderr.write(
+            "Notebook execution needs a filesystem sandbox that confines writes to its temporary "
+            f"directory (Landlock on Linux, Seatbelt on macOS), and it could not be enabled: {exc}\n"
+        )
+        sys.exit(SANDBOX_UNAVAILABLE_EXIT)
+
 READ_ROOTS = [WORKSPACE]
 for entry in [sys.base_prefix, sys.prefix, *sys.path]:
     if entry:
@@ -187,8 +262,16 @@ for index, cell in enumerate(payload.get("cells", [])):
 print(json.dumps({"results": results}))
 `;
 
+export const sandboxUnavailableExitCode = 78;
+
+const supportedRuntimes = ["python3", "python"];
+
+// Notebook metadata is untrusted, so it may only pick one of the supported interpreters.
 export function runtimeCommands(preferredRuntime) {
-    return preferredRuntime ? [preferredRuntime] : ["python3", "python"];
+    if (!preferredRuntime) {
+        return [...supportedRuntimes];
+    }
+    return supportedRuntimes.includes(preferredRuntime) ? [preferredRuntime] : null;
 }
 
 export function spawnPythonRunner(command, executionDir, detached) {

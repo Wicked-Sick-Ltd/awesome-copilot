@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
-import { runtimeCommands, spawnPythonRunner } from "./python-runner.mjs";
+import { runtimeCommands, sandboxUnavailableExitCode, spawnPythonRunner } from "./python-runner.mjs";
 
 const extensionRoot = path.dirname(fileURLToPath(import.meta.url));
 const servers = new Map();
@@ -644,6 +644,10 @@ async function runPython(payload, notebookId, preferredRuntime) {
     const executionDir = await mkdtemp(path.join(tmpdir(), "copilot-notebook-"));
     const errors = [];
     const commands = runtimeCommands(preferredRuntime);
+    if (!commands) {
+        await rm(executionDir, { recursive: true, force: true });
+        throw new CanvasError("runtime_unavailable", "The selected Python runtime is unavailable.");
+    }
     try {
         for (const command of commands) {
             try {
@@ -734,6 +738,10 @@ function runPythonCommand(command, payload, notebookId, executionDir) {
         });
         child.on("close", (code) => {
             if (settled) {
+                return;
+            }
+            if (code === sandboxUnavailableExitCode) {
+                finish(() => reject(new CanvasError("sandbox_unavailable", stderr.trim())));
                 return;
             }
             if (code !== 0) {

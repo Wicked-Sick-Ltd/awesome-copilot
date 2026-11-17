@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runtimeCommands, spawnPythonRunner } from "./python-runner.mjs";
+import { runtimeCommands, sandboxUnavailableExitCode, spawnPythonRunner } from "./python-runner.mjs";
 
 const posixOnly = { skip: process.platform === "win32" ? "named pipes are not filesystem nodes on Windows" : false };
 const mkfifoBinary = ["/usr/bin/mkfifo", "/bin/mkfifo"].find((candidate) => existsSync(candidate));
@@ -73,11 +73,15 @@ test("an exec'd program cannot create a named pipe outside the execution directo
     assertNoNode(target);
 });
 
-test("cells still run and can write inside the execution directory", posixOnly, async () => {
+test("cells still run and can write inside the execution directory", posixOnly, async (t) => {
     const run = await runCells([
         "import os, pathlib\npathlib.Path('out.txt').write_text('ok')\nos.mkfifo('local-pipe')",
         "sorted(os.listdir('.'))",
     ]);
+    if (run.code === sandboxUnavailableExitCode) {
+        t.skip(`this host has no filesystem sandbox: ${run.stderr.trim()}`);
+        return;
+    }
     assert.equal(run.code, 0, run.stderr);
     assert.equal(run.results[0].error, null);
     assert.equal(run.results[1].resultData["text/plain"], "['local-pipe', 'out.txt']");
