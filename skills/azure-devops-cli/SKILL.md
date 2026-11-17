@@ -21,7 +21,33 @@ brew install azure-cli  # macOS
 (
   set -euo pipefail
   AZ_VER=2.81.0
+  # Keep a CLI that is already at least this version. An exact install refuses to downgrade.
+  if command -v az >/dev/null 2>&1; then
+    AZ_CURRENT=$(az version -o tsv --query '"azure-cli"' 2>/dev/null || true)
+    if [ -n "${AZ_CURRENT}" ] && [ "$(printf '%s\n%s\n' "$AZ_VER" "$AZ_CURRENT" | sort -V | head -n1)" = "$AZ_VER" ]; then
+      exit 0
+    fi
+  fi
+  sudo apt-get update
+  sudo apt-get install -y ca-certificates curl gnupg lsb-release
+  AZ_ID=$(lsb_release -is)
   AZ_DIST=$(lsb_release -cs)
+  # Mint's own codename is not an Azure CLI suite. Use the Ubuntu base it reports.
+  if [ "$AZ_ID" = "LinuxMint" ]; then
+    AZ_OS_RELEASE_FILE=${AZ_OS_RELEASE:-/etc/os-release}
+    AZ_DIST=$(. "$AZ_OS_RELEASE_FILE"; printf '%s' "${UBUNTU_CODENAME:-$AZ_DIST}")
+  fi
+  # 2.81.0-1 was published for these suites. Anything newer falls back the way
+  # the signed apt installer does: jammy for Ubuntu-family, bookworm for Debian.
+  case "$AZ_DIST" in
+    noble|jammy|focal|bookworm|bullseye) ;;
+    *)
+      case "$AZ_ID" in
+        Debian) AZ_DIST=bookworm ;;
+        *) AZ_DIST=jammy ;;
+      esac
+      ;;
+  esac
   # Microsoft (Release signing) <gpgsecurity@microsoft.com>
   MS_KEY_FPR=BC528686B50D79E339D3721CEB3E94ADBE1229CF
   GNUPGHOME=$(mktemp -d); export GNUPGHOME

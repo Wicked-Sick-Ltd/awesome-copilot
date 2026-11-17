@@ -46,14 +46,22 @@ esac
 printf 'unprivileged apt-get %s\\n' "$*" >> "$SANDBOX/sudo.log"
 `,
   lsb_release: `#!/usr/bin/env bash
-echo ${DIST}
+case "\${1:-}" in
+  -is) printf '%s\\n' "\${DIST_ID:-Ubuntu}" ;;
+  *) printf '%s\\n' "\${DIST_CODE:-noble}" ;;
+esac
 `,
   dpkg: `#!/usr/bin/env bash
 echo amd64
 `,
   brew: "#!/usr/bin/env bash\nexit 0\n",
   winget: "#!/usr/bin/env bash\nexit 0\n",
-  az: "#!/usr/bin/env bash\nexit 0\n",
+  az: `#!/usr/bin/env bash
+if [ -n "\${AZ_STUB_VERSION:-}" ]; then
+  printf '%s\\n' "\$AZ_STUB_VERSION"
+fi
+exit 0
+`,
 };
 
 function prerequisitesScript(skillPath) {
@@ -105,7 +113,7 @@ after(() => {
   fs.rmSync(work, { recursive: true, force: true });
 });
 
-function runPrerequisites(skillPath, keyFile) {
+function runPrerequisites(skillPath, keyFile, options = {}) {
   const sandbox = fs.mkdtempSync(path.join(work, "run-"));
   const bin = path.join(sandbox, "bin");
   fs.mkdirSync(bin);
@@ -127,6 +135,10 @@ function runPrerequisites(skillPath, keyFile) {
       TMPDIR: path.join(sandbox, "tmp"),
       KEY_FILE: keyFile,
       PAYLOAD_FILE: payload,
+      DIST_ID: options.distId || "Ubuntu",
+      DIST_CODE: options.distCode || DIST,
+      AZ_STUB_VERSION: options.azVersion || "",
+      AZ_OS_RELEASE: options.osRelease || "/etc/os-release",
     },
   });
   const read = (p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "");
@@ -153,10 +165,12 @@ for (const skillPath of SKILLS) {
       const run = runPrerequisites(skillPath, attackerKey);
       assert.equal(fs.existsSync(run.keyring), false, "attacker key was installed as an apt keyring");
       assert.equal(run.sources, "", "apt source was added without the pinned key");
+      const apt = run.sudoCalls.filter((call) => call.includes("apt-get"));
+      assert.ok(apt.some((call) => /lsb-release/.test(call) && /gnupg/.test(call)), "prerequisites were not installed");
       assert.deepEqual(
-        run.sudoCalls.filter((call) => call.includes("apt-get")),
+        apt.filter((call) => /azure-cli/.test(call)),
         [],
-        "apt-get ran without the pinned key",
+        "azure-cli apt ran without the pinned key",
       );
       assert.deepEqual(run.leftoverTmp, [], "temporary gpg home was not cleaned up");
     });
@@ -167,7 +181,10 @@ for (const skillPath of SKILLS) {
       const run = runPrerequisites(skillPath, script);
       assert.equal(run.payloadRan, false);
       assert.equal(fs.existsSync(run.keyring), false);
-      assert.deepEqual(run.sudoCalls.filter((call) => call.includes("apt-get")), []);
+      assert.deepEqual(
+        run.sudoCalls.filter((call) => /azure-cli/.test(call)),
+        [],
+      );
     });
 
     test("installs a version-pinned azure-cli trusted only by the pinned Microsoft key", () => {
@@ -180,16 +197,58 @@ for (const skillPath of SKILLS) {
       assert.match(run.sources, /^Signed-by: \/etc\/apt\/keyrings\/microsoft\.gpg$/m);
 
       const installs = run.sudoCalls.filter((call) => /^apt-get\b.*\binstall\b/.test(call));
-      assert.equal(installs.length, 1, run.sudoCalls.join("\n"));
-      const pinned = installs[0].match(/\bazure-cli=(\d+\.\d+\.\d+)-1~(\S+)/);
-      assert.ok(pinned, `azure-cli is not version-pinned: ${installs[0]}`);
+      assert.ok(
+        installs.some((call) => /\bcurl\b/.test(call) && /gnupg/.test(call) && /lsb-release/.test(call)),
+        `prerequisites were not installed:\n${run.sudoCalls.join("\n")}`,
+      );
+      const cliInstalls = installs.filter((call) => /azure-cli=/.test(call));
+      assert.equal(cliInstalls.length, 1, run.sudoCalls.join("\n"));
+      const pinned = cliInstalls[0].match(/\bazure-cli=(\d+\.\d+\.\d+)-1~(\S+)/);
+      assert.ok(pinned, `azure-cli is not version-pinned: ${cliInstalls[0]}`);
       assert.equal(pinned[2], DIST);
+      assert.match(run.sources, new RegExp(`^Suites: ${DIST}$`, "m"));
 
       const stated = fs
         .readFileSync(path.join(ROOT, skillPath), "utf8")
         .match(/^\*\*CLI Version:\*\*\s*(\d+\.\d+\.\d+)/m);
       if (stated) assert.equal(pinned[1], stated[1], "pinned version differs from the skill's CLI Version");
       assert.deepEqual(run.leftoverTmp, [], "temporary gpg home was not cleaned up");
+    });
+
+    test("unknown Ubuntu and Debian suites fall back to a suite that published the pin", () => {
+      const ubuntu = runPrerequisites(skillPath, genuinePlusAttackerKey, { distId: "Ubuntu", distCode: "resolute" });
+      assert.equal(ubuntu.result.status, 0, ubuntu.result.stderr);
+      assert.match(ubuntu.sources, /^Suites: jammy$/m);
+      assert.ok(ubuntu.sudoCalls.some((call) => call.includes("azure-cli=2.81.0-1~jammy")));
+
+      const debian = runPrerequisites(skillPath, genuinePlusAttackerKey, { distId: "Debian", distCode: "trixie" });
+      assert.equal(debian.result.status, 0, debian.result.stderr);
+      assert.match(debian.sources, /^Suites: bookworm$/m);
+      assert.ok(debian.sudoCalls.some((call) => call.includes("azure-cli=2.81.0-1~bookworm")));
+    });
+
+    test("Linux Mint uses its Ubuntu base codename when that suite published the pin", () => {
+      const osRelease = path.join(work, `os-release-${skillPath.replaceAll("/", "-")}`);
+      fs.writeFileSync(osRelease, "ID=linuxmint\nUBUNTU_CODENAME=noble\n");
+      const run = runPrerequisites(skillPath, genuinePlusAttackerKey, {
+        distId: "LinuxMint",
+        distCode: "xia",
+        osRelease,
+      });
+      assert.equal(run.result.status, 0, run.result.stderr);
+      assert.match(run.sources, /^Suites: noble$/m);
+      assert.ok(run.sudoCalls.some((call) => call.includes("azure-cli=2.81.0-1~noble")));
+    });
+
+    test("an already-newer azure-cli is kept instead of downgraded", () => {
+      const newer = runPrerequisites(skillPath, genuinePlusAttackerKey, { azVersion: "2.90.0" });
+      assert.equal(newer.result.status, 0, newer.result.stderr);
+      assert.deepEqual(newer.sudoCalls.filter((call) => /azure-cli/.test(call)), []);
+      assert.equal(newer.sources, "");
+
+      const older = runPrerequisites(skillPath, genuinePlusAttackerKey, { azVersion: "2.70.0" });
+      assert.equal(older.result.status, 0, older.result.stderr);
+      assert.ok(older.sudoCalls.some((call) => call.includes(`azure-cli=2.81.0-1~${DIST}`)));
     });
   });
 }
