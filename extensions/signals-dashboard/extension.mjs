@@ -5,7 +5,7 @@
 
 import { createServer } from "node:http";
 import { statSync, accessSync, realpathSync, constants as fsConstants } from "node:fs";
-import { readdir, readFile, writeFile, stat, rename, unlink, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, stat, lstat, realpath, rename, unlink, mkdir } from "node:fs/promises";
 import { join, delimiter, isAbsolute, sep, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -82,11 +82,11 @@ function isValidDeskName(name) {
 // one workshop repo (coordinated through journals + .signals + Cairn) instead
 // of spinning off an isolated worktree elsewhere on disk.
 //
-// deskPath has already been confirmed to exist by the caller. Before launching
-// we re-resolve it with realpath and require it to stay inside the workshop root
-// (isInsideRoot), which defeats a planted desks/foo -> /outside symlink; the
-// path is then only ever passed as a spawn cwd, an argv element, or a
-// single-quoted literal inside the macOS Terminal command — never concatenated
+// deskPath is the real path returned by resolveDeskDir, which already refused
+// symlinked desks and anything outside the workshop. Before launching we
+// re-resolve it with realpath and require it to stay inside the workshop root
+// (isInsideRoot); the path is then only ever passed as a spawn cwd, an argv
+// element, or a single-quoted literal inside the macOS Terminal command — never concatenated
 // raw onto a command line — so no character filtering of the path is required.
 //
 // Local Delegation is orthogonal to repo/connected: it never changes the tool
@@ -365,21 +365,48 @@ function osaStringLiteral(s) {
 }
 
 // Resolve symlinks on both sides and confirm the target is the workshop root
-// itself or lives beneath it. The callers locate a desk with stat(), which
-// follows symlinks, so a committed desks/foo -> /outside symlink would otherwise
-// launch the agent with an external working directory, breaking the inside-repo
-// guarantee.
+// itself or lives beneath it. Used for PATH lookups (so a workshop can't plant
+// its own terminal or agent binary) and as the launcher's last check before
+// spawning in a desk.
 function isInsideRoot(root, target) {
     try {
-        const r = realpathSync(root);
-        const t = realpathSync(target);
-        if (t === r) return true;
-        // A filesystem root ("/" or "C:\") already ends with the separator, so
-        // don't append a second one or every desk below it would fail the prefix
-        // test and opening would always fall back.
-        const prefix = r.endsWith(sep) ? r : r + sep;
-        return t.startsWith(prefix);
+        return isRealPathWithin(realpathSync(root), realpathSync(target));
     } catch { return false; }
+}
+
+function isRealPathWithin(realRoot, realTarget) {
+    if (realTarget === realRoot) return true;
+    // A filesystem root ("/" or "C:\") already ends with the separator, so
+    // don't append a second one or every desk below it would fail the prefix
+    // test and opening would always fall back.
+    const prefix = realRoot.endsWith(sep) ? realRoot : realRoot + sep;
+    return realTarget.startsWith(prefix);
+}
+
+// The single desk lookup behind get_desk_path, open_desk, and /api/open/.
+// A workshop checkout is untrusted and git recreates committed symlinks, so
+// desks/<name>, or desks/ itself, can point anywhere on disk. A desk entry must
+// be a real directory (not a symlink, matching the board's readdir listing),
+// its real path must stay inside the real workshop root, and the directory
+// realpath reached must be the same inode lstat saw. Callers get that real
+// path back and hand out or launch from it, never the lexical join.
+async function resolveDeskDir(workshopDir, deskName) {
+    if (!isValidDeskName(deskName)) return null;
+    let realRoot;
+    try { realRoot = await realpath(workshopDir); } catch { return null; }
+    for (const subdir of ["desks", "classroom"]) {
+        const candidate = join(workshopDir, subdir, deskName);
+        try {
+            const entry = await lstat(candidate, { bigint: true });
+            if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
+            const realDesk = await realpath(candidate);
+            if (realDesk === realRoot || !isRealPathWithin(realRoot, realDesk)) continue;
+            const reached = await lstat(realDesk, { bigint: true });
+            if (!reached.isDirectory() || reached.dev !== entry.dev || reached.ino !== entry.ino) continue;
+            return realDesk;
+        } catch {}
+    }
+    return null;
 }
 
 function preferenceStatePath(workshopDir) {
@@ -1379,30 +1406,25 @@ async function startServer(instanceId, workshopDir) {
             const preference = await readLocalDelegationPreference(workshopDir);
             const localDelegation = currentLocalDelegationLaunch(preference);
             const launchPreferences = servers.get(instanceId).launchPreferences;
-            for (const subdir of ["desks", "classroom"]) {
-                const deskPath = join(workshopDir, subdir, deskName);
-                try {
-                    const s = await stat(deskPath);
-                    if (s.isDirectory()) {
-                        const launched = await launchDeskConsole(
-                            deskPath, deskName, workshopDir, profile, localDelegation, launchPreferences);
-                        res.writeHead(200, { "Content-Type": "application/json" });
-                        res.end(JSON.stringify({
-                            ok: true,
-                            deskName,
-                            deskPath,
-                            launched,
-                            profile,
-                            launchPreferences,
-                            localDelegation,
-                            localDelegationNotice: formatLocalDelegationOpenNotice(localDelegation),
-                        }));
-                        return;
-                    }
-                } catch {}
+            const deskPath = await resolveDeskDir(workshopDir, deskName);
+            if (!deskPath) {
+                res.writeHead(404, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ ok: false, error: "Desk not found" }));
+                return;
             }
-            res.writeHead(404, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ ok: false, error: "Desk not found" }));
+            const launched = await launchDeskConsole(
+                deskPath, deskName, workshopDir, profile, localDelegation, launchPreferences);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+                ok: true,
+                deskName,
+                deskPath,
+                launched,
+                profile,
+                launchPreferences,
+                localDelegation,
+                localDelegationNotice: formatLocalDelegationOpenNotice(localDelegation),
+            }));
             return;
         }
 
@@ -1510,17 +1532,9 @@ const session = await joinSession({
                         const entry = servers.get(ctx.instanceId);
                         if (!entry) return { error: "Dashboard not open" };
                         if (!isValidDeskName(ctx.input.deskName)) return { error: "Invalid desk name" };
-                        // Check both desks/ and classroom/
-                        for (const subdir of ["desks", "classroom"]) {
-                            const deskPath = join(entry.workshopDir, subdir, ctx.input.deskName);
-                            try {
-                                const s = await stat(deskPath);
-                                if (s.isDirectory()) {
-                                    return { ok: true, deskName: ctx.input.deskName, deskPath, workshopDir: entry.workshopDir };
-                                }
-                            } catch {}
-                        }
-                        return { error: `Desk '${ctx.input.deskName}' not found` };
+                        const deskPath = await resolveDeskDir(entry.workshopDir, ctx.input.deskName);
+                        if (!deskPath) return { error: `Desk '${ctx.input.deskName}' not found` };
+                        return { ok: true, deskName: ctx.input.deskName, deskPath, workshopDir: entry.workshopDir };
                     },
                 },
                 {
@@ -1561,33 +1575,26 @@ const session = await joinSession({
                             ?? await readLocalDelegationPreference(entry.workshopDir);
                         const preference = normalizeLocalDelegationPreference(preferenceInput, "off");
                         const localDelegation = currentLocalDelegationLaunch(preference);
-                        for (const subdir of ["desks", "classroom"]) {
-                            const deskPath = join(entry.workshopDir, subdir, ctx.input.deskName);
-                            try {
-                                const s = await stat(deskPath);
-                                if (s.isDirectory()) {
-                                    const launched = await launchDeskConsole(
-                                        deskPath,
-                                        ctx.input.deskName,
-                                        entry.workshopDir,
-                                        profile,
-                                        localDelegation,
-                                        launchPreferences);
-                                    return {
-                                        ok: true,
-                                        deskName: ctx.input.deskName,
-                                        deskPath,
-                                        launched,
-                                        workshopDir: entry.workshopDir,
-                                        profile,
-                                        launchPreferences,
-                                        localDelegation,
-                                        localDelegationNotice: formatLocalDelegationOpenNotice(localDelegation),
-                                    };
-                                }
-                            } catch {}
-                        }
-                        return { error: `Desk '${ctx.input.deskName}' not found` };
+                        const deskPath = await resolveDeskDir(entry.workshopDir, ctx.input.deskName);
+                        if (!deskPath) return { error: `Desk '${ctx.input.deskName}' not found` };
+                        const launched = await launchDeskConsole(
+                            deskPath,
+                            ctx.input.deskName,
+                            entry.workshopDir,
+                            profile,
+                            localDelegation,
+                            launchPreferences);
+                        return {
+                            ok: true,
+                            deskName: ctx.input.deskName,
+                            deskPath,
+                            launched,
+                            workshopDir: entry.workshopDir,
+                            profile,
+                            launchPreferences,
+                            localDelegation,
+                            localDelegationNotice: formatLocalDelegationOpenNotice(localDelegation),
+                        };
                     },
                 },
             ],

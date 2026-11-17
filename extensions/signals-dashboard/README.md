@@ -68,8 +68,15 @@ The canvas also exposes actions Copilot can invoke directly:
 - `refresh` — force a rescan and return current signal data as JSON.
 - `stash` — stash a desk by `deskName`.
 - `restore` — restore a stashed desk by `deskName`.
+- `get_desk_path` — resolve a desk by `deskName` to its directory without opening it.
 - `open_desk` — open a desk with optional `profile: "repo" | "connected"` and
   optional `localDelegation: "off" | "on"`, `model`, `reasoningEffort`, and `context`.
+
+`get_desk_path`, `open_desk`, and the dashboard's **open** buttons only accept a
+desk that is a real directory directly under `desks/` or `classroom/`. A desk
+entry that is a symlink, or a desk whose real path falls outside the real
+workshop root (for example under a symlinked `desks/` folder), is reported as
+not found and no path is returned. A resolved desk is returned as its real path.
 
 ## Desk launch profiles
 

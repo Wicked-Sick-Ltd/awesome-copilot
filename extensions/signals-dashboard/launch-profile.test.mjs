@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -97,10 +97,23 @@ async function loadDashboard(t, platform = process.platform) {
     await module.evaluate();
     const instanceId = "launch-test";
     t.after(() => canvas.onClose({ instanceId }));
-    const open = (input = {}) => canvas.open({ instanceId, input: { workshopDir, ...input } });
-    const launch = (input = {}) => canvas.actions.find((action) => action.name === "open_desk")
-        .handler({ instanceId, input: { deskName: "probe", profile: "connected", ...input } });
-    return { open, launch, spawned };
+    let url;
+    const open = async (input = {}) => {
+        const opened = await canvas.open({ instanceId, input: { workshopDir, ...input } });
+        url = opened.url;
+        return opened;
+    };
+    const action = (name, input) => canvas.actions.find((a) => a.name === name)
+        .handler({ instanceId, input });
+    const launch = (input = {}) => action("open_desk", { deskName: "probe", profile: "connected", ...input });
+    const httpOpen = async (deskName) => {
+        const page = await (await fetch(url)).text();
+        const token = JSON.parse(page.match(/const WORKSHOP_TOKEN = (".*?");/)[1]);
+        const res = await fetch(new URL(`/api/open/${encodeURIComponent(deskName)}?profile=connected`, url),
+            { method: "POST", headers: { "x-workshop-token": token } });
+        return { status: res.status, body: await res.json() };
+    };
+    return { open, launch, action, httpOpen, spawned, root, workshopDir };
 }
 
 test("normalizes supported profiles and defaults unknown values to repo", () => {
@@ -342,4 +355,103 @@ test("macOS terminal command does not launch if the desk disappears", {
     assert.equal(result.error, undefined);
     assert.notEqual(result.status, 0);
     assert.equal(result.stdout, "");
+});
+
+// A workshop checkout is untrusted content: git recreates committed symlinks, so
+// desks/<name> or the desks/ folder itself can point anywhere on disk.
+const symlinkSkip = process.platform === "win32" ? "symlink creation needs privileges on Windows" : false;
+
+function plantOutside(dashboard) {
+    const outside = join(dashboard.root, "outside");
+    mkdirSync(join(outside, "secret-desk"), { recursive: true });
+    writeFileSync(join(outside, "credentials.txt"), "placeholder\n");
+    return outside;
+}
+
+function assertRefusedWithoutPath(result, outside) {
+    assert.ok(result.error, `expected an error, got ${JSON.stringify(result)}`);
+    assert.notEqual(result.ok, true);
+    assert.equal(result.deskPath, undefined);
+    assert.ok(!JSON.stringify(result).includes(outside), JSON.stringify(result));
+}
+
+test("get_desk_path resolves a real desk to its real path", async (t) => {
+    const dashboard = await loadDashboard(t);
+    await dashboard.open();
+    const result = await dashboard.action("get_desk_path", { deskName: "probe" });
+    assert.equal(result.ok, true);
+    assert.equal(result.deskPath, realpathSync(join(dashboard.workshopDir, "desks", "probe")));
+});
+
+test("get_desk_path refuses a desk symlink that escapes the workshop", { skip: symlinkSkip }, async (t) => {
+    const dashboard = await loadDashboard(t);
+    const outside = plantOutside(dashboard);
+    symlinkSync(outside, join(dashboard.workshopDir, "desks", "notes"), "dir");
+    await dashboard.open();
+    assertRefusedWithoutPath(await dashboard.action("get_desk_path", { deskName: "notes" }), outside);
+});
+
+test("get_desk_path refuses a desk under a symlinked classroom folder", { skip: symlinkSkip }, async (t) => {
+    const dashboard = await loadDashboard(t);
+    const outside = plantOutside(dashboard);
+    symlinkSync(outside, join(dashboard.workshopDir, "classroom"), "dir");
+    await dashboard.open();
+    assertRefusedWithoutPath(await dashboard.action("get_desk_path", { deskName: "secret-desk" }), outside);
+});
+
+test("get_desk_path refuses a desk symlink even when it points inside the workshop", { skip: symlinkSkip }, async (t) => {
+    const dashboard = await loadDashboard(t);
+    const outside = plantOutside(dashboard);
+    symlinkSync(join(dashboard.workshopDir, "desks", "probe"), join(dashboard.workshopDir, "desks", "alias"), "dir");
+    await dashboard.open();
+    assertRefusedWithoutPath(await dashboard.action("get_desk_path", { deskName: "alias" }), outside);
+});
+
+test("open_desk refuses an escaping desk symlink without returning its path", { skip: symlinkSkip }, async (t) => {
+    const dashboard = await loadDashboard(t);
+    const outside = plantOutside(dashboard);
+    symlinkSync(outside, join(dashboard.workshopDir, "desks", "notes"), "dir");
+    await dashboard.open();
+    assertRefusedWithoutPath(await dashboard.launch({ deskName: "notes" }), outside);
+    assert.equal(dashboard.spawned.length, 0);
+});
+
+test("open_desk refuses a desk under a symlinked desks folder", { skip: symlinkSkip }, async (t) => {
+    const dashboard = await loadDashboard(t);
+    const outside = plantOutside(dashboard);
+    rmSync(join(dashboard.workshopDir, "desks"), { recursive: true });
+    symlinkSync(outside, join(dashboard.workshopDir, "desks"), "dir");
+    await dashboard.open();
+    assertRefusedWithoutPath(await dashboard.launch({ deskName: "secret-desk" }), outside);
+    assert.equal(dashboard.spawned.length, 0);
+});
+
+test("open_desk launches a real desk from its real path", async (t) => {
+    const dashboard = await loadDashboard(t, "linux");
+    await dashboard.open();
+    const result = await dashboard.launch();
+    const real = realpathSync(join(dashboard.workshopDir, "desks", "probe"));
+    assert.equal(result.launched, true);
+    assert.equal(result.deskPath, real);
+    assert.equal(dashboard.spawned.at(-1).options.cwd, real);
+});
+
+test("loopback open route refuses an escaping desk symlink without returning its path", { skip: symlinkSkip }, async (t) => {
+    const dashboard = await loadDashboard(t);
+    const outside = plantOutside(dashboard);
+    symlinkSync(outside, join(dashboard.workshopDir, "desks", "notes"), "dir");
+    await dashboard.open();
+    const { status, body } = await dashboard.httpOpen("notes");
+    assert.equal(status, 404);
+    assertRefusedWithoutPath(body, outside);
+    assert.equal(dashboard.spawned.length, 0);
+});
+
+test("loopback open route still opens a real desk", async (t) => {
+    const dashboard = await loadDashboard(t);
+    await dashboard.open();
+    const { status, body } = await dashboard.httpOpen("probe");
+    assert.equal(status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.deskPath, realpathSync(join(dashboard.workshopDir, "desks", "probe")));
 });
