@@ -34,6 +34,20 @@ for entry in [sys.base_prefix, sys.prefix, *sys.path]:
             READ_ROOTS.append(pathlib.Path(entry).resolve())
         except (OSError, TypeError):
             pass
+WORKSPACE_ALIASES = []
+for entry in [str(WORKSPACE), os.getcwd(), os.environ.get("TMPDIR"), os.environ.get("HOME")]:
+    try:
+        alias = pathlib.PurePath(entry)
+        if (
+            alias.is_absolute()
+            and ".." not in alias.parts
+            and alias not in WORKSPACE_ALIASES
+            and pathlib.Path(entry).resolve() == WORKSPACE
+        ):
+            WORKSPACE_ALIASES.append(alias)
+    except (OSError, TypeError, ValueError):
+        pass
+WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
 
 class LimitedBuffer(io.StringIO):
     def __init__(self, limit):
@@ -72,6 +86,46 @@ def under(path_value, roots):
         return True
     return any(path_value == root or root in path_value.parents for root in roots)
 
+# Metadata, link, rename and chdir targets are checked lexically rather than by
+# resolving them, because a cell can swap symlinks between this hook and the
+# syscall. A path without ".." under a workspace alias stays inside the
+# workspace only while every symlink in it also points inside without "..",
+# which the os.symlink, os.link and os.rename checks below preserve.
+def text_path(value):
+    if type(value) is bytes:
+        value = os.fsdecode(value)
+    if type(value) is not str:
+        raise PermissionError("Filesystem changes through file descriptors are disabled")
+    return pathlib.PurePath(value)
+
+def lexically_in_workspace(candidate, allow_root=True):
+    if any(alias in candidate.parents for alias in WORKSPACE_ALIASES):
+        return True
+    return allow_root and candidate in WORKSPACE_ALIASES
+
+def require_workspace_change(value, allow_root=True):
+    candidate = text_path(value)
+    if ".." in candidate.parts:
+        raise PermissionError("Filesystem changes through '..' are disabled in the isolated workspace")
+    if not candidate.is_absolute():
+        if candidate.anchor:
+            raise PermissionError("Filesystem changes outside the isolated workspace are disabled")
+        try:
+            candidate = pathlib.PurePath(os.getcwd()) / candidate
+        except OSError:
+            raise PermissionError("Unable to resolve the current directory")
+    if not lexically_in_workspace(candidate, allow_root):
+        raise PermissionError("Filesystem changes outside the isolated workspace are disabled")
+
+def require_workspace_link_target(value):
+    target = text_path(value)
+    if ".." in target.parts or (target.anchor and not lexically_in_workspace(target)):
+        raise PermissionError("Symlinks must point inside the isolated workspace without '..'; others are disabled")
+
+def require_default_dir_fd(value):
+    if value is not None and value != -1:
+        raise PermissionError("Directory-relative filesystem changes are disabled")
+
 def audit(event, args):
     if event.startswith(("socket.", "subprocess.", "ctypes.", "pty.")) or event in {
         "os.system", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty"
@@ -79,23 +133,39 @@ def audit(event, args):
         raise PermissionError(f"{event} is disabled in notebook execution")
     if event == "open":
         target = resolve_path(args[0])
-        mode = str(args[1]) if len(args) > 1 else "r"
-        write_mode = any(flag in mode for flag in ("w", "a", "x", "+"))
+        mode = args[1] if len(args) > 1 else None
+        flags = args[2] if len(args) > 2 and type(args[2]) is int and args[2] >= 0 else 0
+        write_mode = (
+            isinstance(mode, str) and any(flag in mode for flag in ("w", "a", "x", "+"))
+        ) or bool(flags & WRITE_FLAGS)
         roots = [WORKSPACE] if write_mode else READ_ROOTS
         if not under(target, roots):
             raise PermissionError("Filesystem access outside the isolated workspace is disabled")
-    if event in {"os.listdir", "os.scandir", "os.chdir"} and args:
+    if event in {"os.listdir", "os.scandir"} and args:
         if not under(resolve_path(args[0]), READ_ROOTS):
             raise PermissionError("Directory access outside the isolated workspace is disabled")
+    if event == "os.chdir" and args:
+        require_workspace_change(args[0])
     if event in {
-        "os.remove", "os.rmdir", "os.mkdir", "os.chmod", "os.chown", "os.truncate",
-        "os.link", "os.symlink"
+        "os.remove", "os.rmdir", "os.mkdir", "os.chmod", "os.chown", "os.truncate"
     } and args:
         if not under(resolve_path(args[0]), [WORKSPACE]):
             raise PermissionError("Filesystem changes outside the isolated workspace are disabled")
-    if event in {"os.rename", "os.replace"}:
-        if any(not under(resolve_path(value), [WORKSPACE]) for value in args[:2]):
-            raise PermissionError("Filesystem changes outside the isolated workspace are disabled")
+    if event in {"os.utime", "os.chflags", "os.setxattr", "os.removexattr"} and args:
+        require_workspace_change(args[0])
+        if event == "os.utime" and len(args) > 3:
+            require_default_dir_fd(args[3])
+    if event == "os.symlink" and len(args) >= 2:
+        require_workspace_link_target(args[0])
+        require_workspace_change(args[1], allow_root=False)
+        require_default_dir_fd(args[2] if len(args) > 2 else None)
+    if event in {"os.link", "os.rename", "os.replace"} and len(args) >= 2:
+        for value in args[:2]:
+            require_workspace_change(value, allow_root=False)
+        for value in args[2:4]:
+            require_default_dir_fd(value)
+    if event == "_winapi.CreateJunction":
+        raise PermissionError("Junctions are disabled in notebook execution")
 
 sys.addaudithook(audit)
 
