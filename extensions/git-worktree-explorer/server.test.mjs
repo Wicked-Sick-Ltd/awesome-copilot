@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { connect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
     buildCommitInspectionPrompt,
     buildNodeInspectionPrompt,
     isAuthorizedRequest,
+    parseRequestTarget,
 } from "./server.mjs";
 
 function request(headers) {
@@ -80,3 +86,74 @@ test("Ask Copilot commit prompt requests purpose, changes, and risks without mut
     assert.ok(prompt.includes(`Repository path: ${JSON.stringify(root)}`));
     assert.ok(prompt.indexOf("untrusted repository data") < prompt.indexOf("Repository path:"));
 });
+
+test("request targets are parsed only in origin-form", () => {
+    assert.equal(parseRequestTarget("/").pathname, "/");
+    assert.equal(parseRequestTarget("/?token=placeholder").searchParams.get("token"), "placeholder");
+    assert.equal(parseRequestTarget("/api/snapshot").pathname, "/api/snapshot");
+    assert.equal(parseRequestTarget("/app.js").pathname, "/app.js");
+    for (const target of [undefined, "", "*", "//", "///", "/\\", "/\\attacker.example/", "//attacker.example/", "http://127.0.0.1/"]) {
+        assert.equal(parseRequestTarget(target), null, JSON.stringify(target));
+    }
+});
+
+const serverHost = `
+import { startServer } from ${JSON.stringify(new URL("./server.mjs", import.meta.url).href)};
+const entry = await startServer("test", { cwd: process.argv[1], sendPrompt: async () => {} });
+process.stdout.write(JSON.stringify({ port: entry.server.address().port }) + "\\n");
+`;
+
+function startServerProcess(t) {
+    const repo = mkdtempSync(join(tmpdir(), "git-worktree-explorer-"));
+    execFileSync("git", ["init", "--quiet", repo]);
+    const child = spawn(process.execPath, ["--input-type=module", "-e", serverHost, repo], {
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const exited = new Promise((resolve) => child.once("exit", (code) => resolve({ code, stderr })));
+    t.after(() => {
+        child.kill();
+        rmSync(repo, { recursive: true, force: true });
+    });
+    const ready = new Promise((resolve, reject) => {
+        let stdout = "";
+        child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+            if (stdout.includes("\n")) resolve(JSON.parse(stdout).port);
+        });
+        exited.then(({ code }) => reject(new Error(`server exited (${code}) before listening: ${stderr}`)));
+    });
+    return { ready, exited };
+}
+
+function rawRequest(port, requestTarget) {
+    return new Promise((resolve, reject) => {
+        const socket = connect(port, "127.0.0.1", () => {
+            socket.write(`GET ${requestTarget} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`);
+        });
+        let response = "";
+        socket.setEncoding("utf8");
+        socket.on("data", (chunk) => { response += chunk; });
+        socket.on("end", () => resolve(response));
+        socket.on("close", () => resolve(response));
+        socket.on("error", reject);
+    });
+}
+
+for (const requestTarget of ["//", "///", "/\\", "//attacker.example/api/snapshot", "http://127.0.0.1/"]) {
+    test(`loopback server answers non-origin-form request target ${JSON.stringify(requestTarget)} with 400 and keeps running`, async (t) => {
+        const server = startServerProcess(t);
+        const port = await server.ready;
+
+        const response = await rawRequest(port, requestTarget);
+        if (!response) {
+            const { code, stderr } = await server.exited;
+            assert.fail(`server process exited with code ${code} without responding: ${stderr}`);
+        }
+        assert.match(response, /^HTTP\/1\.1 400 /);
+
+        const followUp = await rawRequest(port, "/api/snapshot");
+        assert.match(followUp, /^HTTP\/1\.1 403 /);
+    });
+}

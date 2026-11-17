@@ -284,9 +284,26 @@ async function handleApi(req, res, url, entry) {
     json(res, 404, { error: "Not found." });
 }
 
-async function handleRequest(req, res, entry) {
-    const url = new URL(req.url || "/", entry.origin);
+const REQUEST_BASE = "http://127.0.0.1";
+
+export function parseRequestTarget(target) {
+    // WHATWG URL treats "\" like "/" for http, so "/\" is scheme-relative too.
+    if (typeof target !== "string" || !target.startsWith("/") || /^\/[/\\]/.test(target)) return null;
     try {
+        const url = new URL(target, REQUEST_BASE);
+        return url.origin === REQUEST_BASE ? url : null;
+    } catch {
+        return null;
+    }
+}
+
+async function handleRequest(req, res, entry) {
+    try {
+        const url = parseRequestTarget(req.url);
+        if (!url) {
+            json(res, 400, { error: "Bad request target." });
+            return;
+        }
         if (url.pathname.startsWith("/api/")) {
             await handleApi(req, res, url, entry);
             return;
@@ -321,7 +338,9 @@ export async function startServer(instanceId, options) {
         origin: null,
         url: null,
     };
-    const server = createServer((req, res) => handleRequest(req, res, entry));
+    const server = createServer((req, res) => {
+        handleRequest(req, res, entry).catch(() => res.destroy());
+    });
     entry.server = server;
 
     await new Promise((resolve, reject) => {
