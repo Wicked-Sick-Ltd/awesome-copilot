@@ -11,8 +11,8 @@ Generate or edit images via OpenRouter using openai-python.
 
 import argparse
 import base64
-import mimetypes
 import os
+import stat
 from pathlib import Path
 
 from openai import OpenAI
@@ -20,6 +20,7 @@ from openai import OpenAI
 
 # Configuration
 MAX_INPUT_IMAGES = 3
+MAX_INPUT_IMAGE_BYTES = 20 * 1024 * 1024
 MIME_TO_EXT = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -55,13 +56,40 @@ def require_api_key():
     return api_key
 
 
-def encode_image_to_data_url(path: Path) -> str:
-    if not path.exists():
+def sniff_image_mime(data: bytes) -> str | None:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def read_input_image(path: Path) -> tuple[str, bytes]:
+    # Read once from a single open handle so the bytes that are checked are the bytes that are sent.
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                raise SystemExit(f"Input image is not a regular file: {path}")
+            data = f.read(MAX_INPUT_IMAGE_BYTES + 1)
+    except FileNotFoundError:
         raise SystemExit(f"Input image not found: {path}")
-    mime, _ = mimetypes.guess_type(str(path))
+    except IsADirectoryError:
+        raise SystemExit(f"Input image is not a regular file: {path}")
+    except OSError as e:
+        raise SystemExit(f"Cannot read input image {path}: {e.strerror}")
+    if len(data) > MAX_INPUT_IMAGE_BYTES:
+        raise SystemExit(f"Input image exceeds {MAX_INPUT_IMAGE_BYTES} bytes: {path}")
+    mime = sniff_image_mime(data)
     if not mime:
-        mime = "image/png"
-    data = path.read_bytes()
+        raise SystemExit(f"Input image is not a PNG, JPEG, or WebP file: {path}")
+    return mime, data
+
+
+def encode_image_to_data_url(path: Path) -> str:
+    mime, data = read_input_image(path)
     encoded = base64.b64encode(data).decode("utf-8")
     return f"data:{mime};base64,{encoded}"
 
