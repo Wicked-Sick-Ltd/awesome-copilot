@@ -79,6 +79,11 @@ folder explicitly:
 python scripts\convert_pdf_to_md.py "C:\path\to\document.pdf" -o "C:\path\to\output_folder"
 ```
 
+The destination (`-o`, or the default `<name>\` folder) must be new, empty,
+or an earlier output of this script (marked by a `.convert-pdf-to-md`
+file). The script never deletes or overwrites any other existing folder: it
+reports that document as `FAILED` and writes nothing.
+
 **A folder of PDFs (batch mode):**
 
 ```powershell
@@ -125,6 +130,12 @@ conversion. Never guess or assume the directory.
 | `ERROR: Unsupported file type '...'` / exit code 3 | Not a `.pdf` file | Ask the user for the correct file, or if it's `.doc`/`.docx`/`.xlsx`, use the matching sibling skill instead |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
+| `FAILED <file> -> ... already exists and is not an earlier output of this converter` | The destination folder holds files this script did not write (or was produced by a version that did not write the marker) | Do not delete it yourself; tell the user, and either use a different `-o` they choose or let them remove the folder |
+| `FAILED <file> -> '...' has no usable name for an output folder` | The file name has no stem (e.g. `..pdf`) | Ask the user to rename the file |
 | `NOTE: skipped N non-.pdf file(s)` | Folder contains non-PDF files | Expected — those files are intentionally ignored |
 | Markdown body is empty or near-empty despite images being extracted | The PDF is scanned/image-only with no embedded text layer; MarkItDown does not perform OCR | Tell the user OCR isn't supported — the extracted page images are still available for them to view |
 | Images appear in an appendix instead of inline with the text | Deliberate limitation — MarkItDown's PDF text has no reliable per-page markers to place images inline | Expected behavior; cross-reference the `### Page N` heading with the surrounding text context if needed |
+
+## Tests
+
+[`tests/test_convert_pdf_to_md.py`](tests/test_convert_pdf_to_md.py) checks that the script only ever replaces its own earlier output. Run it from this skill folder with `python -B -m unittest discover -s tests`; it needs only the Python standard library.
