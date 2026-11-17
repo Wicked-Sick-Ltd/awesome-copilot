@@ -8,12 +8,12 @@ import sys
 import tempfile
 import types
 import unittest
-from unittest import mock
+import unittest.mock
 
 PNG_HEADER = b"\x89PNG\r\n\x1a\n"
 JPEG_HEADER = b"\xff\xd8\xff\xe0"
 WEBP_HEADER = b"RIFF\x00\x00\x00\x00WEBPVP8 "
-PLACEHOLDER_SECRET = b"OPENROUTER_API_KEY=placeholder-not-a-real-key\n"
+NOT_AN_IMAGE = b"this file is plain text, not an image\n"
 
 
 class RecordingCompletions:
@@ -73,7 +73,7 @@ class InputImageTests(unittest.TestCase):
         argv = ["generate_image.py", "--prompt", "edit", "--filename", "out.png"]
         for image in input_images:
             argv += ["--input-image", str(image)]
-        with mock.patch.object(sys, "argv", argv), mock.patch.dict(
+        with unittest.mock.patch.object(sys, "argv", argv), unittest.mock.patch.dict(
             os.environ, {"OPENROUTER_API_KEY": "placeholder"}
         ):
             self.module.main()
@@ -95,17 +95,17 @@ class InputImageTests(unittest.TestCase):
         self.assertEqual(self.completions.requests, [])
 
     def test_env_file_is_not_uploaded(self):
-        self.assert_rejected_without_request(self.write(".env", PLACEHOLDER_SECRET))
+        self.assert_rejected_without_request(self.write(".env", NOT_AN_IMAGE))
 
     def test_text_file_with_image_extension_is_not_uploaded(self):
-        self.assert_rejected_without_request(self.write("photo.png", PLACEHOLDER_SECRET))
+        self.assert_rejected_without_request(self.write("photo.png", NOT_AN_IMAGE))
 
     def test_source_file_is_not_uploaded(self):
-        self.assert_rejected_without_request(self.write("app.py", b"API_KEY = 'placeholder'\n"))
+        self.assert_rejected_without_request(self.write("app.py", b"print(1)\n"))
 
     def test_non_image_after_valid_image_aborts_whole_request(self):
         good = self.write("good.png", PNG_HEADER + b"\x00" * 16)
-        bad = self.write("id_rsa", b"-----BEGIN PLACEHOLDER KEY-----\n")
+        bad = self.write("id_rsa", NOT_AN_IMAGE)
         self.assert_rejected_without_request(good, bad)
 
     def test_oversized_image_is_not_uploaded(self):
