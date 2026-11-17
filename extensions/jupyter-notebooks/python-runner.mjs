@@ -80,7 +80,8 @@ def confine_darwin(workspace):
     sandbox_init.argtypes = [ctypes.c_char_p, ctypes.c_uint64, ctypes.POINTER(ctypes.c_char_p)]
     sandbox_init.restype = ctypes.c_int
     quoted = str(workspace).replace("\\", "\\\\").replace('"', '\\"')
-    profile = f'(version 1)(allow default)(deny file-write* (require-not (subpath "{quoted}")))'
+    # file-write* is only the file-write-* family. mkfifo, mknod, and link are separate operations.
+    profile = f'(version 1)(allow default)(deny file-write* file-mknod file-link (require-not (subpath "{quoted}")))'
     error = ctypes.c_char_p()
     if sandbox_init(profile.encode("utf-8"), 0, ctypes.byref(error)) != 0:
         detail = error.value.decode("utf-8", "replace") if error.value else "unknown error"

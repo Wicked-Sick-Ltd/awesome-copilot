@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runtimeCommands, sandboxUnavailableExitCode, spawnPythonRunner } from "./python-runner.mjs";
+import { pythonRunner, runtimeCommands, sandboxUnavailableExitCode, spawnPythonRunner } from "./python-runner.mjs";
 
 const posixOnly = { skip: process.platform === "win32" ? "named pipes are not filesystem nodes on Windows" : false };
 const mkfifoBinary = ["/usr/bin/mkfifo", "/bin/mkfifo"].find((candidate) => existsSync(candidate));
@@ -45,6 +45,10 @@ function outsideTarget(t) {
 function assertNoNode(target) {
     assert.throws(() => lstatSync(target), { code: "ENOENT" }, `${target} was created outside the execution directory`);
 }
+
+test("the Seatbelt profile denies node creation outside the execution directory", () => {
+    assert.match(pythonRunner, /deny file-write\* file-mknod file-link \(require-not \(subpath "/);
+});
 
 test("os.mkfifo cannot create a named pipe outside the execution directory", posixOnly, async (t) => {
     const target = outsideTarget(t);
