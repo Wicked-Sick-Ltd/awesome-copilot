@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, constants, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -11,7 +12,7 @@ test("cloud agent environment.json matches the install and port schema", async (
   const config = JSON.parse(raw);
 
   assert.equal(config.install, "bash .cursor/install.sh");
-  assert.equal(config.start, "bash .cursor/start.sh");
+  assert.equal(config.start, "true");
   assert.ok(Array.isArray(config.terminals));
   assert.equal(config.terminals.length, 1);
   assert.equal(config.terminals[0].command, "bash .cursor/start.sh");
@@ -37,4 +38,33 @@ test("install and start scripts are executable and non-interactive", async () =>
   assert.match(install, /npm ci\b/u);
   assert.match(install, /npm ci --prefix website/u);
   assert.match(install, /GITHUB_TOKEN/u);
+  assert.match(install, /NODE_MINIMUM="22\.12\.0"/u);
+  assert.match(
+    install,
+    /if ! python -m pip install --disable-pip-version-check --upgrade pip; then/u,
+  );
+
+  const start = await readFile(path.join(root, ".cursor/start.sh"), "utf8");
+  const dataAt = start.indexOf("npm run website:data");
+  const devAt = start.indexOf("npm run --prefix website dev");
+  assert.ok(dataAt > -1 && devAt > dataAt);
+  assert.equal(start.includes("agents.json"), false);
+});
+
+test("node_meets_minimum enforces Astro's Node 22.12.0 floor", () => {
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      [
+        "source .cursor/install.sh",
+        "node_meets_minimum 22.12.0 22.12.0",
+        "node_meets_minimum v22.23.4 22.12.0",
+        "if node_meets_minimum 22.11.9 22.12.0; then exit 11; fi",
+        "if node_meets_minimum 21.9.0 22.12.0; then exit 12; fi",
+      ].join("\n"),
+    ],
+    { cwd: root },
+  );
+  assert.equal(result.status, 0, result.stderr?.toString());
 });

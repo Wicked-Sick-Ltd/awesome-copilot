@@ -9,27 +9,42 @@ cd "$ROOT"
 log() { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 
+# Astro, the website toolchain, requires Node >= 22.12.0.
+NODE_MINIMUM="22.12.0"
+NODE_VERSION="22.23.4"
+
+node_meets_minimum() {
+  local current="${1#v}"
+  local minimum="$2"
+  [[ "$(printf '%s\n%s\n' "$minimum" "$current" | sort -V | head -n1)" == "$minimum" ]]
+}
+
+install_node_runtime() {
+  log "Installing Node ${NODE_VERSION} into /usr/local"
+  curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    | sudo tar -xJ -C /usr/local --strip-components=1 --no-same-owner
+  hash -r
+}
+
 ensure_node() {
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    local major
-    major="$(node -p 'process.versions.node.split(".")[0]')"
-    if [[ "$major" -ge 22 ]]; then
-      log "Node $(node -v) and npm $(npm -v) already on PATH"
-      return 0
-    fi
-    warn "Node $(node -v) is older than the CI major (22). Continuing with the installed Node."
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 \
+    && node_meets_minimum "$(node -v)" "$NODE_MINIMUM"; then
+    log "Node $(node -v) and npm $(npm -v) already on PATH"
     return 0
   fi
 
-  local version="22.23.4"
-  log "Node is missing. Installing Node ${version} into /usr/local"
-  curl -fsSL "https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.xz" \
-    | sudo tar -xJ -C /usr/local --strip-components=1 --no-same-owner
-  hash -r
-  command -v node >/dev/null 2>&1 || {
-    echo "Node install did not put node on PATH" >&2
+  if command -v node >/dev/null 2>&1; then
+    log "Node $(node -v) is older than ${NODE_MINIMUM}, which the website toolchain requires."
+  else
+    log "Node is missing."
+  fi
+  install_node_runtime
+
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1 \
+    || ! node_meets_minimum "$(node -v)" "$NODE_MINIMUM"; then
+    echo "Node on PATH is $(node -v 2>/dev/null || echo unavailable) at $(command -v node 2>/dev/null || echo missing). The website requires Node >= ${NODE_MINIMUM}. Put Node ${NODE_VERSION} ahead of the older binary on PATH." >&2
     exit 1
-  }
+  fi
 }
 
 install_node_deps() {
@@ -80,7 +95,10 @@ install_python_skills() {
 
   # shellcheck disable=SC1091
   source "$ROOT/.venv/bin/activate"
-  python -m pip install --disable-pip-version-check --upgrade pip
+  # Python skill packages are optional. A pip upgrade failure must not abort catalog install.
+  if ! python -m pip install --disable-pip-version-check --upgrade pip; then
+    warn "pip upgrade failed. Continuing with the existing pip. Catalog install does not need a newer pip."
+  fi
   for req in "${reqs[@]}"; do
     log "Installing Python packages from ${req}"
     if ! python -m pip install --disable-pip-version-check -r "$req"; then
@@ -97,13 +115,15 @@ generate_website_data() {
   npm run website:data
 }
 
-ensure_node
-install_node_deps
-install_python_skills
-generate_website_data
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  ensure_node
+  install_node_deps
+  install_python_skills
+  generate_website_data
 
-if [[ -z "${GITHUB_TOKEN:-}" && -z "${GH_TOKEN:-}" ]]; then
-  warn "GITHUB_TOKEN is unset. Contributor and review scripts that call the GitHub API will not run until GITHUB_TOKEN or GH_TOKEN is set. Catalog install does not need it."
+  if [[ -z "${GITHUB_TOKEN:-}" && -z "${GH_TOKEN:-}" ]]; then
+    warn "GITHUB_TOKEN is unset. Contributor and review scripts that call the GitHub API will not run until GITHUB_TOKEN or GH_TOKEN is set. Catalog install does not need it."
+  fi
+
+  log "Install complete"
 fi
-
-log "Install complete"

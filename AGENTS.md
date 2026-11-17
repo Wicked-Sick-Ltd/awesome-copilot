@@ -66,7 +66,7 @@ npm run skill:validate
 node --test eng/cloud-agent-environment.test.mjs
 ```
 
-The catalog website is a long-running Astro dev server on port 4321. Cloud agents start it with `bash .cursor/start.sh`. A healthy boot responds at `http://127.0.0.1:4321/`.
+The catalog website is a long-running Astro dev server on port 4321. `start` is `true` so it exits and the configured terminal can launch. That terminal runs `bash .cursor/start.sh`, which regenerates catalog data and serves the site. A healthy boot responds at `http://127.0.0.1:4321/`.
 
 ## Development Workflow
 

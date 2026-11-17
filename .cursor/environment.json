@@ -1,7 +1,7 @@
 {
   "name": "Awesome Copilot",
   "install": "bash .cursor/install.sh",
-  "start": "bash .cursor/start.sh",
+  "start": "true",
   "terminals": [
     {
       "name": "website",

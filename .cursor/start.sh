@@ -44,9 +44,9 @@ if [[ ! -d node_modules || ! -d website/node_modules ]]; then
   exit 1
 fi
 
-if [[ ! -f website/public/data/agents.json ]]; then
-  npm run website:data
-fi
+# Cold start only. An already-listening server takes the attach path above.
+# Regenerating here picks up catalog edits made after the last install.
+npm run website:data
 
 echo "Starting Astro on 0.0.0.0:${PORT}"
 npm run --prefix website dev -- --host 0.0.0.0 --port "$PORT" 2>&1 | tee -a "$LOG"
