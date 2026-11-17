@@ -72,18 +72,17 @@ Any other text is scoping guidance (e.g. "only the checkout area", "read-only to
    the gate (see below). Without git or without permission, leave changes in the
    working tree and record progress in the manifest only.
 
-## Fresh, authoritative guidance
+## Authoritative guidance
 
 WebMCP is an evolving origin-trial API — the surface has already changed during the
-trial (testing API removed 2026-07; `navigator` → `document`). Before Phase 2, if
-network is available, pull Google's current official guides rather than relying on
-memory:
+trial (testing API removed 2026-07; `navigator` → `document`). Before Phase 2, read
+`references/integrate.md` rather than relying on memory; it and the other bundled
+references are the authoritative guides for this pipeline.
 
-```sh
-npx -y modern-web-guidance@latest retrieve "webmcp,agentic-forms,agentic-javascript-tools"
-```
-
-If offline, use `references/integrate.md` — but prefer the live guides when they conflict.
+Never download or execute a package (`npx`, `pnpm dlx`, `bunx`, …) to fetch
+guidance: it would run unreviewed code inside the target project. If the bundled
+guides disagree with what the browser actually does, follow observed behaviour
+for that tool and record the discrepancy in `report.md` for the human.
 
 ## The state protocol — `.webmcpify/` in the target repo
 
