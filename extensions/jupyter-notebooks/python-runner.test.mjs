@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runtimeCommands, sandboxUnavailableExitCode, spawnPythonRunner } from "./python-runner.mjs";
+import { pythonRunner, runtimeCommands, sandboxUnavailableExitCode, spawnPythonRunner } from "./python-runner.mjs";
 
 const posixOnly = { skip: process.platform === "win32" ? "named pipes are not filesystem nodes on Windows" : false };
 const mkfifoBinary = ["/usr/bin/mkfifo", "/bin/mkfifo"].find((candidate) => existsSync(candidate));
@@ -85,6 +85,12 @@ test("cells still run and can write inside the execution directory", posixOnly, 
     assert.equal(run.code, 0, run.stderr);
     assert.equal(run.results[0].error, null);
     assert.equal(run.results[1].resultData["text/plain"], "['local-pipe', 'out.txt']");
+});
+
+test("the macOS seatbelt profile denies node creation outside the execution directory", () => {
+    assert.match(pythonRunner, /deny file-write\*/);
+    assert.match(pythonRunner, /deny file-mknod/);
+    assert.match(pythonRunner, /deny file-link/);
 });
 
 test("notebook metadata cannot select an arbitrary runtime command", () => {
