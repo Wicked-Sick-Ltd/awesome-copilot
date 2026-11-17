@@ -193,22 +193,49 @@ def _inside(path: Path, directory: Path) -> bool:
     return path_s == dir_s or path_s.startswith(dir_s + "/")
 
 
+CONTENT_KEYS = {"content", "contents", "text", "body", "old_string", "new_string", "old_str", "new_str", "patch"}
+COMMAND_KEYS = {"command", "cmd", "script"}
+_PATH_TOKEN = re.compile(r"~?[A-Za-z0-9._~-]*(?:/|\\)[^\s\"'`|&;<>]+")
+
+
+def _token_targets_state(token: str, state_dirs) -> bool:
+    """True when a path token names the allowlist or cache, after . and .. are collapsed."""
+    cleaned = token.strip().strip("'\"")
+    if not cleaned:
+        return False
+    expanded = os.path.expanduser(cleaned)
+    folded = _fold(os.path.normpath(expanded))
+    if any(marker in folded for marker in (_fold(marker) for marker in STATE_MARKERS)):
+        return True
+    try:
+        target = Path(expanded)
+        if not target.is_absolute():
+            target = Path.cwd() / target
+        target = target.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return any(_inside(target, directory) for directory in state_dirs)
+
+
 def targets_hook_state(tool_input) -> str | None:
-    """Return the offending string when a tool call reaches the allowlist or cache."""
+    """Return the offending string when a tool call reaches the allowlist or cache.
+
+    Path fields and shell commands are checked after normalization, so /./, //,
+    and .. cannot hide the real path. File contents are not scanned: a write
+    that only mentions the path is not a write to it.
+    """
     state_dirs = [d.resolve() for d in STATE_DIRS]
-    markers = [_fold(m) for m in STATE_MARKERS] + [_fold(str(d)) for d in STATE_DIRS]
     for key, value in walk_strings(tool_input):
-        if any(m in _fold(value) for m in markers):
-            return value
-        if key in PATH_KEYS and value.strip():
-            try:
-                target = Path(value.strip()).expanduser()
-                if not target.is_absolute():
-                    target = Path.cwd() / target
-                target = target.resolve()
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if any(_inside(target, d) for d in state_dirs):
+        if key in CONTENT_KEYS:
+            continue
+        if key in PATH_KEYS:
+            candidates = [value]
+        elif key in COMMAND_KEYS:
+            candidates = _PATH_TOKEN.findall(value)
+        else:
+            continue
+        for candidate in candidates:
+            if _token_targets_state(candidate, state_dirs):
                 return value
     return None
 

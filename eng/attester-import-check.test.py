@@ -133,6 +133,26 @@ class AllowlistTests(unittest.TestCase):
         result = self.run_hook({"path": "README.md", "content": "Documentation update."})
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_documentation_that_mentions_the_allowlist_is_allowed(self):
+        result = self.run_hook(
+            {
+                "path": "hooks/attester-import-check/README.md",
+                "content": "Users edit ~/.config/attester-import-check/allowlist themselves.\n",
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_obfuscated_shell_path_to_allowlist_is_blocked(self):
+        commands = (
+            f"echo {FAKE_PACKAGE} >> ~/.config/attester-import-check/./allowlist",
+            f"echo {FAKE_PACKAGE} >> ~/.config//attester-import-check//allowlist",
+            f"echo {FAKE_PACKAGE} >> ~/.config/foo/../attester-import-check/allowlist",
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                result = self.run_hook({"command": command})
+                self.assertEqual(result.returncode, 1, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
