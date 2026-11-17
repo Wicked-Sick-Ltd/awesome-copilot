@@ -169,6 +169,7 @@ export async function startCanvasServer(service, requestAgentInvestigation, canc
                     input.analyzerId,
                     input.commandId,
                     input.confirmed,
+                    input.targetPath,
                 ));
                 return;
             }

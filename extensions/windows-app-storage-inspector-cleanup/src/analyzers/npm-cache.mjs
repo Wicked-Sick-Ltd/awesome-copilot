@@ -2,7 +2,11 @@ import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { getAnalyzerCommands } from "../core/analyzer-commands.mjs";
+import {
+    getAnalyzerCommands,
+    getLocalAppDataDirectory,
+    getToolWorkingDirectory,
+} from "../core/analyzer-commands.mjs";
 
 const execFileAsync = promisify(execFile);
 const NPM_CLI_TIMEOUT_MS = 10_000;
@@ -22,10 +26,10 @@ function getDirectoryAggregate(result, directoryPath) {
 }
 
 async function getConfiguredCachePath() {
-    const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? "", "AppData", "Local");
-    const defaultPath = path.resolve(localAppData, "npm-cache");
+    const defaultPath = path.join(getLocalAppDataDirectory(), "npm-cache");
     try {
         const { stdout } = await execFileAsync("npm.cmd", ["config", "get", "cache"], {
+            cwd: getToolWorkingDirectory(),
             windowsHide: true,
             timeout: NPM_CLI_TIMEOUT_MS,
             maxBuffer: 1024 * 1024,
