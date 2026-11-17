@@ -750,17 +750,28 @@ def lock_windows_process_creation(ctypes):
     kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
     kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
     kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
     job = kernel32.CreateJobObjectW(None, None)
     if not job:
         raise OSError(ctypes.get_last_error(), "CreateJobObjectW failed")
-    limits = BasicLimits()
-    limits.LimitFlags = 0x00000008
-    limits.ActiveProcessLimit = 1
-    if not kernel32.SetInformationJobObject(job, 2, ctypes.byref(limits), ctypes.sizeof(limits)):
-        raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
-    if not kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
-        raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject failed")
-    return job
+    try:
+        limits = BasicLimits()
+        limits.LimitFlags = 0x00000008
+        limits.ActiveProcessLimit = 1
+        if not kernel32.SetInformationJobObject(job, 2, ctypes.byref(limits), ctypes.sizeof(limits)):
+            raise OSError(ctypes.get_last_error(), "SetInformationJobObject failed")
+        if not kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
+            raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject failed")
+    except Exception:
+        kernel32.CloseHandle(job)
+        raise
+    # The job is unnamed, so it cannot be reopened. Closing the last handle
+    # leaves the active-process limit in force and gives the cell nothing to
+    # pass to SetInformationJobObject.
+    if not kernel32.CloseHandle(job):
+        raise OSError(ctypes.get_last_error(), "CloseHandle failed")
+    return None
 
 def lock_macos_process_creation(ctypes):
     libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
@@ -784,7 +795,7 @@ def lock_process_creation():
     raise OSError(f"unsupported platform {sys.platform}")
 
 try:
-    PROCESS_LOCK = lock_process_creation()
+    lock_process_creation()
 except Exception as exc:
     sys.stderr.write(f"Notebook execution is unavailable because process creation could not be blocked: {exc}\n")
     sys.exit(3)
