@@ -10,13 +10,38 @@ const skillPath = path.join(repoRoot, "skills", "nano-banana-pro-openrouter", "S
 
 const NAMED_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", vert: "|", verbar: "|", VerticalLine: "|", nbsp: " " };
 
-// The agent acts on the rendered text, so an entity-encoded pipe is still a pipe.
-function renderedText(markdown) {
-  return markdown
-    .replace(/<[^>]+>/g, "")
+function decodeEntities(text) {
+  return text
     .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
     .replace(/&([a-z]+);/gi, (entity, name) => NAMED_ENTITIES[name] ?? entity);
+}
+
+// The agent acts on the rendered text, so an entity-encoded pipe is still a pipe.
+// GFM autolinks stay as their URL. Other tags are removed by dropping the
+// shortest `<...>` span, then repeating, so a nested tag cannot reassemble.
+function renderedText(markdown) {
+  let text = decodeEntities(markdown);
+  let previous;
+  do {
+    previous = text;
+    let out = "";
+    for (let i = 0; i < text.length; ) {
+      if (text[i] === "<") {
+        const end = text.indexOf(">", i + 1);
+        const inner = end === -1 ? "" : text.slice(i + 1, end);
+        if (end !== -1 && !inner.includes("<")) {
+          if (/^https?:\/\/\S+$/i.test(inner)) out += inner;
+          i = end + 1;
+          continue;
+        }
+      }
+      out += text[i];
+      i += 1;
+    }
+    text = out;
+  } while (text !== previous);
+  return text;
 }
 
 function remoteScriptPattern() {
@@ -28,6 +53,12 @@ function remoteScriptPattern() {
 
 const skill = renderedText(fs.readFileSync(skillPath, "utf8"));
 const uvRow = skill.split(/\r?\n/).find((line) => /^\|\s*`uv: command not found`/.test(line));
+
+test("renderedText keeps autolinked URLs and does not reassemble a tag", () => {
+  assert.match(renderedText("See <https://astral.sh/uv/install.sh> before running it."), /astral\.sh\/uv\/install\.sh/);
+  assert.equal(renderedText("<scr<script>ipt>"), "");
+  assert.equal(renderedText("<code>curl</code>"), "curl");
+});
 
 test("renderedText decodes the encodings a markdown table uses for a pipe", () => {
   const pattern = remoteScriptPattern();
