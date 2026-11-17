@@ -24,7 +24,8 @@ curl -fsSL https://packages.microsoft.com/keys/microsoft.asc -o "$AZ_TMP/microso
 gpg --batch --no-default-keyring --keyring "$AZ_TMP/import.kbx" --import "$AZ_TMP/microsoft.asc"
 gpg --batch --no-default-keyring --keyring "$AZ_TMP/import.kbx" \
   --export BC528686B50D79E339D3721CEB3E94ADBE1229CF > "$AZ_TMP/microsoft.gpg"
-test -s "$AZ_TMP/microsoft.gpg" && sudo install -D -m 644 "$AZ_TMP/microsoft.gpg" /etc/apt/keyrings/microsoft.gpg
+test -s "$AZ_TMP/microsoft.gpg" || { echo "Microsoft signing key was not exported; aborting" >&2; rm -rf "$AZ_TMP"; exit 1; }
+sudo install -D -m 644 "$AZ_TMP/microsoft.gpg" /etc/apt/keyrings/microsoft.gpg
 echo "Types: deb
 URIs: https://packages.microsoft.com/repos/azure-cli/
 Suites: $(lsb_release -cs)

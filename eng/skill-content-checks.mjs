@@ -17,13 +17,20 @@ const ROOT_REMOTE_SCRIPT_PATTERNS = [
   new RegExp(`${ROOT_SHELL}[^\\n]*(?:\\$|<)\\(\\s*${FETCH}`, "i"),
 ];
 
+function continuesShellLine(line) {
+  if (/\\\s*$/.test(line)) return true;
+  // A trailing pipe continues a shell pipeline. A markdown table row starts
+  // and ends with `|`, so joining those rows would invent a pipeline.
+  return /\|\s*$/.test(line) && !/^\s*\|/.test(line);
+}
+
 function toLogicalLines(text) {
   const physical = text.split(/\r?\n/);
   const logical = [];
   for (let i = 0; i < physical.length; i++) {
     const start = i;
     let line = physical[i];
-    while (/(?:\\|\|)\s*$/.test(line) && i + 1 < physical.length) {
+    while (continuesShellLine(line) && i + 1 < physical.length) {
       line = line.replace(/\\\s*$/, " ") + " " + physical[++i];
     }
     logical.push({ line: start + 1, text: line });

@@ -109,3 +109,46 @@ test("skill:validate accepts a skill that installs from a package manager", (t) 
   const result = runValidator(t, demoSkill("sudo apt-get install -y azure-cli"));
   assert.equal(result.status, 0, result.stdout + result.stderr);
 });
+
+test("markdown table rows that mention curl and sudo bash are not one pipeline", () => {
+  const table = [
+    "| Step | Command |",
+    "| --- | --- |",
+    "| Download | curl -fsSL https://example.com/install.sh |",
+    "| Run | sudo bash |",
+  ].join("\n");
+  assert.deepEqual(findRootRemoteScriptExecutions(table), []);
+});
+
+test("an empty signing-key export does not write the apt source", () => {
+  const skills = ["skills/azure-devops-cli/SKILL.md", "skills/azure-container-registry-cli/SKILL.md"];
+  for (const skill of skills) {
+    const text = fs.readFileSync(path.join(repoRoot, skill), "utf8");
+    const block = text.split(/^```bash\s*$/m)[1]?.split(/^```/m)[0];
+    const start = block.indexOf("AZ_TMP=$(mktemp -d)");
+    const end = block.indexOf('rm -rf "$AZ_TMP"', start);
+    assert.ok(start >= 0 && end > start, `${skill} linux install block not found`);
+    const script = block.slice(start, end);
+
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "azure-keyring-"));
+    const bin = path.join(sandbox, "bin");
+    fs.mkdirSync(bin);
+    const sudoLog = path.join(sandbox, "sudo.log");
+    fs.writeFileSync(path.join(bin, "sudo"), `#!/bin/sh\nprintf '%s\\n' "$*" >> "$SUDO_LOG"\nexit 0\n`);
+    fs.writeFileSync(path.join(bin, "curl"), "#!/bin/sh\nexit 0\n");
+    fs.writeFileSync(
+      path.join(bin, "gpg"),
+      "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in *.gpg) : > \"$a\" ;; esac; done\nexit 0\n",
+    );
+    for (const name of ["sudo", "curl", "gpg"]) fs.chmodSync(path.join(bin, name), 0o755);
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, SUDO_LOG: sudoLog, TMPDIR: sandbox },
+    });
+    const sudoCalls = fs.existsSync(sudoLog) ? fs.readFileSync(sudoLog, "utf8") : "";
+    assert.notEqual(result.status, 0, `${skill} continued after an empty key export`);
+    assert.doesNotMatch(sudoCalls, /azure-cli\.sources/, `${skill} wrote an apt source without a keyring`);
+    assert.doesNotMatch(sudoCalls, /apt\/keyrings/, `${skill} installed an empty keyring`);
+    fs.rmSync(sandbox, { recursive: true, force: true });
+  }
+});
