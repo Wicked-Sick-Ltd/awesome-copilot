@@ -168,6 +168,20 @@ table.mcc-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 .mcc-form-fallback { display: none; }
 .mcc-form-fallback.mcc-visible { display: block; }
 .mcc-form-fallback textarea { width: 100%; min-height: 90px; font-family: Consolas, monospace; font-size: 12px; }
+.mcc-form-review { display: none; }
+.mcc-form-review.mcc-visible { display: grid; gap: 6px; }
+.mcc-form-review p { margin: 0; }
+.mcc-form-preview pre, .mcc-form-review pre {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--mcc-code-bg);
+  border: 1px solid var(--mcc-border);
+  border-radius: 6px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 /* Code */
 .mcc-codewrap { position: relative; }
@@ -261,6 +275,9 @@ ul.mcc-legend .mcc-swatch { display: inline-block; width: 10px; height: 10px; bo
   position: fixed;
   z-index: 50;
   min-width: 180px;
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   background: var(--mcc-surface);
   border: 1px solid var(--mcc-border);
   border-radius: 8px;
@@ -283,6 +300,15 @@ ul.mcc-legend .mcc-swatch { display: inline-block; width: 10px; height: 10px; bo
 }
 #mcc-menu button:hover { background: var(--mcc-primary-soft); color: var(--mcc-primary-dark); }
 #mcc-menu .mcc-menu-sep { border-top: 1px solid var(--mcc-border); margin: 4px 2px; }
+#mcc-menu .mcc-menu-label { display: block; }
+#mcc-menu .mcc-menu-prompt {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--mcc-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 p { margin: 0 0 8px; }
 img { max-width: 100%; height: auto; }
@@ -426,8 +452,10 @@ img { max-width: 100%; height: auto; }
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
     }).then(function (res) {
-      if (!res.ok) throw new Error("Request failed: " + res.status);
-      return res.json();
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error(data.error || "Request failed: " + res.status);
+        return data;
+      });
     });
   }
 
@@ -667,35 +695,33 @@ img { max-width: 100%; height: auto; }
     var copyPrompt = event.target.closest(".mcc-copy-prompt");
     if (copyPrompt) {
       copyText(copyPrompt.closest(".mcc-form-fallback").querySelector("textarea").value, copyPrompt);
+      return;
+    }
+
+    var confirmSend = event.target.closest(".mcc-confirm-send");
+    if (confirmSend) {
+      sendReviewed(confirmSend.closest(".mcc-form"));
+      return;
+    }
+
+    var cancelSend = event.target.closest(".mcc-cancel-send");
+    if (cancelSend) {
+      var cancelForm = cancelSend.closest(".mcc-form");
+      closeReview(cancelForm);
+      cancelForm.querySelector(".mcc-form-status").textContent = "";
     }
   });
 
   // ---- forms -------------------------------------------------------------
+  // Raw values only: the server builds the prompt from the card it stored.
   function collectValues(form) {
     var data = new FormData(form);
     var values = {};
     Array.prototype.forEach.call(form.elements, function (element) {
-      if (!element.name || values[element.name] !== undefined) return;
-      var all = data.getAll(element.name).map(String);
-      values[element.name] = all.join(", ");
+      if (!element.name || element.type === "hidden" || values[element.name] !== undefined) return;
+      values[element.name] = data.getAll(element.name).map(String);
     });
     return values;
-  }
-
-  function buildPrompt(form, values) {
-    var template = form.getAttribute("data-prompt-template");
-    if (template) {
-      var prompt = template;
-      Object.keys(values).forEach(function (name) {
-        prompt = prompt.split("{{" + name + "}}").join(values[name]);
-      });
-      return prompt;
-    }
-    var title = form.getAttribute("data-card-title") || "Form";
-    var lines = Object.keys(values).map(function (name) {
-      return "- " + name + ": " + values[name];
-    });
-    return 'Form "' + title + '" submitted:\n' + lines.join("\n");
   }
 
   // A required multi-checkbox group means "check at least one". HTML cannot
@@ -717,6 +743,59 @@ img { max-width: 100%; height: auto; }
     if (form && event.target.closest("[data-mcc-require-one]")) enforceRequiredGroups(form);
   });
 
+  // Submit shows the message the server built; Send delivers exactly that
+  // message, from the same snapshot of values.
+  var pendingReviews = new WeakMap();
+
+  function errorText(error) {
+    return error && error.message ? error.message : "unknown error";
+  }
+
+  function submitRequest(form, values, confirm) {
+    var article = form.closest(".mcc-card");
+    var body = {
+      cardId: article ? article.getAttribute("data-card-id") : null,
+      revision: form.getAttribute("data-card-revision"),
+      values: values,
+    };
+    if (confirm !== undefined) body.confirm = confirm;
+    return api("/api/submit", body);
+  }
+
+  function closeReview(form) {
+    pendingReviews.delete(form);
+    var review = form.querySelector(".mcc-form-review");
+    review.classList.remove("mcc-visible");
+    review.querySelector("pre").textContent = "";
+  }
+
+  function sendReviewed(form) {
+    var pending = pendingReviews.get(form);
+    if (!pending) return;
+    closeReview(form);
+    var status = form.querySelector(".mcc-form-status");
+    var fallback = form.querySelector(".mcc-form-fallback");
+    status.textContent = "Sending to the conversation...";
+    submitRequest(form, pending.values, pending.confirm).then(function (result) {
+      if (result.delivered) {
+        status.textContent = "Sent to the conversation ✓";
+      } else {
+        status.textContent = "The agent could not be reached automatically.";
+        fallback.querySelector("textarea").value = result.prompt;
+        fallback.classList.add("mcc-visible");
+      }
+    }).catch(function (error) {
+      status.textContent = "Sending failed: " + errorText(error);
+    });
+  }
+
+  document.addEventListener("input", function (event) {
+    var form = event.target.form;
+    if (!form || !pendingReviews.has(form)) return;
+    closeReview(form);
+    form.querySelector(".mcc-form-status").textContent = "Answers changed. Submit again to review the message.";
+  });
+
   document.addEventListener("submit", function (event) {
     var form = event.target.closest(".mcc-form");
     if (!form) return;
@@ -726,29 +805,23 @@ img { max-width: 100%; height: auto; }
       form.reportValidity();
       return;
     }
-    var article = form.closest(".mcc-card");
     var status = form.querySelector(".mcc-form-status");
-    var fallback = form.querySelector(".mcc-form-fallback");
+    var review = form.querySelector(".mcc-form-review");
+    form.querySelector(".mcc-form-fallback").classList.remove("mcc-visible");
+    closeReview(form);
     var values = collectValues(form);
-    var prompt = buildPrompt(form, values);
-    status.textContent = "Sending to the conversation...";
-    api("/api/submit", {
-      cardId: article ? article.getAttribute("data-card-id") : null,
-      values: values,
-      prompt: prompt,
-    }).then(function (result) {
-      if (result.delivered) {
-        status.textContent = "Sent to the conversation ✓";
-        fallback.classList.remove("mcc-visible");
-      } else {
+    status.textContent = "Preparing the message...";
+    submitRequest(form, values).then(function (result) {
+      if (!result.prompt) {
         status.textContent = "The agent could not be reached automatically.";
-        fallback.querySelector("textarea").value = prompt;
-        fallback.classList.add("mcc-visible");
+        return;
       }
-    }).catch(function () {
-      status.textContent = "Sending failed. Copy the prompt below instead.";
-      fallback.querySelector("textarea").value = prompt;
-      fallback.classList.add("mcc-visible");
+      pendingReviews.set(form, { values: values, confirm: result.confirm });
+      review.querySelector("pre").textContent = result.prompt;
+      review.classList.add("mcc-visible");
+      status.textContent = "Review the message, then choose Send.";
+    }).catch(function (error) {
+      status.textContent = "Could not prepare the message: " + errorText(error);
     });
   });
 
@@ -813,18 +886,31 @@ img { max-width: 100%; height: auto; }
   document.addEventListener("contextmenu", function (event) {
     var article = event.target.closest(".mcc-card");
     if (!article) { hideMenu(); return; }
-    var config = configs[article.getAttribute("data-card-id")] || {};
+    var cardId = article.getAttribute("data-card-id");
+    var config = configs[cardId] || {};
     var actions = config.contextActions || [];
     event.preventDefault();
     var selection = String(window.getSelection() || "");
     menu.innerHTML = "";
-    actions.forEach(function (action) {
+    actions.forEach(function (action, index) {
       var button = document.createElement("button");
       button.type = "button";
-      button.textContent = action.label;
+      var label = document.createElement("span");
+      label.className = "mcc-menu-label";
+      label.textContent = action.label;
+      var prompt = document.createElement("span");
+      prompt.className = "mcc-menu-prompt";
+      prompt.textContent = "Sends: " + action.prompt;
+      button.appendChild(label);
+      button.appendChild(prompt);
       button.addEventListener("click", function () {
         hideMenu();
-        api("/api/prompt", { prompt: action.prompt.split("{{selection}}").join(selection) }).catch(function () {});
+        api("/api/context-action", {
+          cardId: cardId,
+          revision: config.revision,
+          action: index,
+          selection: selection,
+        }).catch(function () {});
       });
       menu.appendChild(button);
     });
@@ -842,8 +928,8 @@ img { max-width: 100%; height: auto; }
     });
     menu.appendChild(copyItem);
     menu.style.display = "block";
-    var x = Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8);
-    var y = Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8);
+    var x = Math.max(8, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8));
+    var y = Math.max(8, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8));
     menu.style.left = x + "px";
     menu.style.top = y + "px";
   });
