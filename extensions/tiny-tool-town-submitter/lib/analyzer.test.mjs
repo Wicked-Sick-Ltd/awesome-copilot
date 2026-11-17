@@ -73,6 +73,20 @@ test("analysis refuses git or gh resolved inside the inspected repository", { sk
     assert.ok(existsSync(join(markers, "trusted-gh")), "trusted gh was not used");
 });
 
+test("a subdirectory scan does not trust binaries planted in a parent directory", { skip: isWindows }, async (t) => {
+    const { repo, trustedBin, markers, originalPath } = setupFixture(t);
+    const sub = join(repo, "pkg");
+    mkdirSync(sub);
+    process.env.PATH = [repo, trustedBin, originalPath].join(delimiter);
+
+    const result = await inspectRepository(sub);
+
+    assert.equal(existsSync(join(markers, "planted-git")), false, "planted git was executed");
+    assert.equal(existsSync(join(markers, "planted-gh")), false, "planted gh was executed");
+    assert.equal(result.repoPath, repo);
+    assert.ok(existsSync(join(markers, "trusted-gh")), "trusted gh was not used");
+});
+
 test("resolveTrustedExecutable returns an absolute path outside untrusted roots", { skip: isWindows }, async (t) => {
     const { repo, trustedBin, originalPath } = setupFixture(t);
     process.env.PATH = [".", repo, trustedBin, originalPath].join(delimiter);

@@ -1,5 +1,5 @@
 import { access, readFile, readdir, stat } from "node:fs/promises";
-import { extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, parse, relative, resolve } from "node:path";
 import { runTrusted } from "./trusted-exec.mjs";
 
 const README_NAMES = ["README.md", "readme.md", "Readme.md", "README", "readme", "README.rst", "README.txt"];
@@ -75,9 +75,23 @@ const THEMES = [
     "retro",
 ];
 
+function ancestorRoots(start) {
+    const roots = [];
+    let current = resolve(start);
+    const filesystemRoot = parse(current).root;
+    while (current && current !== filesystemRoot) {
+        roots.push(current);
+        const parent = dirname(current);
+        if (parent === current) break;
+        current = parent;
+    }
+    return roots;
+}
+
 async function runOptional(command, args, untrustedRoot, timeout) {
+    const untrustedRoots = Array.isArray(untrustedRoot) ? untrustedRoot : [untrustedRoot];
     try {
-        return await runTrusted(command, args, { untrustedRoots: [untrustedRoot], timeout });
+        return await runTrusted(command, args, { untrustedRoots, timeout });
     } catch {
         return "";
     }
@@ -440,7 +454,9 @@ export function buildIssueBody(metadata) {
 
 export async function resolveRepoRoot(candidate) {
     const start = resolve(candidate || process.cwd());
-    const root = await runGitOptional(start, ["rev-parse", "--show-toplevel"]);
+    // The repository root is not known yet. A git or gh planted in any ancestor
+    // (the repo toplevel, or node_modules/.bin on PATH) must stay untrusted.
+    const root = await runOptional("git", ["-C", start, "rev-parse", "--show-toplevel"], ancestorRoots(start));
     if (!root) throw new Error(`No Git repository was found at ${start}.`);
     return resolve(root);
 }
