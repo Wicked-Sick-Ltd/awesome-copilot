@@ -121,6 +121,22 @@ function hrefs(html) {
     return [...html.matchAll(/href="([^"]*)"/g)].map((match) => decodeAttr(match[1]));
 }
 
+function sameHttpUrl(href, expected) {
+    let got;
+    let want;
+    try {
+        got = new URL(href);
+        want = new URL(expected);
+    } catch {
+        return false;
+    }
+    return got.protocol === want.protocol
+        && got.host === want.host
+        && got.pathname === want.pathname
+        && got.search === want.search
+        && got.hash === want.hash;
+}
+
 // Resolve the way a browser would for a link on the Work Hub loopback page.
 function assertHttpLinks(html, where) {
     const links = hrefs(html);
@@ -159,9 +175,9 @@ test("an https environment_url is still linked from the focus card and drawer", 
     const model = await collectWith("https://preview.acme.example/build/1");
     assert.equal(model.repos[0].deployments[0].url, "https://preview.acme.example/build/1");
     const client = await bootClient(model);
-    assert.ok(hrefs(client.el("focusList").innerHTML).includes("https://preview.acme.example/build/1"));
+    assert.ok(hrefs(client.el("focusList").innerHTML).some((href) => sameHttpUrl(href, "https://preview.acme.example/build/1")));
     client.run("openRepoDetail('acme/site')");
-    assert.ok(hrefs(client.el("detailDrawer").innerHTML).includes("https://preview.acme.example/build/1"));
+    assert.ok(hrefs(client.el("detailDrawer").innerHTML).some((href) => sameHttpUrl(href, "https://preview.acme.example/build/1")));
 });
 
 test("the renderer refuses non-http URLs in every link it builds", async (t) => {
