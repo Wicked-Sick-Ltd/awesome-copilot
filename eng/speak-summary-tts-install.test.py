@@ -1,7 +1,6 @@
 """Regression: speak-summary must only install pocket-tts from its hash-pinned lockfile."""
 
 import json
-import os
 import pathlib
 import re
 import shutil
