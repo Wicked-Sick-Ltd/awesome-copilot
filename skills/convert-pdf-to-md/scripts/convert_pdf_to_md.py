@@ -56,8 +56,11 @@ Exit codes:
   3 - invalid input (path not found, or single-file input is not .pdf)
 """
 import argparse
-import sys
 import hashlib
+import os
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 
 EXIT_OK = 0
@@ -221,14 +224,54 @@ def _has_usable_stem(source: Path) -> bool:
     return bool(source.stem.strip(". "))
 
 
+def _publish_new_output(source: Path, dest_dir: Path, write):
+    """Write into a private directory, then rename it to dest_dir.
+
+    dest_dir appears only after write() finishes, so a failed conversion does
+    not leave a folder that blocks a retry. An existing dest_dir is never
+    deleted or written into.
+    """
+    if dest_dir.exists() or dest_dir.is_symlink():
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return None
+    staging = None
+    try:
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f".{dest_dir.name}.", dir=dest_dir.parent))
+        md_path = write(staging)
+        relative = md_path.relative_to(staging)
+        os.rename(staging, dest_dir)
+        staging = None
+        return dest_dir / relative
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return None
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
+        return None
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def convert_one(md, fitz, source: Path, dest_dir: Path) -> bool:
     """Convert a single .pdf file to a '<name>/' folder containing the
     Markdown file and an 'img/' folder of extracted images. Returns True on
     success.
 
-    dest_dir must not exist yet: it is created here, and everything is written
-    with exclusive-create opens inside it, so an existing folder (including the
-    source's own folder) is never deleted from, merged into, or overwritten."""
+    dest_dir must not exist yet. Output is written in a private directory and
+    renamed into place, so an existing folder is never deleted or written into,
+    and a failed conversion does not leave a folder behind."""
     if not _has_usable_stem(source):
         print(
             f"FAILED  {source} -> file name has no usable stem for an output "
@@ -243,32 +286,23 @@ def convert_one(md, fitz, source: Path, dest_dir: Path) -> bool:
         print(f"FAILED  {source} -> {exc}", file=sys.stderr)
         return False
 
-    try:
-        dest_dir.parent.mkdir(parents=True, exist_ok=True)
-        dest_dir.mkdir()
-    except FileExistsError:
-        print(
-            f"FAILED  {source} -> output folder {dest_dir} already exists; "
-            "it was left untouched. Move or remove it, or pass -o with a new "
-            "folder path",
-            file=sys.stderr,
-        )
-        return False
-    except OSError as exc:
-        print(f"FAILED  {source} -> could not create output folder {dest_dir}: {exc}", file=sys.stderr)
-        return False
+    notes = {}
 
-    try:
-        written_by_page = extract_images(fitz, source, dest_dir / "img")
+    def write(staging: Path) -> Path:
+        written_by_page = extract_images(fitz, source, staging / "img")
+        notes["pages"] = written_by_page
         appendix = build_image_appendix(written_by_page)
         text = result.text_content.rstrip("\n")
         full_text = f"{text}\n{appendix}" if appendix else f"{text}\n"
-        md_path = dest_dir / f"{source.stem}.md"
+        md_path = staging / f"{source.stem}.md"
         with open(md_path, "x", encoding="utf-8") as fh:
             fh.write(full_text)
-    except OSError as exc:
-        print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
+        return md_path
+
+    md_path = _publish_new_output(source, dest_dir, write)
+    if md_path is None:
         return False
+    written_by_page = notes["pages"]
 
     img_count = sum(len(v) for v in written_by_page.values())
     img_note = f", {img_count} image(s)" if img_count else ""

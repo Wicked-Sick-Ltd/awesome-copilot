@@ -10,7 +10,7 @@ import tempfile
 import types
 import unittest
 import zipfile
-from unittest import mock
+import unittest.mock as mock
 
 ROOT = pathlib.Path(__file__).parents[1]
 
@@ -247,6 +247,33 @@ class ConverterOutputSafety:
 
         self.assert_user_folder_untouched(target)
         self.assertNotEqual(code, self.module.EXIT_OK, output)
+
+    def test_failed_write_leaves_no_folder_and_a_retry_succeeds(self):
+        source = self.make_source(self.tmp, "report")
+        real_open = open
+        failed = {"n": 0}
+
+        def flaky_open(path, mode="r", *args, **kwargs):
+            if "x" in mode and str(path).endswith(".md") and failed["n"] == 0:
+                failed["n"] += 1
+                raise OSError("simulated write failure")
+            return real_open(path, mode, *args, **kwargs)
+
+        with mock.patch("builtins.open", flaky_open):
+            code, output = self.run_main(source)
+
+        self.assertNotEqual(code, self.module.EXIT_OK, output)
+        self.assertFalse((self.tmp / "report").exists(), output)
+        self.assertEqual(
+            [p.name for p in self.tmp.iterdir() if p.name.startswith(".")],
+            [],
+            "a failed conversion left a private staging directory",
+        )
+
+        code, output = self.run_main(source)
+
+        self.assertEqual(code, self.module.EXIT_OK, output)
+        self.assertTrue((self.tmp / "report" / "report.md").is_file())
 
     def test_new_output_folder_gets_markdown_and_images(self):
         source = self.make_source(self.tmp, "report")

@@ -53,9 +53,12 @@ Exit codes:
   3 - invalid input (path not found, or single-file input is not .xlsx)
 """
 import argparse
+import os
 import posixpath
 import re
+import shutil
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -256,14 +259,54 @@ def _has_usable_stem(source: Path) -> bool:
     return bool(source.stem.strip(". "))
 
 
+def _publish_new_output(source: Path, dest_dir: Path, write):
+    """Write into a private directory, then rename it to dest_dir.
+
+    dest_dir appears only after write() finishes, so a failed conversion does
+    not leave a folder that blocks a retry. An existing dest_dir is never
+    deleted or written into.
+    """
+    if dest_dir.exists() or dest_dir.is_symlink():
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return None
+    staging = None
+    try:
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f".{dest_dir.name}.", dir=dest_dir.parent))
+        md_path = write(staging)
+        relative = md_path.relative_to(staging)
+        os.rename(staging, dest_dir)
+        staging = None
+        return dest_dir / relative
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return None
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
+        return None
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def convert_one(md, source: Path, dest_dir: Path) -> bool:
     """Convert a single .xlsx file to a '<name>/' folder containing the
     Markdown file and an 'img/' folder of extracted images. Returns True on
     success.
 
-    dest_dir must not exist yet: it is created here, and everything is written
-    with exclusive-create opens inside it, so an existing folder (including the
-    source's own folder) is never deleted from, merged into, or overwritten."""
+    dest_dir must not exist yet. Output is written in a private directory and
+    renamed into place, so an existing folder is never deleted or written into,
+    and a failed conversion does not leave a folder behind."""
     if not _has_usable_stem(source):
         print(
             f"FAILED  {source} -> file name has no usable stem for an output "
@@ -278,30 +321,21 @@ def convert_one(md, source: Path, dest_dir: Path) -> bool:
         print(f"FAILED  {source} -> {exc}", file=sys.stderr)
         return False
 
-    try:
-        dest_dir.parent.mkdir(parents=True, exist_ok=True)
-        dest_dir.mkdir()
-    except FileExistsError:
-        print(
-            f"FAILED  {source} -> output folder {dest_dir} already exists; "
-            "it was left untouched. Move or remove it, or pass -o with a new "
-            "folder path",
-            file=sys.stderr,
-        )
-        return False
-    except OSError as exc:
-        print(f"FAILED  {source} -> could not create output folder {dest_dir}: {exc}", file=sys.stderr)
-        return False
+    notes = {}
 
-    try:
-        sheet_images = extract_images(source, dest_dir / "img")
+    def write(staging: Path) -> Path:
+        sheet_images = extract_images(source, staging / "img")
+        notes["sheets"] = sheet_images
         text = insert_sheet_images(result.text_content, sheet_images)
-        md_path = dest_dir / f"{source.stem}.md"
+        md_path = staging / f"{source.stem}.md"
         with open(md_path, "x", encoding="utf-8") as fh:
             fh.write(text)
-    except OSError as exc:
-        print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
+        return md_path
+
+    md_path = _publish_new_output(source, dest_dir, write)
+    if md_path is None:
         return False
+    sheet_images = notes["sheets"]
 
     img_count = sum(len(v) for v in sheet_images.values())
     img_note = f", {img_count} image(s)" if img_count else ""
