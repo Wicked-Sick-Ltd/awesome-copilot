@@ -485,8 +485,11 @@ function readBranchFromGit() {
 }
 
 function captureWorkingDirectory(ctx) {
-    if (!workspacePath && ctx?.session?.workingDirectory) {
-        workspacePath = ctx.session.workingDirectory;
+    // session.workspacePath is Copilot's session-state directory, not the
+    // opened repository. The trust check has to use the working tree.
+    const workingDirectory = ctx?.session?.workingDirectory;
+    if (workingDirectory) {
+        workspacePath = workingDirectory;
     }
 }
 
@@ -2387,5 +2390,4 @@ const session = await joinSession({
     ],
 });
 
-workspacePath = session.workspacePath;
 await loadState();
