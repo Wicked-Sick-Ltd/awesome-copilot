@@ -22,10 +22,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const setupPath = path.join(repoRoot, "skills/eval-driven-dev/resources/setup.sh");
 const resourcesDir = path.dirname(setupPath);
-// Fixed directories plus the Node install that is running this file. The
-// child PATH is not taken from the parent environment, so the shell command
-// does not depend on an environment path.
-const basePath = ["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin", path.dirname(process.execPath)].join(":");
+// The Node install running this file comes first, then fixed system
+// directories. The child PATH is not taken from the parent environment.
+const basePath = [path.dirname(process.execPath), "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"]
+  .filter((entry, index, all) => entry && all.indexOf(entry) === index)
+  .join(":");
 const UNPINNED_VERSION = "9.9.9";
 
 const packageEntry = `#!/usr/bin/env node
@@ -113,8 +114,7 @@ async function packSkills(version, workRoot) {
   fs.writeFileSync(path.join(pkgDir, "run.js"), packageEntry);
   fs.chmodSync(path.join(pkgDir, "run.js"), 0o755);
   const output = await runNpm(["pack", "--pack-destination", workRoot, "--json"], pkgDir);
-  const packed = JSON.parse(output);
-  const tarballPath = path.join(workRoot, packed[0].filename);
+  const tarballPath = path.join(workRoot, packFilename(JSON.parse(output)));
   const tarball = fs.readFileSync(tarballPath);
   return {
     version,
@@ -122,6 +122,24 @@ async function packSkills(version, workRoot) {
     integrity: `sha512-${crypto.createHash("sha512").update(tarball).digest("base64")}`,
     shasum: crypto.createHash("sha1").update(tarball).digest("hex"),
   };
+}
+
+function packFilename(parsed) {
+  const found = [];
+  const visit = (value) => {
+    if (!value || typeof value !== "object") return;
+    if (typeof value.filename === "string") found.push(value.filename);
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    for (const entry of Object.values(value)) visit(entry);
+  };
+  visit(parsed);
+  if (found.length === 0) {
+    throw new Error(`npm pack --json did not name a tarball: ${JSON.stringify(parsed)}`);
+  }
+  return found[0];
 }
 
 function runNpm(args, cwd) {
