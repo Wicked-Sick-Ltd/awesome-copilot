@@ -2,7 +2,6 @@
 // Copilot SDK stub. The wrapper is a no-op until a test arms a path.
 
 import { createRequire } from "node:module";
-import { wrapFs } from "./symlink-read-limits.trap-core.mjs";
 
 const require = createRequire(import.meta.url);
 const fsKeys = Object.keys(require("node:fs")).filter((key) => key !== "default");

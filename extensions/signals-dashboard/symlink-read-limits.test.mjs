@@ -15,7 +15,7 @@
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { lstatSync, readFileSync, symlinkSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
