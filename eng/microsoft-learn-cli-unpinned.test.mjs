@@ -41,6 +41,7 @@ const semver = createRequire(npmCli)("semver");
 
 const PACKAGE = "@microsoft/learn-cli";
 const LATEST = "9.9.9";
+const distTags = { latest: LATEST };
 const PAYLOAD = "learn-cli-hostile-payload";
 
 const SOURCES = [
@@ -59,6 +60,7 @@ const procedures = SOURCES.flatMap((relativePath) =>
 );
 
 const hostileVersions = collectHostileVersions(procedures);
+for (const tag of ["next", "beta", "canary", "rc"]) rememberDistTag(tag);
 const tarballs = new Map(
   hostileVersions.map((version) => [version, packCanary(version)]),
 );
@@ -108,6 +110,14 @@ const registry = `http://127.0.0.1:${server.address().port}/`;
 after(() => new Promise((resolve, reject) => {
   server.close((error) => error ? reject(error) : resolve());
 }));
+
+test("dist-tag pins resolve to the hostile release", () => {
+  const doc = packument(server.address().port);
+  for (const tag of ["latest", "next", "beta", "canary", "rc"]) {
+    assert.equal(doc["dist-tags"][tag], LATEST, `${tag} does not install the hostile release`);
+  }
+  assert.equal(doc.versions[LATEST].version, LATEST);
+});
 
 before(async () => {
   const marker = path.join(work, "probe-marker");
@@ -328,7 +338,16 @@ function addVersionsFromLock(file, versions) {
   }
 }
 
+function rememberDistTag(raw) {
+  if (!raw || raw === "*" || raw === "latest") return;
+  if (semver.valid(raw) || semver.validRange(raw)) return;
+  // npm asks the packument for this tag. Point it at the hostile release so
+  // a dist-tag pin still installs that package.
+  distTags[raw] = LATEST;
+}
+
 function versionsForSpec(raw) {
+  rememberDistTag(raw);
   if (!raw || raw === "*" || raw === "latest") {
     return [LATEST];
   }
@@ -409,7 +428,7 @@ function packument(port) {
   }
   return {
     name: PACKAGE,
-    "dist-tags": { latest: LATEST },
+    "dist-tags": { ...distTags },
     versions,
   };
 }
