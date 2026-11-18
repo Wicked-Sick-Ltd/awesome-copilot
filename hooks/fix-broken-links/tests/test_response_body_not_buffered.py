@@ -107,6 +107,7 @@ class LocalSite:
         self.requests: list[str] = []
         self._stop = threading.Event()
         self._measured: dict[str, dict[str, int | None]] = {}
+        self._ready: dict[str, threading.Event] = {}
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
 
@@ -120,6 +121,21 @@ class LocalSite:
 
     def measured(self, path: str) -> dict[str, int | None]:
         return self._measured.get(path, {"body_bytes": 0, "baseline_kb": None, "peak_kb": None})
+
+    def wait_for_measurement(self, path: str) -> None:
+        """Block until the oversized handler publishes this path's sample.
+
+        A status-only read lets the hook exit during the post-header pause,
+        so subprocess.run can return while that handler is still asleep.
+        Reading _measured before it publishes returns the empty default.
+        """
+        deadline = time.monotonic() + CASE_TIMEOUT_SEC
+        ready = self._ready.get(path)
+        while ready is None and path in self.requests and time.monotonic() < deadline:
+            time.sleep(0.01)
+            ready = self._ready.get(path)
+        if ready is not None:
+            ready.wait(max(0.0, deadline - time.monotonic()))
 
     def _serve(self) -> None:
         while not self._stop.is_set():
@@ -226,44 +242,70 @@ class LocalSite:
                 "Connection: close\r\n"
                 "\r\n"
             )
-        conn.sendall(header.encode("ascii"))
-
-        # Headers are out. The hook is blocked in the body read, so the RSS
-        # here is the pre-body baseline for this process.
-        time.sleep(HEADER_PAUSE_SEC)
-        pid = find_hook_pid()
-        baseline = read_status_kb(pid, "VmHWM") if pid is not None else None
-        peak = baseline
+        ready = threading.Event()
+        self._ready[path] = ready
+        pid = None
+        baseline = None
+        peak = None
         sent = 0
-        chunk = b"Z" * 65536
         try:
-            while sent < BODY_BYTES:
-                take = min(len(chunk), BODY_BYTES - sent)
+            # The hook is blocked until this status line arrives, so the sample
+            # exists even when a status-only read closes immediately and the
+            # process exits inside the pause below.
+            pid = find_hook_pid()
+            baseline = read_status_kb(pid, "VmHWM") if pid is not None else None
+            conn.sendall(header.encode("ascii"))
+
+            # A status-only read may exit during this pause. A read that stays
+            # blocked on the body is sampled again at the end, so header
+            # handling and later requests are not counted as this body's growth.
+            deadline = time.monotonic() + HEADER_PAUSE_SEC
+            while time.monotonic() < deadline:
+                if pid is None:
+                    pid = find_hook_pid()
+                    if pid is not None and baseline is None:
+                        baseline = read_status_kb(pid, "VmHWM")
+                elif read_status_kb(pid, "VmHWM") is None:
+                    pid = None
+                    break
+                time.sleep(0.01)
+            if pid is not None:
+                current = read_status_kb(pid, "VmHWM")
+                if current is not None:
+                    baseline = current
+            peak = baseline
+
+            chunk = b"Z" * 65536
+            try:
+                while sent < BODY_BYTES:
+                    take = min(len(chunk), BODY_BYTES - sent)
+                    if chunked:
+                        frame = f"{take:x}\r\n".encode("ascii") + chunk[:take] + b"\r\n"
+                        conn.sendall(frame)
+                    else:
+                        conn.sendall(chunk[:take])
+                    sent += take
+                    if pid is not None:
+                        current = read_status_kb(pid, "VmHWM")
+                        if current is not None:
+                            peak = current if peak is None else max(peak, current)
                 if chunked:
-                    frame = f"{take:x}\r\n".encode("ascii") + chunk[:take] + b"\r\n"
-                    conn.sendall(frame)
-                else:
-                    conn.sendall(chunk[:take])
-                sent += take
-                if pid is not None:
-                    current = read_status_kb(pid, "VmHWM")
-                    if current is not None:
-                        peak = current if peak is None else max(peak, current)
-            if chunked:
-                conn.sendall(b"0\r\n\r\n")
-        except OSError:
-            # The hook is allowed to close the socket once it has the status
-            # line. Bytes already sent are still recorded below.
-            pass
-        if pid is not None:
-            current = read_status_kb(pid, "VmHWM")
-            if current is not None:
-                peak = current if peak is None else max(peak, current)
-        self._measured[path] = {
-            "body_bytes": sent,
-            "baseline_kb": baseline,
-            "peak_kb": peak,
-        }
+                    conn.sendall(b"0\r\n\r\n")
+            except OSError:
+                # The hook is allowed to close the socket once it has the status
+                # line. Bytes already sent are still recorded below.
+                pass
+            if pid is not None and sent > 0:
+                current = read_status_kb(pid, "VmHWM")
+                if current is not None:
+                    peak = current if peak is None else max(peak, current)
+        finally:
+            self._measured[path] = {
+                "body_bytes": sent,
+                "baseline_kb": baseline,
+                "peak_kb": peak,
+            }
+            ready.set()
 
 
 def run_hook(site: LocalSite, url: str, *, files_array: bool) -> Outcome:
@@ -293,6 +335,7 @@ def run_hook(site: LocalSite, url: str, *, files_array: bool) -> Outcome:
 
 
 def attach_measurement(outcome: Outcome, site: LocalSite, path: str) -> Outcome:
+    site.wait_for_measurement(path)
     measured = site.measured(path)
     outcome.body_bytes = int(measured["body_bytes"] or 0)
     outcome.baseline_kb = measured["baseline_kb"]  # type: ignore[assignment]
@@ -319,9 +362,13 @@ def check(
             f"server sent {outcome.body_bytes} body bytes; cap is {MAX_BODY_BYTES}"
         )
     if outcome.baseline_kb is None or outcome.peak_kb is None:
-        problems.append(
-            f"no VmHWM baseline (baseline={outcome.baseline_kb}, peak={outcome.peak_kb})"
-        )
+        # A status-only read can exit before any VmHWM sample. Missing RSS is
+        # not a failure when the body was not consumed; a full read is already
+        # reported above.
+        if outcome.body_bytes > MAX_BODY_BYTES:
+            problems.append(
+                f"no VmHWM baseline (baseline={outcome.baseline_kb}, peak={outcome.peak_kb})"
+            )
     else:
         growth = outcome.peak_kb - outcome.baseline_kb
         if growth > MAX_RSS_GROWTH_KB:
