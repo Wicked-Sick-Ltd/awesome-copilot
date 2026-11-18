@@ -228,10 +228,15 @@ class LocalSite:
             )
         conn.sendall(header.encode("ascii"))
 
-        # Headers are out. The hook is blocked in the body read, so the RSS
-        # here is the pre-body baseline for this process.
-        time.sleep(HEADER_PAUSE_SEC)
-        pid = find_hook_pid()
+        # Headers are out. Sample the hook while it is still deciding whether
+        # to read the body. A status-only client can exit during this window.
+        deadline = time.monotonic() + HEADER_PAUSE_SEC
+        pid = None
+        while time.monotonic() < deadline:
+            pid = find_hook_pid()
+            if pid is not None:
+                break
+            time.sleep(0.02)
         baseline = read_status_kb(pid, "VmHWM") if pid is not None else None
         peak = baseline
         sent = 0
@@ -276,6 +281,16 @@ def run_hook(site: LocalSite, url: str, *, files_array: bool) -> Outcome:
         else:
             tool_input = {"path": str(note)}
         payload = json.dumps({"toolName": "edit", "tool_input": tool_input})
+        # Broken links ask `copilot` for alternatives and wait up to the hook's
+        # own agent timeout, which is longer than CASE_TIMEOUT_SEC. A stub that
+        # exits immediately keeps that lookup from hiding the body-size result.
+        stub_dir = Path(directory) / "bin"
+        stub_dir.mkdir()
+        copilot = stub_dir / "copilot"
+        copilot.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        copilot.chmod(0o755)
+        env = os.environ.copy()
+        env["PATH"] = f"{stub_dir}{os.pathsep}{env.get('PATH', '')}"
         proc = subprocess.run(
             [pwsh_path(), "-NoProfile", "-File", str(HOOK_SCRIPT)],
             input=payload,
@@ -283,6 +298,7 @@ def run_hook(site: LocalSite, url: str, *, files_array: bool) -> Outcome:
             capture_output=True,
             timeout=CASE_TIMEOUT_SEC,
             check=False,
+            env=env,
         )
     return Outcome(
         exit_code=proc.returncode,
@@ -319,9 +335,12 @@ def check(
             f"server sent {outcome.body_bytes} body bytes; cap is {MAX_BODY_BYTES}"
         )
     if outcome.baseline_kb is None or outcome.peak_kb is None:
-        problems.append(
-            f"no VmHWM baseline (baseline={outcome.baseline_kb}, peak={outcome.peak_kb})"
-        )
+        # The hook closed after the status line, before a sample. That is a
+        # pass only when it also stopped reading the body.
+        if outcome.body_bytes > MAX_BODY_BYTES:
+            problems.append(
+                f"no VmHWM baseline while {outcome.body_bytes} body bytes were sent"
+            )
     else:
         growth = outcome.peak_kb - outcome.baseline_kb
         if growth > MAX_RSS_GROWTH_KB:
