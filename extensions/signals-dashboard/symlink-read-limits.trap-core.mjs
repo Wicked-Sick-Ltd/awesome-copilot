@@ -16,6 +16,16 @@ export function armReadTrap(path, target) {
     };
 }
 
+// The next following write swaps the path. Reads leave the trap armed, so a
+// read-then-write still observes the replacement on the write.
+export function armWriteTrap(path, target) {
+    traps.set(path, { target, writesOnly: true });
+    return () => {
+        const armed = traps.get(path);
+        if (armed && armed.target === target && armed.writesOnly) traps.delete(path);
+    };
+}
+
 export function pathKey(path) {
     if (typeof path === "string") return path;
     if (path instanceof URL && path.protocol === "file:") return fileURLToPath(path);
@@ -41,20 +51,22 @@ function flagFrom(options) {
     return undefined;
 }
 
-export function swapIfFollowing(path, flags) {
+export function swapIfFollowing(path, flags, { write = false } = {}) {
     if (!openFollowsSymlink(flags)) return;
     const key = pathKey(path);
     if (!key || !traps.has(key)) return;
-    const target = traps.get(key);
+    const armed = traps.get(key);
+    const target = typeof armed === "string" ? armed : armed.target;
+    if (armed && typeof armed === "object" && armed.writesOnly && !write) return;
     traps.delete(key);
     try { unlinkSync(key); } catch { /* a missing path still gets the link */ }
     symlinkSync(target, key);
 }
 
-function wrap(realFn, pickFlags) {
+function wrap(realFn, pickFlags, { write = false } = {}) {
     return function wrapped(path, ...args) {
         const flags = pickFlags(args);
-        if (flags !== SKIP) swapIfFollowing(path, flags);
+        if (flags !== SKIP) swapIfFollowing(path, flags, { write });
         return realFn.call(this, path, ...args);
     };
 }
@@ -88,15 +100,15 @@ export function wrapFs(real, kind) {
         api[key] = real[key];
     }
     if (typeof real.readFile === "function") api.readFile = wrap(real.readFile, readFlags);
-    if (typeof real.writeFile === "function") api.writeFile = wrap(real.writeFile, writeFlags);
-    if (typeof real.appendFile === "function") api.appendFile = wrap(real.appendFile, writeFlags);
+    if (typeof real.writeFile === "function") api.writeFile = wrap(real.writeFile, writeFlags, { write: true });
+    if (typeof real.appendFile === "function") api.appendFile = wrap(real.appendFile, writeFlags, { write: true });
     if (typeof real.open === "function") api.open = wrap(real.open, openFlags);
     if (typeof real.readFileSync === "function") api.readFileSync = wrap(real.readFileSync, readFlags);
-    if (typeof real.writeFileSync === "function") api.writeFileSync = wrap(real.writeFileSync, writeFlags);
-    if (typeof real.appendFileSync === "function") api.appendFileSync = wrap(real.appendFileSync, writeFlags);
+    if (typeof real.writeFileSync === "function") api.writeFileSync = wrap(real.writeFileSync, writeFlags, { write: true });
+    if (typeof real.appendFileSync === "function") api.appendFileSync = wrap(real.appendFileSync, writeFlags, { write: true });
     if (typeof real.openSync === "function") api.openSync = wrap(real.openSync, openFlags);
     if (typeof real.createReadStream === "function") api.createReadStream = wrap(real.createReadStream, streamFlags);
-    if (typeof real.createWriteStream === "function") api.createWriteStream = wrap(real.createWriteStream, streamFlags);
+    if (typeof real.createWriteStream === "function") api.createWriteStream = wrap(real.createWriteStream, streamFlags, { write: true });
     if (kind === "fs" && real.promises) api.promises = wrapFs(real.promises, "promises");
     return api;
 }

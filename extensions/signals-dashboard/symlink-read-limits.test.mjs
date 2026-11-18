@@ -19,7 +19,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { armReadTrap } from "./symlink-read-limits.trap-core.mjs";
+import { armReadTrap, armWriteTrap } from "./symlink-read-limits.trap-core.mjs";
 
 const CAP = 1024 * 1024;
 const preloadPath = fileURLToPath(new URL("./symlink-read-limits.preload.mjs", import.meta.url));
@@ -337,18 +337,42 @@ describe("signals dashboard symlink and size limits", { concurrency: 1 }, () => 
             await writeFile(outsideStash, originalStash);
 
             const disarmSignal = armReadTrap(signal, outsideSignal);
-            const disarmStash = armReadTrap(stash, outsideStash);
             try {
-                const { response, html, refreshed, canvas, ctx } = await readDashboard(workshop);
-                assert.equal(response.status, 200);
-                assertHas(html, refreshed, "LEGIT_SIGNAL_INTENT");
-                assertNoMarker(html, refreshed, "TOCTOU_SIGNAL_LEAK");
-                assertNoMarker(html, refreshed, "TOCTOU_SIGNAL_WORKED");
-                await action(canvas, "stash").handler({ ...ctx, input: { deskName: "ok" } });
-                assert.equal(readFileSync(outsideStash, "utf8"), originalStash);
+                await withDashboard(workshop, async ({ canvas, ctx, opened }) => {
+                    const response = await fetch(opened.url);
+                    const html = await response.text();
+                    const refreshed = await action(canvas, "refresh").handler(ctx);
+                    const failures = [];
+                    if (response.status !== 200) failures.push(`dashboard status ${response.status}`);
+                    try {
+                        assertHas(html, refreshed, "LEGIT_SIGNAL_INTENT");
+                    } catch (error) {
+                        failures.push(error.message);
+                    }
+                    for (const marker of ["TOCTOU_SIGNAL_LEAK", "TOCTOU_SIGNAL_WORKED"]) {
+                        if (html.includes(marker) || JSON.stringify(refreshed).includes(marker)) {
+                            failures.push(`workshop read surfaced ${marker}`);
+                        }
+                    }
+                    // Arm after the dashboard read. The stash write is the call
+                    // that must see the replacement; the canvas is still open.
+                    const disarmStash = armWriteTrap(stash, outsideStash);
+                    try {
+                        const stashed = await action(canvas, "stash").handler({ ...ctx, input: { deskName: "ok" } });
+                        if (stashed.ok !== true) failures.push(stashed.error || "stash did not run");
+                        if (readFileSync(outsideStash, "utf8") !== originalStash) {
+                            failures.push("stash write followed a symlink swapped in before the write");
+                        }
+                        if (lstatSync(stash).isSymbolicLink()) {
+                            failures.push("stash path was replaced before the write completed");
+                        }
+                    } finally {
+                        disarmStash();
+                    }
+                    assert.deepEqual(failures, []);
+                });
             } finally {
                 disarmSignal();
-                disarmStash();
             }
         } finally {
             await rm(root, { recursive: true, force: true });
