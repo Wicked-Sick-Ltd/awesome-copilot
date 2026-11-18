@@ -233,99 +233,126 @@ async function closeInstance(canvas, instanceId, stream) {
 
 async function launchChrome() {
     const dir = await mkdtemp(path.join(tmpdir(), "token-pacman-chrome-"));
-    const child = spawn(CHROME, [
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--no-first-run",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--remote-debugging-port=0",
-        `--user-data-dir=${dir}`,
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-    child.stdout.on("data", () => {});
-    child.stderr.on("data", () => {});
-    const portFile = path.join(dir, "DevToolsActivePort");
-    let port = 0;
-    for (let attempt = 0; attempt < 50 && !port; attempt += 1) {
+    let child;
+    let ws;
+    const stop = async () => {
         try {
-            port = Number((await readFile(portFile, "utf8")).split("\n")[0]);
+            ws?.close();
         } catch {
-            await delay(100);
+            // The socket may already be closed.
         }
-    }
-    if (!port) throw new Error("Chrome did not expose a DevTools port");
-    const created = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
-    const target = await created.json();
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => {
-        ws.onopen = resolve;
-        ws.onerror = () => reject(new Error("Chrome DevTools socket failed"));
-    });
-    let sequence = 0;
-    const pending = new Map();
-    const exceptions = [];
-    ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.id && pending.has(message.id)) {
-            pending.get(message.id)(message);
-            pending.delete(message.id);
-            return;
+        if (child && child.exitCode == null && child.signalCode == null) {
+            child.kill("SIGKILL");
+            await new Promise((resolve) => child.once("exit", resolve));
         }
-        if (message.method === "Runtime.exceptionThrown") exceptions.push(message.params.exceptionDetails);
+        await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     };
-    function send(method, params = {}) {
-        const id = ++sequence;
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error(`${method} timed out`)), 5000);
-            pending.set(id, (message) => {
-                clearTimeout(timer);
-                resolve(message);
-            });
-            ws.send(JSON.stringify({ id, method, params }));
+    try {
+        child = spawn(CHROME, [
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--remote-debugging-port=0",
+            `--user-data-dir=${dir}`,
+        ], { stdio: ["ignore", "pipe", "pipe"] });
+        let spawnFailure;
+        child.on("error", (error) => {
+            spawnFailure = error;
         });
-    }
-    await send("Runtime.enable");
-    await send("Page.enable");
-    return {
-        exceptions,
-        async goto(url) {
-            await send("Page.navigate", { url });
-            const deadline = Date.now() + 5000;
-            while (Date.now() < deadline) {
-                const ready = await send("Runtime.evaluate", {
-                    expression: "document.readyState",
-                    returnByValue: true,
+        child.stdout.on("data", () => {});
+        child.stderr.on("data", () => {});
+        const portFile = path.join(dir, "DevToolsActivePort");
+        let port = 0;
+        for (let attempt = 0; attempt < 50 && !port; attempt += 1) {
+            if (spawnFailure) throw spawnFailure;
+            if (child.exitCode != null) throw new Error("Chrome exited before DevTools was ready");
+            try {
+                port = Number((await readFile(portFile, "utf8")).split("\n")[0]);
+            } catch {
+                await delay(100);
+            }
+        }
+        if (spawnFailure) throw spawnFailure;
+        if (!port) throw new Error("Chrome did not expose a DevTools port");
+        const created = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
+        if (!created.ok) throw new Error(`Chrome DevTools target request failed (${created.status})`);
+        const target = await created.json();
+        if (!target.webSocketDebuggerUrl) throw new Error("Chrome DevTools target has no socket");
+        ws = new WebSocket(target.webSocketDebuggerUrl);
+        await new Promise((resolve, reject) => {
+            ws.onopen = resolve;
+            ws.onerror = () => reject(new Error("Chrome DevTools socket failed"));
+        });
+        let sequence = 0;
+        const pending = new Map();
+        const exceptions = [];
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.id && pending.has(message.id)) {
+                pending.get(message.id)(message);
+                pending.delete(message.id);
+                return;
+            }
+            if (message.method === "Runtime.exceptionThrown") exceptions.push(message.params.exceptionDetails);
+        };
+        function send(method, params = {}) {
+            const id = ++sequence;
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error(`${method} timed out`)), 5000);
+                pending.set(id, (message) => {
+                    clearTimeout(timer);
+                    resolve(message);
                 });
-                if (ready.result.result?.value === "complete") return;
-                await delay(50);
-            }
-            throw new Error(`page did not load ${url}`);
-        },
-        async evaluate(expression) {
-            const message = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-            if (message.result.exceptionDetails) {
-                const details = message.result.exceptionDetails;
-                throw new Error(details.exception?.description || details.text);
-            }
-            return message.result.result.value;
-        },
-        async isAnimating() {
-            const first = await this.evaluate("document.getElementById('board').toDataURL()");
-            await delay(250);
-            const second = await this.evaluate("document.getElementById('board').toDataURL()");
-            return first !== second;
-        },
-        async stop() {
-            ws.close();
-            if (child.exitCode == null && child.signalCode == null) {
-                child.kill("SIGKILL");
-                await new Promise((resolve) => child.once("exit", resolve));
-            }
-            await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-        },
-    };
+                ws.send(JSON.stringify({ id, method, params }));
+            });
+        }
+        await send("Runtime.enable");
+        await send("Page.enable");
+        return {
+            exceptions,
+            async goto(url) {
+                await send("Page.navigate", { url });
+                const deadline = Date.now() + 5000;
+                const expression = `(() => {
+                    if (document.readyState !== "complete") return false;
+                    const current = new URL(location.href);
+                    const expected = new URL(${JSON.stringify(url)});
+                    return current.origin === expected.origin && current.pathname === expected.pathname && current.search === expected.search;
+                })()`;
+                while (Date.now() < deadline) {
+                    const ready = await send("Runtime.evaluate", {
+                        expression,
+                        returnByValue: true,
+                    });
+                    if (ready.result.result?.value === true) return;
+                    await delay(50);
+                }
+                throw new Error(`page did not load ${url}`);
+            },
+            async evaluate(expression) {
+                const message = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+                if (message.result.exceptionDetails) {
+                    const details = message.result.exceptionDetails;
+                    throw new Error(details.exception?.description || details.text);
+                }
+                return message.result.result.value;
+            },
+            async isAnimating() {
+                const first = await this.evaluate("document.getElementById('board').toDataURL()");
+                await delay(250);
+                const second = await this.evaluate("document.getElementById('board').toDataURL()");
+                return first !== second;
+            },
+            stop,
+        };
+    } catch (error) {
+        await stop();
+        throw error;
+    }
 }
 
 test("token pacman inherited character names", { concurrency: false, timeout: 120_000 }, async (t) => {
@@ -471,6 +498,7 @@ test("token pacman inherited character names", { concurrency: false, timeout: 12
     });
 
     await t.test("paint and draw skip a snapshot whose character name is missing", async () => {
+        chrome ??= await launchChrome();
         const instanceId = "client-guard";
         const opened = await canvas.open({ instanceId });
         const cursor = chrome.exceptions.length;
@@ -491,25 +519,45 @@ test("token pacman inherited character names", { concurrency: false, timeout: 12
             };
             const namelessCharacter = { ...missingCharacter, character: {} };
             const outcome = await chrome.evaluate(`(() => {
+                const before = {
+                    mr: document.getElementById('mr').classList.contains('active'),
+                    mrs: document.getElementById('mrs').classList.contains('active'),
+                };
                 let frames = 0;
                 const original = requestAnimationFrame;
                 requestAnimationFrame = (callback) => {
                     frames += 1;
                     return original(callback);
                 };
-                const snapshots = ${JSON.stringify([missingCharacter, missingCharacter, namelessCharacter])};
-                for (const snapshot of snapshots) {
-                    try { paint(snapshot); } catch (error) { return { paint: String(error && error.message || error) }; }
-                    try { draw(); } catch (error) { return { draw: String(error && error.message || error) }; }
+                const cases = [
+                    { label: "missing", snapshot: ${JSON.stringify(missingCharacter)} },
+                    { label: "nameless", snapshot: ${JSON.stringify(namelessCharacter)} },
+                ];
+                for (const item of cases) {
+                    try { paint(item.snapshot); }
+                    catch (error) { return { label: item.label, paint: String(error && error.message || error) }; }
+                    try { draw(); }
+                    catch (error) { return { label: item.label, draw: String(error && error.message || error) }; }
+                    const mr = document.getElementById('mr').classList.contains('active');
+                    const mrs = document.getElementById('mrs').classList.contains('active');
+                    if (mr !== before.mr || mrs !== before.mrs) {
+                        return { label: item.label, selectionChanged: true, before, mr, mrs };
+                    }
                 }
-                return new Promise((resolve) => setTimeout(() => resolve({ ok: true, frames }), 300));
+                return new Promise((resolve) => setTimeout(() => resolve({ ok: true, frames, before }), 300));
             })()`);
-            assert.equal(outcome.paint, undefined, outcome.paint);
-            assert.equal(outcome.draw, undefined, outcome.draw);
+            assert.equal(outcome.paint, undefined, `${outcome.label || "snapshot"} paint: ${outcome.paint || ""}`);
+            assert.equal(outcome.draw, undefined, `${outcome.label || "snapshot"} draw: ${outcome.draw || ""}`);
+            assert.notEqual(outcome.selectionChanged, true, `${outcome.label || "snapshot"} changed the selected character`);
+            assert.ok(outcome.before?.mr || outcome.before?.mrs, "the page had no selected character before the guard check");
             assert.ok(outcome.frames >= 2, "animation loop stopped scheduling frames");
             assert.deepEqual(chrome.exceptions.slice(cursor).map((details) => details.exception?.description || details.text || ""), []);
         } finally {
-            await chrome.goto("about:blank");
+            try {
+                await chrome.goto("about:blank");
+            } catch {
+                // Leaving the canvas page is cleanup. The instance close still runs.
+            }
             await closeInstance(canvas, instanceId);
         }
     });
