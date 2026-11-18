@@ -59,7 +59,7 @@ test("opening the canvas without a repository host does not run a planted git.ex
 		});
 		const invocations = await readInvocations(fixture.logPath);
 		const git = invocations.find((invocation) => invocation.args.includes("get-url"));
-		const ssh = invocations.find((invocation) => invocation.argv0 === "ssh" || invocation.args[0] === "ssh");
+		const ssh = invocations.find((invocation) => isSshCommand(invocation));
 		assert.ok(git, `repository discovery did not start git remote get-url${failure ? `: ${failure.message}` : ""}`);
 		assert.ok(ssh, `a non-GitHub SSH remote did not start ssh${failure ? `: ${failure.message}` : ""}`);
 		const problems = [git, ssh].flatMap((invocation) => spawnProblem(invocation, fixture.repo));
@@ -96,6 +96,20 @@ test("loading a commit snippet does not run a planted git.exe", async () => {
 		await fixture.cleanup();
 	}
 });
+
+function commandBase(value) {
+	const text = String(value || "");
+	const parts = text.split(/[/\\]/);
+	return parts[parts.length - 1].toLowerCase();
+}
+
+function isSshCommand(invocation) {
+	// argv0 and args[0] are the same program path the recorder received.
+	// After the fix that path is absolute, so match the file name, not the
+	// bare string "ssh".
+	const base = commandBase(invocation.argv0 || invocation.args[0]);
+	return base === "ssh" || base === "ssh.exe";
+}
 
 function spawnProblem(invocation, repo) {
 	const selected = windowsSpawnTarget(invocation.argv0, invocation.cwd, "");
