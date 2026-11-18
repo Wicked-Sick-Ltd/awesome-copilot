@@ -137,6 +137,8 @@ class LocalSite:
             try:
                 conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8192)
             except OSError:
+                # Some platforms reject this buffer size. A smaller default
+                # still lets the test measure the hook's body read.
                 pass
             conn.settimeout(CASE_TIMEOUT_SEC)
             prefix = conn.recv(4, socket.MSG_PEEK)
@@ -163,6 +165,7 @@ class LocalSite:
             try:
                 conn.close()
             except OSError:
+                # The client may already have closed the socket.
                 pass
 
     def _respond(self, conn: socket.socket, path: str) -> None:
@@ -249,6 +252,8 @@ class LocalSite:
             if chunked:
                 conn.sendall(b"0\r\n\r\n")
         except OSError:
+            # The hook is allowed to close the socket once it has the status
+            # line. Bytes already sent are still recorded below.
             pass
         if pid is not None:
             current = read_status_kb(pid, "VmHWM")
