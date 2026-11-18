@@ -90,6 +90,8 @@ Install required packages before running:
 pip install mssql-python pyarrow pandas
 ```
 
+Extraction runs static T-SQL that needs **SQL Server 2017 or newer** (`STRING_AGG`) and a database **compatibility level of 130 or higher** (`OPENJSON`). Azure SQL Database and SQL Server 2017+ at their default compatibility level meet this. A database left at level 120 fails extraction. The script does not fall back to formatting identifiers in Python.
+
 ## Comparison Rules
 
 - **Normalize types before comparing**: cast decimals to same precision, trim strings, normalize datetime to UTC
@@ -102,9 +104,11 @@ pip install mssql-python pyarrow pandas
 When table has >1M rows, generate a hash pre-check:
 
 ```sql
-SELECT {pk_cols},
-       HASHBYTES('SHA2_256', CONCAT_WS('|', col1, col2, ...)) AS row_hash
-FROM {table}
+-- The script binds schema, table, and column lists and quotes them with
+-- QUOTENAME on the server. It does not format this statement in Python.
+SELECT <pk columns>,
+       HASHBYTES('SHA2_256', CONCAT_WS('|', <compare columns>)) AS row_hash
+FROM <schema>.<table>
 ```
 
 Compare hashes first; only fetch full rows for mismatched hashes. This reduces data transfer significantly.
