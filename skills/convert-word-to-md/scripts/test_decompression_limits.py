@@ -142,6 +142,12 @@ def _image_files(directory: Path):
 
 
 class DecompressionLimitTests(unittest.TestCase):
+    def _require_conversion_started(self, proc: subprocess.CompletedProcess[str]) -> None:
+        detail = proc.stdout + proc.stderr
+        # Exit 2 is the missing-dependency path, which returns before convert_one
+        # opens the archive. An untouched destination is not a zip refusal.
+        if proc.returncode == 2 or "not installed" in detail:
+            self.fail(f"CLI exited before conversion started:\n{detail}")
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
@@ -406,6 +412,7 @@ class DecompressionLimitTests(unittest.TestCase):
             text=True,
             check=False,
         )
+        self._require_conversion_started(proc)
         self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertTrue(sentinel.exists(), "CLI deleted the destination before refusal")
         self.assertEqual(sentinel.read_text(), "keep")
@@ -430,6 +437,7 @@ class DecompressionLimitTests(unittest.TestCase):
             text=True,
             check=False,
         )
+        self._require_conversion_started(proc)
         files = _image_files(dest / "img")
         if proc.returncode != 0:
             self.assertEqual(files, [])
