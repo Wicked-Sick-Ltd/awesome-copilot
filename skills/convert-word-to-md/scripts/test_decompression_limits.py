@@ -302,6 +302,9 @@ class DecompressionLimitTests(unittest.TestCase):
         except MemoryError:
             self.fail("repeated image extraction ran until MemoryError")
         except Exception:
+            # Refusing the member may raise. That is not a failure by itself;
+            # the assertions below still require the image output to stay
+            # inside the budget. Failing here would reject a correct refusal.
             pass
         files = _image_files(img_dir)
         self.assertLessEqual(len(files), MAX_IMAGES, f"wrote {len(files)} images")
@@ -341,6 +344,9 @@ class DecompressionLimitTests(unittest.TestCase):
         except MemoryError:
             self.fail("media extraction ran until MemoryError")
         except Exception:
+            # Refusing the member may raise. That is not a failure by itself;
+            # the assertions below still require the written bytes to stay
+            # inside the budget. Failing here would reject a correct refusal.
             pass
         self.assertLessEqual(_output_bytes(img_dir), MAX_TOTAL_BYTES)
         for image in _image_files(img_dir):
