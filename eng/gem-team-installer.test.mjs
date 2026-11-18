@@ -71,23 +71,57 @@ function windowsLines(body) {
   for (const line of body.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (trimmed.startsWith("#")) {
-      if (/windows|powershell/i.test(trimmed)) mode = "windows";
-      else if (/mac|linux|unix/i.test(trimmed)) mode = "posix";
-      else if (/verify/i.test(trimmed)) mode = "verify";
+      const comment = trimmed.replace(/^#+\s*/, "");
+      if (/^(windows|powershell)\b/i.test(comment)) mode = "windows";
+      else if (/^(mac|linux|unix)\b/i.test(comment)) mode = "posix";
+      // Only the "# Verify" section header drops the following apm check.
+      // A comment that mentions verification still leaves later installer
+      // commands in the script under test.
+      else if (/^verify$/i.test(comment)) mode = "verify";
       continue;
     }
-    if (!trimmed || mode === "verify") continue;
+    if (!trimmed) continue;
     const powershell = /\b(irm|iwr|iex|Invoke-Expression|Invoke-RestMethod|Invoke-WebRequest|Get-FileHash)\b/.test(trimmed);
-    if (powershell || mode === "windows") lines.push(trimmed);
+    if (powershell) {
+      lines.push(trimmed);
+      continue;
+    }
+    if (mode === "verify") continue;
+    if (mode === "windows") lines.push(trimmed);
   }
   return lines;
 }
 
+function sameHttpUrl(value, expected) {
+  let actual;
+  let target;
+  try {
+    actual = new URL(value);
+    target = new URL(expected);
+  } catch {
+    return false;
+  }
+  return actual.protocol === target.protocol
+    && actual.hostname === target.hostname
+    && actual.port === target.port
+    && actual.pathname === target.pathname;
+}
+
+function textHasUrl(text, expected) {
+  return [...text.matchAll(/https?:\/\/[^\s'")<>]+/g)].some((match) => {
+    const candidate = match[0].replace(/[),.;]+$/g, "");
+    return sameHttpUrl(candidate, expected);
+  });
+}
+
 function rewriteUrls(command, port) {
-  return command.replace(/https?:\/\/[^\s'"\\]+/g, (url) => {
+  return command.replace(/(['"])(https?:\/\/[^'"]+)\1|https?:\/\/[^\s'"\\]+/g, (match, quote, quotedUrl) => {
+    const url = quotedUrl || match;
     const relay = new URL(`http://127.0.0.1:${port}/relay`);
     relay.searchParams.set("url", url);
-    return `'${relay.toString()}'`;
+    const relayText = relay.toString();
+    if (quote) return `${quote}${relayText}${quote}`;
+    return `'${relayText}'`;
   });
 }
 
@@ -122,7 +156,6 @@ function startServer() {
   const stateDir = mkdtempSync(path.join(tmpdir(), "gem-team-state-"));
   let generation = 0;
   let pending = null;
-  let lastServed = null;
 
   function freshBody() {
     generation += 1;
@@ -149,7 +182,10 @@ function startServer() {
 
     const kind = url.searchParams.get("kind") === "sum" ? "sum" : "body";
     if (kind === "sum") {
-      const target = lastServed || (pending ||= freshBody());
+      // The digest describes the next body this server will send, not a body
+      // already served to the harness. A checksum-then-download of one
+      // generation therefore matches, and a control download cannot supply it.
+      const target = pending ||= freshBody();
       const names = new Set();
       for (const name of readOutputNames(stateDir)) {
         if (isChecksumUrl(name)) continue;
@@ -170,7 +206,6 @@ function startServer() {
 
     const body = pending || freshBody();
     pending = null;
-    lastServed = body;
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Length": Buffer.byteLength(body.script),
@@ -320,15 +355,15 @@ test("gem team unix quick start does not execute a replaced APM installer", asyn
       "installer responses were identical, so a second fetch cannot be told apart from the checksummed one",
     );
 
-    if (section.includes(UNIX_URL)) {
-      assert.equal(blocks.some((block) => block.body.includes(UNIX_URL)), true);
+    if (textHasUrl(section, UNIX_URL)) {
+      assert.equal(blocks.some((block) => textHasUrl(block.body, UNIX_URL)), true);
     }
     for (const block of blocks) {
       const workspace = makeWorkspace();
       const result = await runProcess("/usr/bin/bash", ["--noprofile", "--norc", "-c", block.body], workspace, env);
-      if (block.body.includes(UNIX_URL)) {
+      if (textHasUrl(block.body, UNIX_URL)) {
         assert.ok(
-          server.requests.includes(UNIX_URL),
+          server.requests.some((request) => sameHttpUrl(request, UNIX_URL)),
           "the quick start curl command did not request the APM unix installer URL",
         );
       }
@@ -368,9 +403,9 @@ test("gem team windows quick start does not execute a replaced APM installer", a
     const workspace = makeWorkspace();
     const script = rewriteUrls(lines.join("\n"), server.port);
     const result = await runProcess(pwsh, ["-NoProfile", "-NonInteractive", "-Command", script], workspace, env);
-    if (lines.some((line) => line.includes(WINDOWS_URL))) {
+    if (lines.some((line) => textHasUrl(line, WINDOWS_URL))) {
       assert.ok(
-        server.requests.includes(WINDOWS_URL),
+        server.requests.some((request) => sameHttpUrl(request, WINDOWS_URL)),
         "the quick start did not request the APM windows installer URL",
       );
     }
