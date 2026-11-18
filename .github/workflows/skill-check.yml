@@ -31,6 +31,8 @@ jobs:
       # ── Detect changed skills & agents ────────────────────────────
       - name: Detect changed skills and agents
         id: detect
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           declare -A SEEN_SKILL_DIRS=()
           declare -A SEEN_AGENT_FILES=()
@@ -65,7 +67,7 @@ jobs:
                 fi
                 ;;
             esac
-          done < <(git diff --name-only -z "origin/${{ github.base_ref }}...HEAD")
+          done < <(git diff --name-only -z "origin/${BASE_REF}...HEAD")
 
           SKILL_COUNT=${#SKILL_DIRS[@]}
           AGENT_COUNT=${#AGENT_FILES[@]}
