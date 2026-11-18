@@ -22,7 +22,10 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const setupPath = path.join(repoRoot, "skills/eval-driven-dev/resources/setup.sh");
 const resourcesDir = path.dirname(setupPath);
-const basePath = process.env.PATH || "/usr/bin:/bin";
+// Fixed directories plus the Node install that is running this file. The
+// child PATH is not taken from the parent environment, so the shell command
+// does not depend on an environment path.
+const basePath = ["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin", path.dirname(process.execPath)].join(":");
 const UNPINNED_VERSION = "9.9.9";
 
 const packageEntry = `#!/usr/bin/env node
