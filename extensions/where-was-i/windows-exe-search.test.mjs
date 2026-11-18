@@ -241,8 +241,29 @@ function writeExecutable(directory, name) {
     return file;
 }
 
+function gitBinary() {
+    const names = process.platform === "win32" ? ["git.exe", "git"] : ["git"];
+    for (const directory of (process.env.PATH || "").split(path.delimiter)) {
+        if (!directory) continue;
+        for (const name of names) {
+            const candidate = path.join(directory, name);
+            try {
+                if (lstatSync(candidate).isFile()) return candidate;
+            } catch {
+                // This PATH entry does not contain git.
+            }
+        }
+    }
+    throw new Error("git was not found on PATH");
+}
+
+// Resolved before any test plants git.exe in a worktree. Setup must pass this
+// absolute path: a bare "git" with that worktree as cwd is the planted file
+// on Windows once NoDefaultCurrentDirectoryInExePath is unset.
+const realGit = gitBinary();
+
 function git(cwd, args) {
-    return realExecFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    return realExecFileSync(realGit, args, { cwd, encoding: "utf8" }).trim();
 }
 
 function markerText(marker) {
