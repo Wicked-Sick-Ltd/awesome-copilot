@@ -48,7 +48,6 @@ MAX_IMAGES_PER_SHEET = 64
 
 _OVER_MEMBER = MAX_MEMBER_UNCOMPRESSED_BYTES + 1
 _PART_UNDER_MEMBER = 6 * 1024 * 1024  # 6 parts = 36 MiB, over the 32 MiB total
-_MEDIA_UNDER_MEMBER = 5 * 1024 * 1024  # plus the 30 MiB walk, over the total
 
 _REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _SCRIPT = Path(__file__).resolve().parent / "convert_excel_to_md.py"
