@@ -77,14 +77,39 @@ function assertWorkflowDocument(doc, label) {
   return pins;
 }
 
+function expandDockerArgs(token, args) {
+  return token.replace(
+    /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
+    (full, braced, fallback, bare) => {
+      const name = braced || bare;
+      const value = args.get(name);
+      if (value) return value;
+      if (fallback !== undefined) return fallback;
+      return full;
+    },
+  );
+}
+
 function pythonImages(text) {
   const images = [];
-  const pattern = /^\s*from(?:\s+--\S+)*\s+(?:docker\.io\/)?(?:library\/)?python:(\d+)(?:\.(\d+))?/gim;
-  for (const match of text.matchAll(pattern)) {
+  const args = new Map();
+  const tag = /(?:docker\.io\/)?(?:library\/)?python:(\d+)(?:\.(\d+))?/i;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    const arg = line.match(/^arg\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/i);
+    if (arg) {
+      args.set(arg[1], arg[2].trim().replace(/^["']|["']$/g, ""));
+      continue;
+    }
+    const from = line.match(/^from(?:\s+--\S+)*\s+(\S+)/i);
+    if (!from) continue;
+    const image = expandDockerArgs(from[1], args);
+    const version = image.match(tag);
+    if (!version) continue;
     images.push({
-      major: Number(match[1]),
-      minor: match[2] === undefined ? null : Number(match[2]),
-      raw: match[0].trim(),
+      major: Number(version[1]),
+      minor: version[2] === undefined ? null : Number(version[2]),
+      raw: image,
     });
   }
   return images;
@@ -264,8 +289,20 @@ test("platform-qualified and lowercase FROM lines below 3.13 are rejected", () =
     () => assertPythonImages("FROM docker.io/library/python:3\n", "hub-major"),
     /docker\.io\/library\/python:3/,
   );
+  assert.throws(
+    () => assertPythonImages("ARG PYTHON_VERSION=3.12\nFROM python:${PYTHON_VERSION}\n", "arg-tag"),
+    /python:3\.12/,
+  );
+  assert.throws(
+    () => assertPythonImages("ARG BASE=python:3.12\nFROM ${BASE}\n", "arg-image"),
+    /python:3\.12/,
+  );
+  assert.throws(
+    () => assertPythonImages("FROM python:${PYTHON_VERSION:-3.12}\n", "inline-default"),
+    /python:3\.12/,
+  );
   assertPythonImages(
-    "FROM --platform=linux/amd64 python:3.13\nfrom python:3.14-alpine\nFROM docker.io/library/python:3.13\nFROM python:4\n",
+    "FROM --platform=linux/amd64 python:3.13\nfrom python:3.14-alpine\nFROM docker.io/library/python:3.13\nFROM python:4\nARG PYTHON_VERSION=3.13\nFROM python:${PYTHON_VERSION}\n",
     "current",
   );
 });
