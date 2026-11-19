@@ -171,6 +171,7 @@ checks:
       - "eng/python-ci-version.test.mjs"
       - "**/Dockerfile"
       - "**/Dockerfile.*"
+      - "**/*.Dockerfile"
     required: true
     contribution_steps: ["^Test Python CI version$"]
     hint: Run `node --test eng/python-ci-version.test.mjs`. A single setup-python pin is 3.13. A matrix is exactly 3.12, 3.13, and 3.14.
