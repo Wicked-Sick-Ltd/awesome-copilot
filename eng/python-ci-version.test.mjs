@@ -12,7 +12,10 @@ import * as yaml from "js-yaml";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workflowsDir = path.join(root, ".github/workflows");
 const MATRIX = ["3.12", "3.13", "3.14"];
-const MATRIX_REF = "${{ matrix.python-version }}";
+
+function isMatrixRef(value) {
+  return typeof value === "string" && /^\$\{\{\s*matrix\.python-version\s*\}\}$/.test(value.trim());
+}
 
 function workflowFiles() {
   return readdirSync(workflowsDir)
@@ -59,7 +62,7 @@ function assertWorkflowDocument(doc, label) {
     }
     let sawMatrixRef = false;
     for (const value of stepVersions(job?.steps)) {
-      if (value === MATRIX_REF) {
+      if (isMatrixRef(value)) {
         sawMatrixRef = true;
         pins.push(value);
         continue;
@@ -76,16 +79,21 @@ function assertWorkflowDocument(doc, label) {
 
 function pythonImages(text) {
   const images = [];
-  const pattern = /^\s*from(?:\s+--\S+)*\s+(?:docker\.io\/)?(?:library\/)?python:(\d+)\.(\d+)/gim;
+  const pattern = /^\s*from(?:\s+--\S+)*\s+(?:docker\.io\/)?(?:library\/)?python:(\d+)(?:\.(\d+))?/gim;
   for (const match of text.matchAll(pattern)) {
-    images.push({ major: Number(match[1]), minor: Number(match[2]), raw: match[0].trim() });
+    images.push({
+      major: Number(match[1]),
+      minor: match[2] === undefined ? null : Number(match[2]),
+      raw: match[0].trim(),
+    });
   }
   return images;
 }
 
 function assertPythonImages(text, label) {
   for (const image of pythonImages(text)) {
-    assert.ok(image.major > 3 || image.minor >= 13, `${label} uses ${image.raw}`);
+    const newEnough = image.minor === null ? image.major > 3 : image.major > 3 || image.minor >= 13;
+    assert.ok(newEnough, `${label} uses ${image.raw}`);
   }
 }
 
@@ -180,6 +188,40 @@ test("a matrix include cannot add a Python version outside 3.12/3.13/3.14", () =
   assert.throws(() => assertWorkflowDocument(doc, "include"), /include adds 3\.11/);
 });
 
+test("a matrix reference may omit the spaces inside the expression", () => {
+  const doc = loadWorkflow(
+    [
+      "jobs:",
+      "  test:",
+      "    strategy:",
+      "      matrix:",
+      '        python-version: ["3.12", "3.13", "3.14"]',
+      "    steps:",
+      "      - with:",
+      '          python-version: "${{matrix.python-version}}"',
+    ].join("\n"),
+    "compact-ref",
+  );
+  assertWorkflowDocument(doc, "compact-ref");
+});
+
+test("a matrix reference cannot hide another Python version", () => {
+  const doc = loadWorkflow(
+    [
+      "jobs:",
+      "  test:",
+      "    strategy:",
+      "      matrix:",
+      '        python-version: ["3.12", "3.13", "3.14"]',
+      "    steps:",
+      "      - with:",
+      "          python-version: \"${{ matrix.python-version || '3.11' }}\"",
+    ].join("\n"),
+    "fallback-ref",
+  );
+  assert.throws(() => assertWorkflowDocument(doc, "fallback-ref"), /pins/);
+});
+
 test("contributor-check setup-python steps are a single 3.13 pin", () => {
   const text = readFileSync(path.join(workflowsDir, "contributor-check.yml"), "utf8");
   const doc = loadWorkflow(text, "contributor-check.yml");
@@ -216,8 +258,14 @@ test("platform-qualified and lowercase FROM lines below 3.13 are rejected", () =
     () => assertPythonImages("FROM --platform=linux/amd64 docker.io/python:3.12\n", "hub"),
     /docker\.io\/python:3\.12/,
   );
+  assert.throws(() => assertPythonImages("FROM python:3\n", "major"), /python:3/);
+  assert.throws(() => assertPythonImages("FROM python:2\n", "old-major"), /python:2/);
+  assert.throws(
+    () => assertPythonImages("FROM docker.io/library/python:3\n", "hub-major"),
+    /docker\.io\/library\/python:3/,
+  );
   assertPythonImages(
-    "FROM --platform=linux/amd64 python:3.13\nfrom python:3.14-alpine\nFROM docker.io/library/python:3.13\n",
+    "FROM --platform=linux/amd64 python:3.13\nfrom python:3.14-alpine\nFROM docker.io/library/python:3.13\nFROM python:4\n",
     "current",
   );
 });
