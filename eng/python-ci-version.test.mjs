@@ -76,7 +76,7 @@ function assertWorkflowDocument(doc, label) {
 
 function pythonImages(text) {
   const images = [];
-  const pattern = /^\s*from(?:\s+--\S+)*\s+python:(\d+)\.(\d+)/gim;
+  const pattern = /^\s*from(?:\s+--\S+)*\s+(?:docker\.io\/)?(?:library\/)?python:(\d+)\.(\d+)/gim;
   for (const match of text.matchAll(pattern)) {
     images.push({ major: Number(match[1]), minor: Number(match[2]), raw: match[0].trim() });
   }
@@ -208,7 +208,18 @@ test("platform-qualified and lowercase FROM lines below 3.13 are rejected", () =
     /python:3\.12/,
   );
   assert.throws(() => assertPythonImages("from python:3.12\n", "lower"), /python:3\.12/);
-  assertPythonImages("FROM --platform=linux/amd64 python:3.13\nfrom python:3.14-alpine\n", "current");
+  assert.throws(
+    () => assertPythonImages("FROM docker.io/library/python:3.12\n", "hub-library"),
+    /docker\.io\/library\/python:3\.12/,
+  );
+  assert.throws(
+    () => assertPythonImages("FROM --platform=linux/amd64 docker.io/python:3.12\n", "hub"),
+    /docker\.io\/python:3\.12/,
+  );
+  assertPythonImages(
+    "FROM --platform=linux/amd64 python:3.13\nfrom python:3.14-alpine\nFROM docker.io/library/python:3.13\n",
+    "current",
+  );
 });
 
 test("Dockerfiles are not based on a Python image older than 3.13", () => {
