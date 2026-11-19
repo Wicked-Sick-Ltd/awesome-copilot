@@ -42,7 +42,6 @@ The writer revalidates the PR head, base branch, reviews, and risk-raising label
 | Skill validation | `validate-skills.yml` (new, runs `npm run skill:validate`) | `skills/**` | yes |
 | Skill lint (vally) | `skill-check.yml` | skills and agents | completion only |
 | Submission gate tests | `validate-submission-gate.yml` | gate config, workflows | yes |
-| Python CI version | `python-ci-version.yml` | workflows, Dockerfiles, or the version test | yes |
 | Agentic workflow validation | `validate-agentic-workflows-pr.yml` | `workflows/**` | yes |
 | Risk scan | `pr-risk-scan.yml` | resource directories | completion only |
 | Contributor reputation | `contributor-check.yml` | every PR | completion only |
