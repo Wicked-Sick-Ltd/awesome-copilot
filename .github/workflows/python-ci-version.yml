@@ -1,0 +1,26 @@
+name: Python CI version
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/workflows/python-ci-version.yml"
+      - "eng/python-ci-version.test.mjs"
+      - "**/Dockerfile"
+      - "**/Dockerfile.*"
+
+permissions:
+  contents: read
+
+jobs:
+  python-ci-version:
+    name: python-ci-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Test Python CI version
+        run: node --test eng/python-ci-version.test.mjs

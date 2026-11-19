@@ -162,6 +162,19 @@ checks:
     contribution_steps: ["^Test submission gate$"]
     hint: Run `node --test eng/submission-gate.test.mjs` and keep `.github/submission-gate.yml` in sync with workflow triggers.
 
+  - id: python-ci-version
+    title: Python CI version
+    workflow: python-ci-version.yml
+    paths:
+      - ".github/workflows/**"
+      - ".github/workflows/python-ci-version.yml"
+      - "eng/python-ci-version.test.mjs"
+      - "**/Dockerfile"
+      - "**/Dockerfile.*"
+    required: true
+    contribution_steps: ["^Test Python CI version$"]
+    hint: Run `node --test eng/python-ci-version.test.mjs`. A single setup-python pin is 3.13. A matrix is exactly 3.12, 3.13, and 3.14.
+
   - id: agentic-workflow-validation
     title: Agentic workflow validation
     workflow: validate-agentic-workflows-pr.yml
