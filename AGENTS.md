@@ -52,6 +52,22 @@ npm run skill:validate
 npm run skill:create -- --name <skill-name>
 ```
 
+## Cloud agent environment
+
+Cursor Cloud Agents install this repo with `bash .cursor/install.sh` (see `.cursor/environment.json`). The script is idempotent and non-interactive: Node dependencies come from `npm ci` at the repo root and in `website/`. Playwright browsers are skipped; `npm run website:a11y` needs `npx --prefix website playwright install` first. Python conversion skills install into `.venv` from `skills/*/scripts/requirements.txt` when `python3` is available. There is no PHP toolchain.
+
+No secret is required to install or boot. `GITHUB_TOKEN` (or `GH_TOKEN`) is optional and is used only by contributor and review scripts that call the GitHub API. The install script warns when that variable is unset and continues.
+
+After install, the fast checks are:
+
+```bash
+npm run plugin:validate
+npm run skill:validate
+node --test eng/cloud-agent-environment.test.mjs
+```
+
+The catalog website is a long-running Astro dev server on port 4321. `start` is `true` so it exits and the configured terminal can launch. That terminal runs `bash .cursor/start.sh`, which regenerates catalog data and serves the site. A healthy boot responds at `http://127.0.0.1:4321/`.
+
 ## Development Workflow
 
 ### Working with Agents, Instructions, Skills, and Hooks
