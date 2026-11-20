@@ -130,6 +130,7 @@ checks:
       - "skills/**"
       - "eng/validate-skills.mjs"
       - "eng/yaml-parser.mjs"
+      - "eng/aspire-skill-install.test.mjs"
       - ".github/workflows/validate-skills.yml"
     required: true
     contribution_steps: ["^Validate skills$"]

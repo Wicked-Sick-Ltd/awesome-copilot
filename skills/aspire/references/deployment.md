@@ -141,7 +141,9 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Install Aspire CLI
-        run: curl -sSL https://aspire.dev/install.sh | bash
+        run: |
+          dotnet tool install -g Aspire.Cli --version 13.1.0
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Generate manifests
         run: aspire publish -p azure -o ./deploy
@@ -168,7 +170,9 @@ steps:
     inputs:
       version: '10.0.x'
 
-  - script: curl -sSL https://aspire.dev/install.sh | bash
+  - script: |
+      dotnet tool install -g Aspire.Cli --version 13.1.0
+      echo "##vso[task.prependpath]$HOME/.dotnet/tools"
     displayName: 'Install Aspire CLI'
 
   - script: aspire publish -p azure -o $(Build.ArtifactStagingDirectory)/deploy
@@ -226,7 +230,10 @@ Aspire templates include `.devcontainer/` configuration:
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/node:1": {}
   },
-  "postCreateCommand": "curl -sSL https://aspire.dev/install.sh | bash",
+  "postCreateCommand": "dotnet tool install -g Aspire.Cli --version 13.1.0",
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/vscode/.dotnet/tools"
+  },
   "forwardPorts": [18888],
   "portsAttributes": {
     "18888": { "label": "Aspire Dashboard" }

@@ -8,19 +8,19 @@ The Aspire CLI (`aspire`) is the primary interface for creating, running, and pu
 
 ## Installation
 
-```bash
-# Linux / macOS
-curl -sSL https://aspire.dev/install.sh | bash
+Install the CLI as a .NET global tool from NuGet.org, pinned to an exact version (Windows, macOS, and Linux):
 
-# Windows PowerShell
-irm https://aspire.dev/install.ps1 | iex
+```bash
+dotnet tool install -g Aspire.Cli --version 13.1.0
 
 # Verify
 aspire --version
 
-# Update the CLI itself
-aspire update --self
+# Update the CLI itself to another explicit version
+dotnet tool update -g Aspire.Cli --version 13.2.0
 ```
+
+If `aspire` is not found, add the .NET global tools folder (`~/.dotnet/tools`, or `%USERPROFILE%\.dotnet\tools` on Windows) to `PATH`. Do not pipe a downloaded install script into a shell (for example `curl` into `bash`, or `irm` into `iex`).
 
 ---
 
@@ -237,9 +237,9 @@ aspire update [options]
 
 # Examples:
 aspire update                          # Update project integrations
-aspire update --self                   # Update the CLI itself
-aspire update --self --channel daily   # Update CLI to daily build
 ```
+
+When the CLI is installed as a .NET tool, update it with an explicit version, for example `dotnet tool update -g Aspire.Cli --version 13.2.0`, rather than `--self`, so the version stays explicit.
 
 ### `aspire mcp`
 

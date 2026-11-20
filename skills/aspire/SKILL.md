@@ -43,7 +43,7 @@ If running Aspire CLI **13.2 or later** (`aspire --version`), the MCP server inc
 | `search_docs` | Performs weighted lexical search across indexed documentation |
 | `get_doc` | Retrieves a specific document by its slug |
 
-These tools were added in [PR #14028](https://github.com/dotnet/aspire/pull/14028). To update: `aspire update --self --channel daily`.
+These tools were added in [PR #14028](https://github.com/dotnet/aspire/pull/14028). To update: `dotnet tool update -g Aspire.Cli --version 13.2.0`.
 
 For more on this approach, see David Pine's post: https://davidpine.dev/posts/aspire-docs-mcp-tools/
 
@@ -97,19 +97,21 @@ Search the official docs repo on GitHub:
 | **Container runtime** | Docker Desktop, Podman, or Rancher Desktop |
 | **IDE (optional)** | VS Code + C# Dev Kit, Visual Studio 2022, JetBrains Rider |
 
-```bash
-# Linux / macOS
-curl -sSL https://aspire.dev/install.sh | bash
+Install the CLI as a .NET global tool from NuGet.org, pinned to an exact version. The same commands work on Windows, macOS, and Linux:
 
-# Windows PowerShell
-irm https://aspire.dev/install.ps1 | iex
+```bash
+dotnet tool install -g Aspire.Cli --version 13.1.0
 
 # Verify
 aspire --version
 
 # Install templates
-dotnet new install Aspire.ProjectTemplates
+dotnet new install Aspire.ProjectTemplates::13.1.0
 ```
+
+If `aspire` is not found afterwards, add the .NET global tools folder (`~/.dotnet/tools`, or `%USERPROFILE%\.dotnet\tools` on Windows) to `PATH`. To move to another release, update with an explicit version, for example `dotnet tool update -g Aspire.Cli --version 13.2.0`.
+
+Never install the CLI by piping a downloaded script into a shell (for example `curl` into `bash`, or `irm` into `iex`): that runs whatever the server returns, with no version or integrity check.
 
 ---
 
