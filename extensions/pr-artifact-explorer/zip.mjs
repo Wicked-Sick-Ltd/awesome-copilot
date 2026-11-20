@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { posix } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { Transform } from "node:stream";
+import { Readable, Transform, Writable } from "node:stream";
 import { createInflateRaw } from "node:zlib";
 import {
   MAX_CENTRAL_DIRECTORY_BYTES,
@@ -23,14 +23,6 @@ for (let index = 0; index < 256; index++) {
     value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
   }
   crcTable[index] = value >>> 0;
-}
-
-function crc32(buffer) {
-  let value = 0xffffffff;
-  for (const byte of buffer) {
-    value = crcTable[(value ^ byte) & 0xff] ^ (value >>> 8);
-  }
-  return (value ^ 0xffffffff) >>> 0;
 }
 
 async function readExactly(handle, length, position) {
@@ -250,43 +242,31 @@ export async function readZipEntry(zipPath, entry, maxBytes) {
       `ZIP entry is too large for an inline preview (${entry.uncompressedSize.toLocaleString()} bytes).`,
     );
   }
-  const { start } = await entryDataRange(zipPath, entry);
-  const handle = await open(zipPath, "r");
-  let compressed;
-  try {
-    compressed = await readExactly(handle, entry.compressedSize, start);
-  } finally {
-    await handle.close();
-  }
-  let output;
-  if (entry.method === 0) {
-    output = compressed;
-  } else {
-    const cap = entry.uncompressedSize;
-    output = await new Promise((resolve, reject) => {
-      const inflate = createInflateRaw();
-      const chunks = [];
-      let total = 0;
-      inflate.on("data", (chunk) => {
-        total += chunk.length;
-        if (total > cap) {
-          inflate.destroy(new Error(`ZIP entry decompressed past declared size: ${entry.name}`));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      inflate.once("end", () => resolve(Buffer.concat(chunks)));
-      inflate.once("error", reject);
-      inflate.end(compressed);
-    });
-  }
-  if (output.length !== entry.uncompressedSize) {
+  if (entry.method === 0 && entry.compressedSize !== entry.uncompressedSize) {
     throw new Error(`ZIP entry size check failed: ${entry.name}`);
   }
-  if (crc32(output) !== entry.crc32) {
-    throw new Error(`ZIP entry checksum failed: ${entry.name}`);
-  }
-  return output;
+  const range = await entryDataRange(zipPath, entry);
+  const chunks = [];
+  const streams = [entryDataStream(zipPath, range)];
+  if (entry.method !== 0 && entry.compressedSize > 0) streams.push(createInflateRaw());
+  // The verifier rejects output past the declared size, which is already
+  // bounded by maxBytes, so at most that much is ever buffered here.
+  streams.push(createVerifyTransform(entry));
+  streams.push(
+    new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(chunk);
+        callback();
+      },
+    }),
+  );
+  await pipeline(...streams);
+  return Buffer.concat(chunks);
+}
+
+function entryDataStream(zipPath, { start, endExclusive }) {
+  if (endExclusive <= start) return Readable.from([]);
+  return createReadStream(zipPath, { start, end: endExclusive - 1 });
 }
 
 function createVerifyTransform(entry) {
@@ -344,58 +324,34 @@ export async function streamZipEntry(zipPath, entry, writable, transform = null)
 export async function readEntryPrefix(zipPath, entry, maxBytes) {
   if (!entry?.supported) return null;
   if (entry.uncompressedSize === 0) return Buffer.alloc(0);
-  const { start } = await entryDataRange(zipPath, entry);
+  const range = await entryDataRange(zipPath, entry);
   if (entry.method === 0) {
     const readBytes = Math.min(maxBytes, entry.compressedSize);
     const handle = await open(zipPath, "r");
     try {
-      return await readExactly(handle, readBytes, start);
+      return await readExactly(handle, readBytes, range.start);
     } finally {
       await handle.close();
     }
   }
-  const handle = await open(zipPath, "r");
-  let compressed;
+  if (maxBytes <= 0 || entry.compressedSize === 0) return Buffer.alloc(0);
+  const source = entryDataStream(zipPath, range);
+  const inflate = createInflateRaw();
+  source.once("error", (error) => inflate.destroy(error));
+  source.pipe(inflate);
+  const chunks = [];
+  let total = 0;
   try {
-    compressed = await readExactly(handle, entry.compressedSize, start);
-  } finally {
-    await handle.close();
-  }
-  return new Promise((resolve, reject) => {
-    const inflate = createInflateRaw();
-    const chunks = [];
-    let total = 0;
-    let done = false;
-    inflate.on("data", (chunk) => {
-      if (done) return;
+    for await (const chunk of inflate) {
       const remaining = maxBytes - total;
-      if (remaining <= 0) {
-        done = true;
-        inflate.destroy();
-        resolve(Buffer.concat(chunks));
-        return;
-      }
       const slice = remaining < chunk.length ? chunk.subarray(0, remaining) : chunk;
       chunks.push(slice);
       total += slice.length;
-      if (total >= maxBytes) {
-        done = true;
-        inflate.destroy();
-        resolve(Buffer.concat(chunks));
-      }
-    });
-    inflate.once("end", () => {
-      if (!done) {
-        done = true;
-        resolve(Buffer.concat(chunks));
-      }
-    });
-    inflate.once("error", (err) => {
-      if (!done) {
-        done = true;
-        reject(err);
-      }
-    });
-    inflate.end(compressed);
-  });
+      if (total >= maxBytes) break;
+    }
+  } finally {
+    source.destroy();
+    inflate.destroy();
+  }
+  return Buffer.concat(chunks);
 }
