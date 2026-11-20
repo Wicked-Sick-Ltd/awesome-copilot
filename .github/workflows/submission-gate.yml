@@ -53,37 +53,32 @@ jobs:
             echo "has-gate=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Bootstrap only: the PR that introduces the gate has no base copy of it. This job
-      # has a read-only token, and such PRs are merge-risk:high by path.
-      - name: Checkout PR (bootstrap)
+      # A PR's own copy of the gate is never loaded, so there is no preview for a base without one.
+      - name: Skip without gate logic on base
         if: steps.base.outputs.has-gate != 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-          clean: true
+        run: echo "::warning::The base branch has no submission gate; skipping the preview."
 
       - name: Setup Node.js
+        if: steps.base.outputs.has-gate == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
+        if: steps.base.outputs.has-gate == 'true'
         run: npm ci --ignore-scripts
 
       - name: Evaluate submission
+        if: steps.base.outputs.has-gate == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           GH_TOKEN: ${{ github.token }}
-          BOOTSTRAP: ${{ steps.base.outputs.has-gate != 'true' }}
         with:
           script: |
             const path = require('path');
             const { pathToFileURL } = require('url');
 
-            if (process.env.BOOTSTRAP === 'true') {
-              core.warning('The base branch has no submission gate yet; evaluating with the gate from this PR.');
-            }
             const root = process.env.GITHUB_WORKSPACE;
             const gate = await import(pathToFileURL(path.join(root, 'eng', 'submission-gate.mjs')).href);
             const config = gate.loadGateConfig(root);
