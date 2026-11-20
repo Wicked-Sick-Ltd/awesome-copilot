@@ -49,7 +49,7 @@ setup.
 
 ## Attach to your own Chrome
 
-By default the canvas launches the bundled Chromium with a persistent profile. To drive
+By default the canvas launches the bundled Chromium on a fresh, temporary profile. To use
 a Chrome you already have running instead, start it with a debug port and pass `cdpUrl`
 when opening the canvas:
 
@@ -57,25 +57,36 @@ when opening the canvas:
 google-chrome --remote-debugging-port=9222   # then open the canvas with cdpUrl: http://localhost:9222
 ```
 
-In this mode the extension connects over CDP and never launches or kills your browser;
-closing the canvas just disconnects.
+In this mode the extension connects over CDP, opens a new isolated browser context in that
+Chrome, and only drives that context. Your existing tabs, cookies, and logins in that
+browser are not used. The extension never launches or kills your browser; closing the
+canvas closes its own context and disconnects.
 
 ## Agent actions
 
 - `navigate { url }` — go to a URL or search query (blocklist-guarded).
 - `back` / `forward` / `reload` — history navigation.
 - `current_url` — current URL and page title.
-- `snapshot` — structured list of visible interactive elements, each with a stable ref.
-- `click { ref | selector }` — click an element by snapshot ref or CSS selector.
-- `type { ref | selector, text, submit? }` — fill an input; optionally press Enter.
+- `snapshot` — structured list of visible interactive elements, each with a ref.
+- `click { ref }` — click the element a ref from the latest snapshot identifies.
+- `type { ref, text, submit? }` — fill that input; optionally press Enter.
 - `screenshot { fullPage? }` — save a PNG to `artifacts/` and return its path and size.
+
+Anything read from the page (URL, title, element names) is returned to the agent inside an
+`untrustedPageContent` object that marks it as page content, not instructions.
+
+`click` and `type` do not accept CSS selectors. A ref is only valid for the snapshot that
+minted it, on the same page, and always targets the exact element that snapshot found.
+Navigating, reloading, or taking a new snapshot invalidates earlier refs.
 
 ## Notes
 
-- A persistent profile is stored under
-  `$COPILOT_HOME/extensions/chromium-control-canvas/profile` (default
-  `~/.copilot/extensions/chromium-control-canvas/profile`) so logins survive restarts.
-  **Do not commit or share this folder** — it contains real session cookies.
+- Every canvas launch uses a new temporary profile that is deleted when the canvas
+  closes, so cookies and logins do not carry over between sessions. Anything you sign in
+  to in that window during a session, the agent can act on until the canvas closes.
+- Earlier versions kept a persistent profile at
+  `$COPILOT_HOME/extensions/chromium-control-canvas/profile`. It is no longer used; delete
+  it if it still exists, since it may contain session cookies.
 - Raw `evaluate` (arbitrary in-page JS) is intentionally omitted.
 - `navigate` is checked against a blocklist, and a request interceptor also blocks
   navigations to blocked hosts that happen via in-page redirects. The shipped
@@ -86,5 +97,5 @@ closing the canvas just disconnects.
 - Typed text (e.g. passwords) is redacted in `audit.log`, and password field values are
   excluded from snapshots.
 - Generated at runtime and not part of the source: `node_modules/` in the copied
-  extension folder, plus `profile/`, `artifacts/`, and `audit.log` under
+  extension folder, plus `artifacts/` and `audit.log` under
   `$COPILOT_HOME/extensions/chromium-control-canvas/`.

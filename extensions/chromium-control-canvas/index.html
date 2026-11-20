@@ -160,7 +160,7 @@
     border: 1px solid var(--border-strong); color: var(--muted);
     background: var(--panel);
   }
-  .badge.persistent { color: var(--muted); border-color: var(--border-strong); }
+  .badge.ephemeral { color: var(--muted); border-color: var(--border-strong); }
   .badge.cdp { color: var(--accent); border-color: rgba(47,129,247,.4); }
   .page-title {
     flex: 1; min-width: 0;
@@ -251,9 +251,10 @@
     <div class="card-body" id="preview">
       <div class="empty">
         This panel drives a separate <strong>Chromium window</strong>. Navigate above and
-        a snapshot of the page shows up here. Log in by hand in that window; the profile
-        persists. The agent can also <code>snapshot</code>, <code>click</code>, and
-        <code>type</code>.
+        a snapshot of the page shows up here. The window uses a temporary profile that is
+        discarded when this canvas closes. The agent can also <code>snapshot</code>,
+        <code>click</code>, and <code>type</code>, so it can act on anything you sign in to
+        there.
       </div>
     </div>
   </div>
@@ -299,12 +300,12 @@ function setScheme(url) {
 
 function setBadge(mode) {
   if (!mode) return;
-  badgeEl.textContent = mode === "cdp" ? "attached" : "persistent";
-  badgeEl.classList.remove("persistent", "cdp");
-  badgeEl.classList.add(mode === "cdp" ? "cdp" : "persistent");
+  badgeEl.textContent = mode === "cdp" ? "attached" : "temporary";
+  badgeEl.classList.remove("ephemeral", "cdp");
+  badgeEl.classList.add(mode === "cdp" ? "cdp" : "ephemeral");
   badgeEl.title = mode === "cdp"
-    ? "Attached to an existing Chrome over CDP; closing the panel only disconnects."
-    : "Persistent profile — logins you complete by hand in the window survive restarts.";
+    ? "Attached to an existing Chrome over CDP in a new isolated context; closing the panel closes that context and disconnects."
+    : "Temporary profile — cookies and logins are discarded when the canvas closes.";
 }
 
 function shotUrl(name) {
