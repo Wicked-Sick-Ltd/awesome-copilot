@@ -476,11 +476,25 @@ function broadcast(event, data) {
 
 // ─── HTTP helpers ───
 
+// Exceptions thrown from request stream listeners are not caught by the HTTP
+// server and terminate the process, so parse failures must become rejections.
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    req.on("end", () => {
+      let value = null;
+      try {
+        value = body ? JSON.parse(body) : {};
+      } catch {
+        // Rejected below.
+      }
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        reject(new CanvasError("invalid_json", "Request body must be a JSON object."));
+        return;
+      }
+      resolve(value);
+    });
     req.on("error", reject);
   });
 }
@@ -490,9 +504,28 @@ function json(res, code, data) {
   res.end(JSON.stringify(data));
 }
 
+function sendRequestError(res, error) {
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  if (error instanceof CanvasError) {
+    json(res, 400, { error: error.message });
+    return;
+  }
+  console.error("[accessibility-kanban] Request failed", error);
+  json(res, 500, { error: "Internal error" });
+}
+
 // ─── HTTP server ───
 
-const server = http.createServer(async (req, res) => {
+// Rejections from an async request listener are unhandled and terminate the
+// process, so every request goes through sendRequestError on failure.
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((error) => sendRequestError(res, error));
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === "/events") {
@@ -516,7 +549,7 @@ const server = http.createServer(async (req, res) => {
       const repo = currentState().repo;
       session.send({
         prompt: `The Repository Issues Kanban just moved issue #${issue.number} ("${issue.title}") in ${repo} into the Plan column. Start planning the implementation for this issue in a background agent. Read the GitHub issue details, analyze the repository, and produce a concrete implementation plan. Use the kanban_update_status tool to post progress and then move the issue to "ready" with kanban_move_issue when planning is complete.`,
-      });
+      }).catch((error) => console.error("[accessibility-kanban] Failed to send prompt", error));
     }
 
     json(res, 200, { issue, state: currentState() });
@@ -564,7 +597,7 @@ const server = http.createServer(async (req, res) => {
 
   res.writeHead(404);
   res.end("Not found");
-});
+}
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 function getPort() {

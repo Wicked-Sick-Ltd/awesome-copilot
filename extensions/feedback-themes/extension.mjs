@@ -63,11 +63,27 @@ function broadcast(event, data) {
 
 // ─── HTTP helpers ───
 
+class BadRequestError extends Error {}
+
+// Exceptions thrown from request stream listeners are not caught by the HTTP
+// server and terminate the process, so parse failures must become rejections.
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    req.on("end", () => {
+      let value = null;
+      try {
+        value = body ? JSON.parse(body) : {};
+      } catch {
+        // Rejected below.
+      }
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        reject(new BadRequestError("Request body must be a JSON object."));
+        return;
+      }
+      resolve(value);
+    });
     req.on("error", reject);
   });
 }
@@ -77,9 +93,28 @@ function json(res, code, data) {
   res.end(JSON.stringify(data));
 }
 
+function sendRequestError(res, error) {
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  if (error instanceof BadRequestError) {
+    json(res, 400, { error: error.message });
+    return;
+  }
+  console.error("[feedback-themes] Request failed", error);
+  json(res, 500, { error: "Internal error" });
+}
+
 // ─── HTTP server ───
 
-const server = http.createServer(async (req, res) => {
+// Rejections from an async request listener are unhandled and terminate the
+// process, so every request goes through sendRequestError on failure.
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((error) => sendRequestError(res, error));
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === "/events") {
@@ -116,7 +151,7 @@ Signals in this theme:
 ${theme.signals.map((s) => `- [${s.impact.toUpperCase()}] "${s.title}" (${s.customer}): ${s.description}`).join("\n")}
 
 Please help the user explore this theme. Summarize the key patterns, identify what product changes would address these signals, and suggest next steps. Ask the user what aspect they'd like to dig into.`,
-    });
+    }).catch((error) => console.error("[feedback-themes] Failed to send prompt", error));
     json(res, 200, { ok: true, theme: theme.label });
     return;
   }
@@ -131,7 +166,7 @@ Please help the user explore this theme. Summarize the key patterns, identify wh
 
   res.writeHead(404);
   res.end("Not found");
-});
+}
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 function getPort() {

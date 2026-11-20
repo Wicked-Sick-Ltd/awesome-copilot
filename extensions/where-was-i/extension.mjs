@@ -1088,9 +1088,11 @@ async function startServer(instanceId, cwd, workspacePath) {
 
         if (url.pathname === "/resume" && req.method === "POST") {
             let body = "";
-            for await (const chunk of req) body += chunk;
             let thread = null;
             try {
+                // Inside the try: a client aborting mid-body rejects the iterator,
+                // and this async request listener has no outer rejection handler.
+                for await (const chunk of req) body += chunk;
                 thread = JSON.parse(body).thread;
             } catch {
                 res.writeHead(400, { "Content-Type": "application/json" });

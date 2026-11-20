@@ -69,11 +69,27 @@ function broadcastView(instanceId, inst) {
 }
 
 // HTTP helpers
+class BadRequestError extends Error {}
+
+// Exceptions thrown from request stream listeners are not caught by the HTTP
+// server and terminate the process, so parse failures must become rejections.
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    req.on("end", () => {
+      let value = null;
+      try {
+        value = body ? JSON.parse(body) : {};
+      } catch {
+        // Rejected below.
+      }
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        reject(new BadRequestError("Request body must be a JSON object."));
+        return;
+      }
+      resolve(value);
+    });
     req.on("error", reject);
   });
 }
@@ -83,8 +99,27 @@ function json(res, code, data) {
   res.end(JSON.stringify(data));
 }
 
+function sendRequestError(res, error) {
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  if (error instanceof BadRequestError) {
+    json(res, 400, { error: error.message });
+    return;
+  }
+  console.error("[diagram-viewer] Request failed", error);
+  json(res, 500, { error: "Internal error" });
+}
+
 // HTTP server
-const server = http.createServer(async (req, res) => {
+// Rejections from an async request listener are unhandled and terminate the
+// process, so every request goes through sendRequestError on failure.
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((error) => sendRequestError(res, error));
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get("token");
   const instanceId = url.searchParams.get("instance");
@@ -178,7 +213,7 @@ Do NOT explain in chat. Instead, use the canvas actions to respond visually:
 2. Use the show_explanation action to display a brief explanation panel on the canvas.
 
 If you cannot create a meaningful sub-diagram (e.g. the node is already a leaf concept), use show_explanation to provide a detailed description on the canvas instead, without rendering a new diagram.`,
-      });
+      }).catch((error) => console.error("[diagram-viewer] Failed to send prompt", error));
     }
 
     json(res, 200, { ok: true, selectedNodeId: nodeId });
@@ -203,7 +238,7 @@ If you cannot create a meaningful sub-diagram (e.g. the node is already a leaf c
 
   res.writeHead(404);
   res.end("Not found");
-});
+}
 
 function validateToken(instanceId, token) {
   const inst = instances.get(instanceId);
