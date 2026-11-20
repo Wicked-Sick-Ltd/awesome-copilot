@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -376,25 +376,65 @@ function buildIssueDescription(issue) {
     return `${normalized.slice(0, 2197).trimEnd()}...`;
 }
 
-async function runGhJson(args, cwd) {
-    const result = await execFileAsync("gh", args, {
+function isAbsolutePathEntry(entry) {
+    if (process.platform === "win32") {
+        return /^(?:[A-Za-z]:[\\/]|\\\\)/.test(entry);
+    }
+    return path.isAbsolute(entry);
+}
+
+// A bare "gh" passed to execFile is looked up in the child's cwd before PATH
+// on Windows, and relative PATH entries resolve against a cwd as well. Both
+// can point into the untrusted session repository, so only absolute PATH
+// entries are searched and the absolute result is what gets spawned.
+async function resolveGhExecutable() {
+    const names = process.platform === "win32" ? ["gh.exe", "gh.com"] : ["gh"];
+    const entries = (process.env.PATH || "").split(path.delimiter);
+    for (const rawEntry of entries) {
+        const entry = rawEntry.trim().replace(/^"(.*)"$/, "$1");
+        if (!entry || !isAbsolutePathEntry(entry)) {
+            continue;
+        }
+        for (const name of names) {
+            const candidate = path.join(entry, name);
+            try {
+                const stat = await fs.stat(candidate);
+                if (!stat.isFile()) {
+                    continue;
+                }
+                if (process.platform !== "win32") {
+                    await fs.access(candidate, fsConstants.X_OK);
+                }
+                return candidate;
+            } catch {
+                // Not present or not executable in this PATH entry.
+            }
+        }
+    }
+    throw new Error("GitHub CLI (gh) was not found in any absolute PATH directory.");
+}
+
+async function execGh(args, cwd = extensionDir) {
+    const ghPath = await resolveGhExecutable();
+    return execFileAsync(ghPath, args, {
         cwd,
+        shell: false,
         windowsHide: true,
         maxBuffer: 8 * 1024 * 1024,
     });
+}
+
+async function runGhJson(args, cwd) {
+    const result = await execGh(args, cwd);
     return JSON.parse(result.stdout);
 }
 
 async function runGh(args, cwd) {
-    const result = await execFileAsync("gh", args, {
-        cwd,
-        windowsHide: true,
-        maxBuffer: 8 * 1024 * 1024,
-    });
+    const result = await execGh(args, cwd);
     return result.stdout;
 }
 
-async function closeGithubIssue(board, item, note, cwd = process.cwd()) {
+async function closeGithubIssue(board, item, note) {
     const issueNumber = normalizeText(item?.number);
     const repo = normalizeText(board?.repo || item?.repo);
     if (!issueNumber || !repo) {
@@ -406,7 +446,7 @@ async function closeGithubIssue(board, item, note, cwd = process.cwd()) {
         args.push("--comment", comment);
     }
     try {
-        await runGh(args, cwd);
+        await runGh(args);
     } catch (error) {
         const stderr = normalizeText(error?.stderr || "");
         if (stderr.toLowerCase().includes("already closed")) {
@@ -416,7 +456,7 @@ async function closeGithubIssue(board, item, note, cwd = process.cwd()) {
     }
 }
 
-async function commentGithubIssue(board, item, note, cwd = process.cwd()) {
+async function commentGithubIssue(board, item, note) {
     const repo = normalizeText(board?.repo || item?.repo);
     const issueNumber = extractIssueNumber(item);
     const comment = normalizeText(note);
@@ -427,7 +467,7 @@ async function commentGithubIssue(board, item, note, cwd = process.cwd()) {
         return;
     }
     try {
-        await runGh(["issue", "comment", issueNumber, "--repo", repo, "--body", comment], cwd);
+        await runGh(["issue", "comment", issueNumber, "--repo", repo, "--body", comment]);
     } catch (error) {
         const stderr = normalizeText(error?.stderr || "");
         throw new Error(stderr || `Failed to comment on issue #${issueNumber} in ${repo}.`);
@@ -520,7 +560,6 @@ function pruneDecisionsForCurrentItems(board) {
 }
 
 async function syncBoardFromRepo(board, filtersInput, cwd = null) {
-    const commandCwd = cwd || process.cwd();
     let repo = normalizeText(board.repo);
     if (!repo && cwd) {
         const repoData = await runGhJson(["repo", "view", "--json", "nameWithOwner"], cwd);
@@ -544,7 +583,6 @@ async function syncBoardFromRepo(board, filtersInput, cwd = null) {
             "--json",
             "number,title,url,labels,assignees,createdAt,updatedAt,author,body",
         ],
-        commandCwd,
     );
 
     const filteredIssues = Array.isArray(issues) ? sortIssues(issues.filter((issue) => issueMatchesFilters(issue, filters)), filters.sortBy) : [];
@@ -1915,10 +1953,10 @@ async function handleServerRequest(instanceId, req, res) {
             return;
         }
         if (decision === "close") {
-            await closeGithubIssue(board, item, payload?.note, cwd || process.cwd());
+            await closeGithubIssue(board, item, payload?.note);
         }
         if (payload?.quickResponse === true && decision !== "close" && normalizeText(payload?.note)) {
-            await commentGithubIssue(board, item, payload?.note, cwd || process.cwd());
+            await commentGithubIssue(board, item, payload?.note);
         }
         if (decision === "assign_agent") {
             const sessionStatus = await startImplementationSession(board, item, payload?.agent, payload?.note);
@@ -2083,7 +2121,6 @@ const session = await joinSession({
                         additionalProperties: false,
                     },
                     handler: async (ctx) => {
-                        const cwd = cwdForContext(ctx);
                         await ensureStorageLoaded();
                         const board = getOrCreateBoard(normalizeText(ctx.input?.boardId, "default"));
                         const itemId = normalizeText(ctx.input?.itemId);
@@ -2093,10 +2130,10 @@ const session = await joinSession({
                             throw new Error(`Item "${itemId}" not found`);
                         }
                         if (decision === "close") {
-                            await closeGithubIssue(board, item, ctx.input?.note, cwd || process.cwd());
+                            await closeGithubIssue(board, item, ctx.input?.note);
                         }
                         if (ctx.input?.commentOnIssue === true && decision !== "close" && normalizeText(ctx.input?.note)) {
-                            await commentGithubIssue(board, item, ctx.input?.note, cwd || process.cwd());
+                            await commentGithubIssue(board, item, ctx.input?.note);
                         }
                         if (decision === "assign_agent") {
                             const sessionStatus = await startImplementationSession(board, item, ctx.input?.agent, ctx.input?.note);
