@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
+import { execWindowsProgramAsync } from "../core/windows-processes.mjs";
 
-const execFileAsync = promisify(execFile);
 const PROCESS_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 $rows = @(Get-CimInstance Win32_Process |
@@ -59,7 +57,7 @@ async function inspectProcesses() {
         return { status: "unsupported", processCount: 0, processes: [] };
     }
     try {
-        const { stdout } = await execFileAsync("powershell.exe", [
+        const { stdout } = await execWindowsProgramAsync("powershell.exe", [
             "-NoLogo",
             "-NoProfile",
             "-NonInteractive",

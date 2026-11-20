@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { spawnWindowsProgram } from "./windows-processes.mjs";
 
 const FILE_ATTRIBUTE_OFFLINE = 0x00001000;
 const FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x00040000;
@@ -99,7 +99,7 @@ export class CloudFileAttributeReader {
         }
 
         const encodedScript = Buffer.from(ATTRIBUTE_SCRIPT, "utf16le").toString("base64");
-        this.#process = spawn(
+        this.#process = spawnWindowsProgram(
             "powershell.exe",
             ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedScript],
             { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },

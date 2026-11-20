@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import { getAnalyzerCommands } from "../core/analyzer-commands.mjs";
+import { execWindowsProgramAsync } from "../core/windows-processes.mjs";
 
-const execFileAsync = promisify(execFile);
 const UV_CLI_TIMEOUT_MS = 10_000;
 
 function normalize(filePath) {
@@ -28,7 +26,7 @@ function getDefaultUvRoot() {
 
 async function getConfiguredCachePath(defaultCachePath) {
     try {
-        const { stdout } = await execFileAsync("uv.exe", ["cache", "dir"], {
+        const { stdout } = await execWindowsProgramAsync("uv.exe", ["cache", "dir"], {
             windowsHide: true,
             timeout: UV_CLI_TIMEOUT_MS,
             maxBuffer: 1024 * 1024,

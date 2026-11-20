@@ -1,9 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { execFile } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
+import { execWindowsProgramAsync } from "../core/windows-processes.mjs";
 
-const execFileAsync = promisify(execFile);
 const VERSION_FOLDER_PATTERN = /^[a-f0-9]{10}$/i;
 const PROCESS_SCRIPT = `
 $ErrorActionPreference = 'Stop'
@@ -39,7 +37,7 @@ async function getRunningVersionFolders(root) {
         };
     }
 
-    const { stdout } = await execFileAsync("powershell.exe", [
+    const { stdout } = await execWindowsProgramAsync("powershell.exe", [
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",

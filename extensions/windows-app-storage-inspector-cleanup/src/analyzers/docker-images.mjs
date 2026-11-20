@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import { getAnalyzerCommands } from "../core/analyzer-commands.mjs";
+import { execWindowsProgramAsync } from "../core/windows-processes.mjs";
 
-const execFileAsync = promisify(execFile);
 const DOCKER_CLI_TIMEOUT_MS = 10_000;
 
 function normalize(filePath) {
@@ -82,7 +80,7 @@ function parseImageRows(stdout) {
 
 async function inspectDockerImages() {
     try {
-        const { stdout } = await execFileAsync("docker.exe", [
+        const { stdout } = await execWindowsProgramAsync("docker.exe", [
             "image",
             "ls",
             "--no-trunc",
