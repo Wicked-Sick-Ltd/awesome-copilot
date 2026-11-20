@@ -42,10 +42,14 @@ public class AccessibilityReport {
         try (var client = new CopilotClient()) {
             client.start().get();
 
-            // Configure Playwright MCP server for browser automation
+            // Configure Playwright MCP server for browser automation.
+            // Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+            String playwrightMcpCli = java.nio.file.Path.of(
+                    "..", "..", "playwright-mcp", "node_modules", "@playwright", "mcp", "cli.js")
+                .toAbsolutePath().normalize().toString();
             var mcpConfig = new McpStdioServerConfig()
-                .setCommand("npx")
-                .setArgs(List.of("@playwright/mcp@latest"))
+                .setCommand("node")
+                .setArgs(List.of(playwrightMcpCli))
                 .setTools(List.of("*"));
 
             var session = client.createSession(

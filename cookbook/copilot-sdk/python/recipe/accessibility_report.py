@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 
 import asyncio
+from pathlib import Path
 from copilot import (
     CopilotClient,
     SessionConfig,
     MessageOptions,
     SessionEvent,
     PermissionHandler,
+)
+
+# Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+PLAYWRIGHT_MCP_CLI = (
+    Path(__file__).resolve().parents[2]
+    / "playwright-mcp" / "node_modules" / "@playwright" / "mcp" / "cli.js"
 )
 
 # ============================================================================
@@ -39,8 +46,8 @@ async def main():
         mcp_servers={
             "playwright": {
                 "type": "local",
-                "command": "npx",
-                "args": ["@playwright/mcp@latest"],
+                "command": "node",
+                "args": [str(PLAYWRIGHT_MCP_CLI)],
                 "tools": ["*"],
             }
         },

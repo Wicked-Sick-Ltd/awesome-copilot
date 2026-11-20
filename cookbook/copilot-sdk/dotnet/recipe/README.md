@@ -136,13 +136,13 @@ The recipe requires a git repository with at least one `PROMPT_*.md` file and wi
 <details>
 <summary><strong>ℹ️ Accessibility Report</strong> — Requires Playwright MCP</summary>
 
-This recipe requires Playwright MCP to be installed and available:
+This recipe requires Node.js and the pinned Playwright MCP server. Install it once with `npm ci`, which verifies every package against the integrity hashes in [`../../playwright-mcp/package-lock.json`](../../playwright-mcp/package-lock.json):
 
 ```bash
-npm install -g @playwright/mcp
+npm ci --prefix ../../playwright-mcp
 ```
 
-Or let Node Package Manager install it on-demand. The recipe will attempt to launch `npx @playwright/mcp` automatically. Run the recipe as normal:
+The recipe launches that install with `node`. Run the recipe as normal:
 
 ```bash
 dotnet run accessibility-report.cs

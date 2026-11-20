@@ -5,6 +5,7 @@ Build a CLI tool that analyzes web page accessibility using the Playwright MCP s
 > **Runnable example:** [recipe/accessibility_report.py](recipe/accessibility_report.py)
 >
 > ```bash
+> npm ci --prefix ../playwright-mcp
 > cd recipe && pip install -r requirements.txt
 > python accessibility_report.py
 > ```
@@ -19,7 +20,11 @@ You want to audit a website's accessibility compliance. This tool navigates to a
 pip install github-copilot-sdk
 ```
 
-You also need `npx` available (Node.js installed) for the Playwright MCP server.
+You also need Node.js and the pinned Playwright MCP server from [`../playwright-mcp`](../playwright-mcp). Install it with `npm ci`, which verifies every package against the integrity hashes in its `package-lock.json`:
+
+```bash
+npm ci --prefix ../playwright-mcp
+```
 
 ## Usage
 
@@ -34,12 +39,19 @@ python accessibility_report.py
 #!/usr/bin/env python3
 
 import asyncio
+from pathlib import Path
 from copilot import (
     CopilotClient,
     SessionConfig,
     MessageOptions,
     SessionEvent,
     PermissionHandler,
+)
+
+# Installed by `npm ci` in ../../playwright-mcp, which verifies every package against its lockfile.
+PLAYWRIGHT_MCP_CLI = (
+    Path(__file__).resolve().parents[2]
+    / "playwright-mcp" / "node_modules" / "@playwright" / "mcp" / "cli.js"
 )
 
 # ============================================================================
@@ -72,8 +84,8 @@ async def main():
         mcp_servers={
             "playwright": {
                 "type": "local",
-                "command": "npx",
-                "args": ["@playwright/mcp@latest"],
+                "command": "node",
+                "args": [str(PLAYWRIGHT_MCP_CLI)],
                 "tools": ["*"],
             }
         },
@@ -168,7 +180,7 @@ if __name__ == "__main__":
 
 ## How it works
 
-1. **Playwright MCP server**: Configures a local MCP server running `@playwright/mcp` to provide browser automation tools
+1. **Playwright MCP server**: Configures a local MCP server running the lockfile-pinned `@playwright/mcp` install to provide browser automation tools
 2. **Streaming output**: Uses `streaming=True` and `ASSISTANT_MESSAGE_DELTA` events for real-time token-by-token output
 3. **Accessibility snapshot**: Playwright's `browser_snapshot` tool captures the full accessibility tree of the page
 4. **Structured report**: The prompt engineers a consistent WCAG-aligned report format with emoji severity indicators
@@ -185,13 +197,15 @@ session = await client.create_session(SessionConfig(
     mcp_servers={
         "playwright": {
             "type": "local",
-            "command": "npx",
-            "args": ["@playwright/mcp@latest"],
+            "command": "node",
+            "args": [str(PLAYWRIGHT_MCP_CLI)],
             "tools": ["*"],
         }
     },
         on_permission_request=PermissionHandler.approve_all))
 ```
+
+`PLAYWRIGHT_MCP_CLI` points at the `cli.js` installed by `npm ci` in `../playwright-mcp`. Running a fixed install avoids `npx` resolving whatever version is currently published under a tag every time the recipe starts.
 
 This gives the model access to Playwright browser tools like `browser_navigate`, `browser_snapshot`, and `browser_click`.
 
