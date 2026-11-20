@@ -40,6 +40,12 @@ Output:
     --recursive is used.
   - If a workbook has no embedded images, no "img/" folder or "Images in
     this sheet" sections are created.
+  - An existing "<name>/" (or single-file -o) folder is only replaced if it
+    is empty or is an earlier output of this script (it holds the
+    ".convert-excel-to-md" marker and nothing but the files this script
+    writes). Any other existing folder is left untouched and that workbook
+    is reported as FAILED. Files whose name has no usable stem (e.g.
+    "..xlsx") are rejected the same way.
 
 Exit codes:
   0 - all requested conversions succeeded
@@ -48,10 +54,13 @@ Exit codes:
   3 - invalid input (path not found, or single-file input is not .xlsx)
 """
 import argparse
+import os
 import posixpath
 import re
 import shutil
+import stat
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -68,6 +77,15 @@ _A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 # Matches MarkItDown's per-sheet heading, e.g. "## Sheet1"
 _SHEET_HEADER_RE = re.compile(r"^## (.+)$", re.MULTILINE)
+
+# Written into every output folder; an existing folder is only ever replaced
+# if it carries this marker and nothing but files this script writes.
+OUTPUT_MARKER = ".convert-excel-to-md"
+_OWNED_IMAGE_RE = re.compile(r"sheet\d{3,}_[A-Za-z0-9_.-]+_img\d{3,}\.[^.]+")
+
+
+class UnsafeDestinationError(Exception):
+    """The output folder exists but was not created by this converter."""
 
 
 def _import_markitdown():
@@ -241,29 +259,156 @@ def insert_sheet_images(markdown_text: str, sheet_images) -> str:
     return "".join(pieces).rstrip() + "\n"
 
 
+def _is_plain_dir(st) -> bool:
+    """True for a real directory: not a symlink, junction or other reparse point."""
+    if not stat.S_ISDIR(st.st_mode):
+        return False
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return not getattr(st, "st_file_attributes", 0) & reparse_point
+
+
+def _owned_files(folder: Path, stem: str):
+    """Return the files in folder that an earlier run of this script wrote
+    for <stem>, or None if folder holds anything else. An empty folder
+    returns []."""
+    with os.scandir(folder) as it:
+        entries = list(it)
+    if not entries:
+        return []
+    if OUTPUT_MARKER not in {entry.name for entry in entries}:
+        return None
+    owned = []
+    for entry in entries:
+        if entry.name in (OUTPUT_MARKER, f"{stem}.md") and entry.is_file(follow_symlinks=False):
+            owned.append(Path(entry.path))
+        elif entry.name == "img" and _is_plain_dir(entry.stat(follow_symlinks=False)):
+            with os.scandir(entry.path) as it:
+                images = list(it)
+            for image in images:
+                if not (_OWNED_IMAGE_RE.fullmatch(image.name) and image.is_file(follow_symlinks=False)):
+                    return None
+                owned.append(Path(image.path))
+        else:
+            return None
+    return owned
+
+
+def _replaceable_stat(dest_dir: Path, stem: str):
+    """lstat() of dest_dir if it may be replaced, None if it does not exist.
+    Raises UnsafeDestinationError for anything this script did not create."""
+    try:
+        st = os.lstat(dest_dir)
+    except FileNotFoundError:
+        return None
+    if not _is_plain_dir(st) or _owned_files(dest_dir, stem) is None:
+        raise UnsafeDestinationError(
+            f"{dest_dir} already exists and is not an earlier output of this "
+            "converter; remove it yourself or choose a new output folder"
+        )
+    return st
+
+
+def _install_output(build_dir: Path, dest_dir: Path, work_dir: Path, stem: str):
+    """Move the finished build_dir to dest_dir. An existing dest_dir is first
+    moved into the private work_dir, and only kept there (for deletion of
+    its owned files) if it is still the same, converter-owned directory."""
+    before = _replaceable_stat(dest_dir, stem)
+    if before is None:
+        os.rename(build_dir, dest_dir)
+        return
+    previous = work_dir / "previous"
+    os.rename(dest_dir, previous)
+    try:
+        moved = os.lstat(previous)
+        if (moved.st_dev, moved.st_ino) != (before.st_dev, before.st_ino) \
+                or not _is_plain_dir(moved) or _owned_files(previous, stem) is None:
+            raise UnsafeDestinationError(f"{dest_dir} changed while it was being replaced; left as is")
+        os.rename(build_dir, dest_dir)
+    except BaseException:
+        if os.path.lexists(previous) and not os.path.lexists(dest_dir):
+            try:
+                os.rename(previous, dest_dir)
+            except OSError as exc:
+                print(
+                    f"WARNING: could not restore {dest_dir} after a failed replace: {exc}",
+                    file=sys.stderr,
+                )
+        raise
+
+
+def _discard_work_dir(work_dir: Path, dest_dir: Path, stem: str):
+    """Remove the temporary work_dir. If the new folder never landed, put the
+    previous output back instead of deleting it."""
+    build_dir = work_dir / "new"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    previous = work_dir / "previous"
+    try:
+        if os.path.lexists(previous) and not os.path.lexists(dest_dir):
+            os.rename(previous, dest_dir)
+        elif os.path.lexists(previous):
+            owned = _owned_files(previous, stem)
+            for path in owned or []:
+                path.unlink()
+            if owned is not None:
+                for folder in (previous / "img", previous):
+                    if os.path.lexists(folder):
+                        folder.rmdir()
+        if os.path.lexists(work_dir):
+            work_dir.rmdir()
+    except OSError as exc:
+        print(f"WARNING: could not clean up temporary folder {work_dir}: {exc}", file=sys.stderr)
+
+
 def convert_one(md, source: Path, dest_dir: Path) -> bool:
     """Convert a single .xlsx file to a '<name>/' folder containing the
     Markdown file and an 'img/' folder of extracted images. Returns True on
     success."""
+    stem = source.stem
+    dest_dir = dest_dir.absolute()
+    try:
+        if not stem.rstrip(". "):
+            raise UnsafeDestinationError(f"'{source.name}' has no usable name for an output folder")
+        if dest_dir.name in ("", ".", ".."):
+            raise UnsafeDestinationError(f"{dest_dir} is not a usable output folder")
+        _replaceable_stat(dest_dir, stem)
+    except UnsafeDestinationError as exc:
+        print(f"FAILED  {source} -> {exc}", file=sys.stderr)
+        return False
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not inspect {dest_dir}: {exc}", file=sys.stderr)
+        return False
+
     try:
         result = md.convert(str(source))
     except Exception as exc:  # noqa: BLE001 - surface any conversion error
         print(f"FAILED  {source} -> {exc}", file=sys.stderr)
         return False
 
+    work_dir = None
     try:
-        img_dir = dest_dir / "img"
-        if dest_dir.exists():
-            if img_dir.exists():
-              shutil.rmtree(img_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        sheet_images = extract_images(source, img_dir)
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
+        work_dir = Path(tempfile.mkdtemp(prefix=f"{OUTPUT_MARKER}-", suffix=".tmp", dir=dest_dir.parent))
+        build_dir = work_dir / "new"
+        build_dir.mkdir()
+        (build_dir / OUTPUT_MARKER).write_text(
+            "Created by convert_excel_to_md.py. Re-running the converter replaces this folder.\n",
+            encoding="utf-8",
+        )
+        sheet_images = extract_images(source, build_dir / "img")
         text = insert_sheet_images(result.text_content, sheet_images)
-        md_path = dest_dir / f"{source.stem}.md"
-        md_path.write_text(text, encoding="utf-8")
+        (build_dir / f"{stem}.md").write_text(text, encoding="utf-8")
+        _install_output(build_dir, dest_dir, work_dir, stem)
+        md_path = dest_dir / f"{stem}.md"
+    except UnsafeDestinationError as exc:
+        print(f"FAILED  {source} -> {exc}", file=sys.stderr)
+        return False
     except OSError as exc:
         print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
         return False
+    finally:
+        if work_dir is not None:
+            _discard_work_dir(work_dir, dest_dir, stem)
 
     img_count = sum(len(v) for v in sheet_images.values())
     img_note = f", {img_count} image(s)" if img_count else ""
