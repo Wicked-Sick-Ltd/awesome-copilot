@@ -17,8 +17,8 @@ On the `preToolUse` event the hook receives the tool invocation as JSON on stdin
 - **Blocks (exit 1)** only on a confident negative from the oracle.
 - **Fails open (exit 0)** when the free daily quota is spent, the API is unreachable, or the payload is unusable. It never blocks on these.
 - Python: skips standard library modules and relative imports. JS/TS: skips relative paths, absolute paths, and node builtins; `@scope/name` handled.
-- Answers are cached at `~/.cache/attester-import-check/cache.json` (exists 30 days, negatives 1 day) so repeated edits do not burn the free quota.
-- Allowlist import names that differ from their registry package (`yaml`, `PIL`, `cv2`) via `.attester-allowlist` in the workspace root, one per line.
+- Every package in the current edit is checked against the oracle on every call. Answers are not stored on disk, because the agent can write any file the hook could read and would be able to pre-approve a missing package. Each third-party import in an edit uses one call from the free quota.
+- Allowlist import names that differ from their registry package (`yaml`, `PIL`, `cv2`) via `ATTESTER_ALLOWLIST` in the hook's `env` in `hooks.json`, comma-separated. A workspace `.attester-allowlist` file is not read, for the same reason.
 
 ## Free quota and the paid path
 
@@ -71,7 +71,7 @@ The hook is configured in `hooks.json` to run on the `preToolUse` event:
 |----------|--------|---------|-------------|
 | `ATTESTER_MODE` | `block`, `warn` | `block` | `warn` prints findings but always allows the operation |
 | `ATTESTER_BASE_URL` | URL | `https://attester.dev` | Oracle base URL |
-| `ATTESTER_IMPORT_CHECK_NO_CACHE` | `1` | unset | Skip the on-disk answer cache |
+| `ATTESTER_ALLOWLIST` | Comma-separated import names | unset | Import names to skip (e.g. `yaml,PIL,cv2`) |
 
 ## Examples
 
@@ -83,7 +83,7 @@ echo '{"toolName":"write_file","toolInput":{"path":"main.py","content":"import r
 ```
 
 ```
-attester-import-check: 'requestsx_fantasy_helper' does not exist on PyPI (attester.dev oracle). Remove or fix the import, or add the name to .attester-allowlist if this is a false positive.
+attester-import-check: 'requestsx_fantasy_helper' does not exist on PyPI (attester.dev oracle). Remove or fix the import, or add the name to ATTESTER_ALLOWLIST in hooks.json if this is a false positive.
 ```
 
 ### Real package (exit 0)
