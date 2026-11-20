@@ -26,6 +26,7 @@ import { StorageService } from "../src/core/storage-service.mjs";
 import { WINDOWS_ONLY_MESSAGE, assertWindowsPlatform, isWindowsPlatform } from "../src/core/platform.mjs";
 import { renderHtml } from "../src/ui/renderer.mjs";
 import { findTreeStackForPath, getParentPath } from "../src/ui/tree-navigation.mjs";
+import "./uv-cache-commands.test.mjs";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "storage-inspector-test-"));
 const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "storage-inspector-outside-"));

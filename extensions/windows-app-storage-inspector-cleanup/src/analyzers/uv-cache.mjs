@@ -2,7 +2,12 @@ import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { getAnalyzerCommands } from "../core/analyzer-commands.mjs";
+import {
+    getAnalyzerCommands,
+    getToolWorkingDirectory,
+    getUvCacheDirectory,
+    getUvRootDirectory,
+} from "../core/analyzer-commands.mjs";
 
 const execFileAsync = promisify(execFile);
 const UV_CLI_TIMEOUT_MS = 10_000;
@@ -21,14 +26,10 @@ function getDirectoryAggregate(result, directoryPath) {
     return result.directories.find((directory) => normalize(directory.path) === normalizedPath);
 }
 
-function getDefaultUvRoot() {
-    const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? "", "AppData", "Local");
-    return path.resolve(localAppData, "uv");
-}
-
 async function getConfiguredCachePath(defaultCachePath) {
     try {
         const { stdout } = await execFileAsync("uv.exe", ["cache", "dir"], {
+            cwd: getToolWorkingDirectory(),
             windowsHide: true,
             timeout: UV_CLI_TIMEOUT_MS,
             maxBuffer: 1024 * 1024,
@@ -50,8 +51,8 @@ async function getConfiguredCachePath(defaultCachePath) {
 }
 
 export async function discoverUvCachePaths() {
-    const rootPath = getDefaultUvRoot();
-    const configuredCache = await getConfiguredCachePath(path.join(rootPath, "cache"));
+    const rootPath = getUvRootDirectory();
+    const configuredCache = await getConfiguredCachePath(getUvCacheDirectory());
     return [...new Set([rootPath, configuredCache.path])];
 }
 
@@ -79,8 +80,9 @@ async function describeDirectory(result, id, name, directoryPath) {
 }
 
 export async function analyzeUvCache(result) {
-    const rootPath = getDefaultUvRoot();
-    const configuredCache = await getConfiguredCachePath(path.join(rootPath, "cache"));
+    const rootPath = getUvRootDirectory();
+    const managedCachePath = getUvCacheDirectory();
+    const configuredCache = await getConfiguredCachePath(managedCachePath);
     const [root, cache] = await Promise.all([
         describeDirectory(result, "uv-root", "uv data", rootPath),
         describeDirectory(result, "uv-cache", "uv cache", configuredCache.path),
@@ -104,8 +106,12 @@ export async function analyzeUvCache(result) {
         cache,
         locations,
         configuredCachePath: configuredCache.path,
+        managedCachePath,
         configurationSource: configuredCache.source,
         configurationError: configuredCache.error,
+        managedCacheNote: normalize(configuredCache.path) === normalize(managedCachePath)
+            ? undefined
+            : `uv is configured to use ${configuredCache.path}. The uv cache commands below only manage the standard cache at ${managedCachePath}.`,
         topFiles,
         totalBytes,
         cacheBytes: cache?.bytes ?? 0,

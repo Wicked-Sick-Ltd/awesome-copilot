@@ -191,7 +191,7 @@ Current analyzers:
 - **Microsoft Scout**: separates application files, user data, and regenerable storage; cleanup is disabled while Scout is running or its process state is unknown.
 - **Docker images**: reads Docker image metadata with the Docker CLI, identifies Docker-managed storage under the user profile and `ProgramData`, and provides reviewed Docker cleanup commands. Docker layer folders and virtual disks are never offered for direct Recycle Bin cleanup.
 - **npm cache**: reads npm's configured cache location, reports its size and largest files, and provides npm-managed verification and cleanup commands. Its opaque `_cacache` contents are never offered for direct Recycle Bin cleanup.
-- **uv cache**: reads uv's configured cache location, reports uv-managed storage and largest files, and provides uv-managed cache commands. Cache files are never offered for direct Recycle Bin cleanup.
+- **uv cache**: reads uv's configured cache location, reports uv-managed storage and largest files, and provides uv-managed cache commands. The commands always run with `--no-config --cache-dir "%LOCALAPPDATA%\uv\cache"` and without inherited `UV_*` environment variables, so they only manage the standard per-user cache, never a directory chosen by a project `uv.toml` or `pyproject.toml`. Cache files are never offered for direct Recycle Bin cleanup.
 
 Analyzer results are held in memory and are discarded on a new scan or extension restart.
 
@@ -199,7 +199,7 @@ Analyzer commands have a **Run** button. Each command runs through the extension
 
 A blocking modal displays the command, an indeterminate progress bar, and a **Cancel** button while it runs, then displays its result. Cancellation terminates the full spawned Windows process tree and reports the command as cancelled only after termination is verified.
 
-Destructive commands require an explicit confirmation and use non-interactive, scoped CLI arguments. The canvas never executes arbitrary command text received from the browser.
+Destructive commands require an explicit confirmation and use non-interactive, scoped CLI arguments. When a command clears a specific directory, the confirmation shows that absolute directory and the runner refuses to start if it no longer matches the directory that was confirmed. Analyzer commands and CLI lookups run from the user's home directory, so project configuration in the workspace the extension host was started from is never applied. The canvas never executes arbitrary command text received from the browser.
 
 ### Create an analyzer
 

@@ -1,7 +1,54 @@
 import { execFile } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 
 const COMMAND_TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 1_048_576;
+
+export function getLocalAppDataDirectory() {
+    return path.resolve(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"));
+}
+
+export function getUvRootDirectory() {
+    return path.join(getLocalAppDataDirectory(), "uv");
+}
+
+export function getUvCacheDirectory() {
+    return path.join(getUvRootDirectory(), "cache");
+}
+
+// Package managers read project configuration (uv.toml, pyproject.toml, .npmrc)
+// from the working directory and its parents, so tools must never start inside
+// the workspace the host process happens to run in.
+export function getToolWorkingDirectory() {
+    return os.homedir();
+}
+
+function withoutUvEnvironment(environment) {
+    return Object.fromEntries(
+        Object.entries(environment).filter(([key]) => !key.toUpperCase().startsWith("UV_")),
+    );
+}
+
+function uvCacheCommand({ id, label, subcommand, description, requiresConfirmation }) {
+    return () => {
+        const cacheDirectory = getUvCacheDirectory();
+        const args = ["cache", subcommand, "--no-config", "--cache-dir", cacheDirectory];
+        return {
+            id,
+            label,
+            command: `uv cache ${subcommand} --no-config --cache-dir "${cacheDirectory}"`,
+            shell: "PowerShell",
+            description,
+            requiresElevation: false,
+            requiresConfirmation,
+            targetPath: cacheDirectory,
+            executable: "uv.exe",
+            arguments: args,
+            env: withoutUvEnvironment(process.env),
+        };
+    };
+}
 
 const COMMANDS = {
     "docker-images": [
@@ -64,44 +111,38 @@ const COMMANDS = {
         },
     ],
     "uv-cache": [
-        {
+        uvCacheCommand({
             id: "uv-cache-dir",
             label: "Show uv cache location",
-            command: "uv cache dir",
-            shell: "PowerShell",
-            description: "Reports the cache directory currently configured for uv without modifying it.",
-            requiresElevation: false,
+            subcommand: "dir",
+            description: "Reports the standard per-user uv cache directory that these commands manage, without modifying it.",
             requiresConfirmation: false,
-            executable: "uv.exe",
-            arguments: ["cache", "dir"],
-        },
-        {
+        }),
+        uvCacheCommand({
             id: "uv-cache-prune",
             label: "Prune unused uv cache entries",
-            command: "uv cache prune",
-            shell: "PowerShell",
+            subcommand: "prune",
             description: "Removes unused cache entries and centralized project environments that uv can recreate when needed.",
-            requiresElevation: false,
             requiresConfirmation: true,
-            executable: "uv.exe",
-            arguments: ["cache", "prune"],
-        },
-        {
+        }),
+        uvCacheCommand({
             id: "uv-cache-clean",
             label: "Clear all uv cache entries",
-            command: "uv cache clean",
-            shell: "PowerShell",
+            subcommand: "clean",
             description: "Clears all uv cache entries. Future dependency operations rebuild required cache data.",
-            requiresElevation: false,
             requiresConfirmation: true,
-            executable: "uv.exe",
-            arguments: ["cache", "clean"],
-        },
+        }),
     ],
 };
 
+function resolveCommands(analyzerId) {
+    return (COMMANDS[analyzerId] ?? []).map((command) => (
+        typeof command === "function" ? command() : command
+    ));
+}
+
 function getCommand(analyzerId, commandId) {
-    const command = COMMANDS[analyzerId]?.find((item) => item.id === commandId);
+    const command = resolveCommands(analyzerId).find((item) => item.id === commandId);
     if (!command) {
         const error = new Error(`Unknown analyzer command: ${commandId}`);
         error.code = "analyzer_command_unknown";
@@ -111,10 +152,11 @@ function getCommand(analyzerId, commandId) {
 }
 
 export function getAnalyzerCommands(analyzerId) {
-    return (COMMANDS[analyzerId] ?? []).map((command) => {
+    return resolveCommands(analyzerId).map((command) => {
         const {
             executable,
             arguments: args,
+            env,
             ...displayCommand
         } = command;
         return displayCommand;
@@ -142,6 +184,8 @@ function runProcess(command) {
     const promise = new Promise((resolve, reject) => {
         try {
             childProcess = execFile(command.executable, command.arguments, {
+                cwd: getToolWorkingDirectory(),
+                env: command.env ?? process.env,
                 windowsHide: true,
                 timeout: COMMAND_TIMEOUT_MS,
                 maxBuffer: MAX_OUTPUT_BYTES,
@@ -228,12 +272,18 @@ export function createAnalyzerCommandRunner({ executeProcess = runProcess } = {}
             };
         },
 
-        async execute(analyzerId, commandId, confirmed = false) {
+        async execute(analyzerId, commandId, confirmed = false, confirmedTargetPath = undefined) {
             const command = getCommand(analyzerId, commandId);
             if (command.requiresConfirmation && confirmed !== true) {
                 throw commandError(
                     "analyzer_command_confirmation_required",
                     "Explicit confirmation is required before running this cleanup command",
+                );
+            }
+            if (command.requiresConfirmation && command.targetPath && confirmedTargetPath !== command.targetPath) {
+                throw commandError(
+                    "analyzer_command_target_changed",
+                    `The confirmed directory does not match the directory this command would clear: ${command.targetPath}`,
                 );
             }
             if (activeCommand) {
@@ -287,8 +337,8 @@ export function createAnalyzerCommandRunner({ executeProcess = runProcess } = {}
 
 const analyzerCommandRunner = createAnalyzerCommandRunner();
 
-export async function executeAnalyzerCommand(analyzerId, commandId, confirmed = false) {
-    return analyzerCommandRunner.execute(analyzerId, commandId, confirmed);
+export async function executeAnalyzerCommand(analyzerId, commandId, confirmed = false, confirmedTargetPath = undefined) {
+    return analyzerCommandRunner.execute(analyzerId, commandId, confirmed, confirmedTargetPath);
 }
 
 export function cancelAnalyzerCommand() {

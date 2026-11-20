@@ -115,11 +115,11 @@ export class StorageService {
         return analysis;
     }
 
-    async executeAnalyzerCommand(analyzerId, commandId, confirmed) {
+    async executeAnalyzerCommand(analyzerId, commandId, confirmed, targetPath) {
         if (!this.result) {
             throw serviceError("scan_results_unavailable", "Run a scan before running an analyzer command");
         }
-        return executeAnalyzerCommand(analyzerId, commandId, confirmed);
+        return executeAnalyzerCommand(analyzerId, commandId, confirmed, targetPath);
     }
 
     cancelAnalyzerCommand() {

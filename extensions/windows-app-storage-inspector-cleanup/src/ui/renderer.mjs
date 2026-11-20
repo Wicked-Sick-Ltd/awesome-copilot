@@ -429,6 +429,7 @@ export function renderHtml(token) {
     <h2 id="analyzerCommandTitle">Analyzer command</h2>
     <p id="analyzerCommandStatus" class="muted"></p>
     <code id="analyzerCommandText"></code>
+    <div id="analyzerCommandTarget" class="warning" hidden></div>
     <div id="analyzerCommandProgress" class="progress command-progress" role="progressbar" aria-label="Analyzer command in progress" hidden><div></div></div>
     <div id="analyzerCommandError" class="error" hidden></div>
     <pre id="analyzerCommandOutput" class="command-output" hidden></pre>
@@ -796,6 +797,10 @@ export function renderHtml(token) {
       const isFinished = ["completed", "cancelled", "failed"].includes(active.status);
       $("analyzerCommandTitle").textContent = command?.label || "Analyzer command";
       $("analyzerCommandText").textContent = command?.command || "";
+      $("analyzerCommandTarget").hidden = !command?.targetPath;
+      $("analyzerCommandTarget").textContent = command?.targetPath
+        ? "Directory affected: " + command.targetPath
+        : "";
       $("analyzerCommandProgress").hidden = !isRunning;
       $("analyzerCommandError").hidden = true;
       $("analyzerCommandOutput").hidden = true;
@@ -847,6 +852,7 @@ export function renderHtml(token) {
             analyzerId: active.analyzerId,
             commandId: active.command.id,
             confirmed: active.command.requiresConfirmation === true,
+            targetPath: active.command.targetPath,
           }),
         });
         state.analyzerCommand = { ...active, status: "completed", result };
@@ -1278,6 +1284,12 @@ export function renderHtml(token) {
         error.className = "warning";
         error.textContent = analysis.configurationError;
         container.appendChild(error);
+      }
+      if (analysis.managedCacheNote) {
+        const note = document.createElement("div");
+        note.className = "warning";
+        note.textContent = analysis.managedCacheNote;
+        container.appendChild(note);
       }
       if (analysis.warning) {
         const warning = document.createElement("div");
