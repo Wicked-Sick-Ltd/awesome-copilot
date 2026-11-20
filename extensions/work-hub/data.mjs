@@ -62,6 +62,18 @@ export function ageLabel(days) {
     return `${Math.floor(days / 365)} yr`;
 }
 
+// Links from GitHub data (deployment environment_url in particular is free-form)
+// end up as hrefs on the loopback page, so only absolute http(s) URLs survive.
+export function safeHttpUrl(value) {
+    if (typeof value !== "string" || !value) return "";
+    try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+    } catch {
+        return "";
+    }
+}
+
 function isHumanLogin(login) {
     if (!login) return false;
     return !/\[bot\]$/i.test(login) && !/-bot$/i.test(login) && login.toLowerCase() !== "github-actions";
@@ -705,7 +717,7 @@ async function collectRepo(repo, userLogins, sessionsByRepo) {
 
     return {
         ...repo,
-        url: metadata.html_url || `https://github.com/${repo.slug}`,
+        url: safeHttpUrl(metadata.html_url) || `https://github.com/${repo.slug}`,
         description: metadata.description || repo.description || "",
         defaultBranch: metadata.default_branch || "main",
         isArchived: Boolean(metadata.archived),
@@ -759,7 +771,7 @@ async function getDeployments(repo) {
                 createdAt: deploy.created_at,
                 ageDays: daysSince(deploy.created_at),
                 state: statusRow ? String(statusRow.state || "unknown") : "unknown",
-                url: statusRow ? statusRow.environment_url || "" : "",
+                url: statusRow ? safeHttpUrl(statusRow.environment_url) : "",
                 isProduction: Boolean(deploy.production_environment) || /prod|pages|release/i.test(deploy.environment || ""),
             };
         }),
@@ -773,7 +785,7 @@ function normalizeRelease(value, kind) {
         name: value.name || value.tag_name || "Latest tag",
         tagName: value.tag_name || value.name || "",
         publishedAt: value.published_at || value.created_at || value.commit?.committer?.date || null,
-        url: value.html_url || "",
+        url: safeHttpUrl(value.html_url),
     };
 }
 
@@ -792,7 +804,7 @@ function normalizePr(repo, pr, userLogins) {
         type: "pr",
         number: pr.number,
         title: pr.title || `PR #${pr.number}`,
-        url: pr.url || `https://github.com/${repo.slug}/pull/${pr.number}`,
+        url: safeHttpUrl(pr.url) || `https://github.com/${repo.slug}/pull/${pr.number}`,
         author: authorLogin,
         isHumanAuthored,
         createdAt: pr.createdAt,
@@ -821,7 +833,7 @@ function normalizeIssue(repo, issue, userLogins) {
         type: "issue",
         number: issue.number,
         title: issue.title || `Issue #${issue.number}`,
-        url: issue.url || `https://github.com/${repo.slug}/issues/${issue.number}`,
+        url: safeHttpUrl(issue.url) || `https://github.com/${repo.slug}/issues/${issue.number}`,
         author: authorLogin,
         isHumanAuthored,
         assignedToJames,
@@ -1064,7 +1076,7 @@ function normalizeComments(rows) {
         body: String(c.body || "").slice(0, 2000),
         createdAt: c.createdAt || c.created_at || null,
         ageDays: daysSince(c.createdAt || c.created_at),
-        url: c.url || "",
+        url: safeHttpUrl(c.url),
     }));
 }
 
@@ -1091,7 +1103,7 @@ export async function getItemDetail({ repo, type, number } = {}) {
             state: pr.state,
             isDraft: Boolean(pr.isDraft),
             author: normalizeLogin(pr.author),
-            url: pr.url,
+            url: safeHttpUrl(pr.url),
             reviewDecision: pr.reviewDecision || "UNKNOWN",
             labels: (pr.labels || []).map((l) => l.name || l).filter(Boolean),
             assignees: (pr.assignees || []).map(normalizeLogin).filter(Boolean),
@@ -1122,7 +1134,7 @@ export async function getItemDetail({ repo, type, number } = {}) {
         body: String(issue.body || "").slice(0, 6000),
         state: issue.state,
         author: normalizeLogin(issue.author),
-        url: issue.url,
+        url: safeHttpUrl(issue.url),
         labels: (issue.labels || []).map((l) => l.name || l).filter(Boolean),
         assignees: (issue.assignees || []).map(normalizeLogin).filter(Boolean),
         createdAt: issue.createdAt,
