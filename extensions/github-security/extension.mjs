@@ -1,9 +1,9 @@
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCanvas, joinSession } from "@github/copilot-sdk/extension";
 import { isUtf8 } from "node:buffer";
-import { execFile } from "node:child_process";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { access, constants as fsConstants, readFile, realpath, stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import { createReadStream, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -9039,6 +9039,49 @@ function isPathInside(root, filePath) {
 	return relativePath === "" || relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
 }
 //#endregion
+//#region extension/trusted-executable.ts
+var ExecutableNotFoundError = class extends Error {
+	code = "ENOENT";
+	constructor(name) {
+		super(`Cannot find "${name}" in an absolute PATH directory outside the repository.`);
+	}
+};
+/**
+* Resolves a command to the real path of an executable in an absolute PATH
+* directory outside `untrustedDirectory`. execFile must receive the returned
+* path: given a bare name, Windows looks in the child cwd before PATH.
+*/
+async function resolveTrustedExecutable(name, untrustedDirectory) {
+	const untrustedPath = resolve(untrustedDirectory || ".");
+	const untrustedRoot = await realpath(untrustedPath).catch(() => untrustedPath);
+	const isWindows = process.platform === "win32";
+	const suffixes = isWindows ? [".com", ".exe"] : [""];
+	for (const rawEntry of (process.env.PATH ?? "").split(delimiter)) {
+		const entry = isWindows ? rawEntry.trim().replace(/^"(.*)"$/, "$1") : rawEntry;
+		if (!entry || !isAbsolute(entry)) continue;
+		for (const suffix of suffixes) {
+			let candidate;
+			try {
+				candidate = await realpath(join(entry, `${name}${suffix}`));
+			} catch {
+				continue;
+			}
+			if (isPathInside(untrustedRoot, candidate)) continue;
+			if (await isExecutableFile(candidate, isWindows)) return candidate;
+		}
+	}
+	throw new ExecutableNotFoundError(name);
+}
+async function isExecutableFile(filePath, isWindows) {
+	try {
+		if (!(await stat(filePath)).isFile()) return false;
+		if (!isWindows) await access(filePath, fsConstants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+//#endregion
 //#region extension/local-repository-file-reader.ts
 var execFileAsync$1 = promisify(execFile);
 var maximumFileByteLength = 10485760;
@@ -9075,7 +9118,8 @@ var LocalRepositoryFileReader = class {
 	}
 	async readFileAtRevision(file, revision) {
 		try {
-			const { stdout } = await execFileAsync$1("git", [
+			const git = await resolveTrustedExecutable("git", this.workingDirectory);
+			const { stdout } = await execFileAsync$1(git, [
 				"show",
 				"--no-textconv",
 				"--format=",
@@ -9684,7 +9728,8 @@ var GitRepositoryInfoResolver = class {
 	async getRepositoryInfo() {
 		let stdout;
 		try {
-			({stdout} = await execFileAsync("git", [
+			const git = await resolveTrustedExecutable("git", this.workingDirectory);
+			({stdout} = await execFileAsync(git, [
 				"remote",
 				"get-url",
 				"origin"
@@ -9707,14 +9752,12 @@ var GitRepositoryInfoResolver = class {
 				const args = ["-G"];
 				if (url.username) args.push("-l", decodeURIComponent(url.username));
 				if (url.port) args.push("-p", url.port);
-				const { stdout: config } = await execFileAsync("ssh", [
+				const ssh = await resolveTrustedExecutable("ssh", this.workingDirectory);
+				const config = await readSshConfig(ssh, [
 					...args,
 					"--",
 					host
-				], {
-					cwd: this.workingDirectory,
-					encoding: "utf8"
-				});
+				]);
 				const hostname = /^hostname\s+(\S+)$/m.exec(config)?.[1];
 				if (!hostname) throw new Error(`Cannot resolve SSH hostname for "${host}".`);
 				host = hostname.toLowerCase();
@@ -9728,6 +9771,57 @@ var GitRepositoryInfoResolver = class {
 		};
 	}
 };
+var maximumSshConfigByteLength = 1048576;
+/**
+* Runs `ssh -G` from the resolved executable path. execFile does not forward
+* `argv0`, and multi-call SSH clients pick their behaviour from argv[0], so
+* this keeps it as "ssh". `ssh -G` does not need the repository as its cwd,
+* so it runs from the trusted directory that holds the executable.
+*/
+function readSshConfig(ssh, args) {
+	return new Promise((resolvePromise, reject) => {
+		const child = spawn(ssh, args, {
+			argv0: "ssh",
+			cwd: dirname(ssh),
+			stdio: [
+				"ignore",
+				"pipe",
+				"pipe"
+			],
+			windowsHide: true
+		});
+		const stdout = [];
+		const stderr = [];
+		let outputByteLength = 0;
+		let failure;
+		const collect = (chunks) => (chunk) => {
+			outputByteLength += chunk.length;
+			if (outputByteLength > maximumSshConfigByteLength) {
+				failure ??= Object.assign(new Error("ssh -G output exceeded the size limit."), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
+				child.kill();
+				return;
+			}
+			chunks.push(chunk);
+		};
+		child.stdout.on("data", collect(stdout));
+		child.stderr.on("data", collect(stderr));
+		child.on("error", (error) => {
+			failure ??= error;
+		});
+		child.on("close", (code, signal) => {
+			const output = {
+				stdout: Buffer.concat(stdout).toString("utf8"),
+				stderr: Buffer.concat(stderr).toString("utf8")
+			};
+			if (failure) reject(Object.assign(failure, output));
+			else if (code !== 0) reject(Object.assign(new Error(`Command failed: ssh ${args.join(" ")}\n${output.stderr}`), {
+				code,
+				signal
+			}, output));
+			else resolvePromise(output.stdout);
+		});
+	});
+}
 //#endregion
 //#region extension/session-info.ts
 var SessionInfo = class {
