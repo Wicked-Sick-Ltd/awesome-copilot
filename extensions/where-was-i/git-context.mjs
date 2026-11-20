@@ -1,13 +1,22 @@
 import { execFile } from "node:child_process";
 import { lstat, readFile, readlink } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { resolveExecutable } from "./executables.mjs";
 
 const STATUS_ARGS = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
 
 function runGit(cwd, args, { optional = false, input } = {}) {
     return new Promise((resolve, reject) => {
+        let git;
+        try {
+            git = resolveExecutable("git", [cwd]);
+        } catch (error) {
+            if (optional) resolve("");
+            else reject(error);
+            return;
+        }
         const child = execFile(
-            "git",
+            git,
             args,
             { cwd, timeout: 15000, maxBuffer: 1024 * 1024, encoding: "utf8" },
             (error, stdout, stderr) => {
