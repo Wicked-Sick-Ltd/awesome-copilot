@@ -46,9 +46,11 @@ import {
 import { ExpiringPromiseCache } from "./memory-cache.mjs";
 import { renderHtml } from "./render.mjs";
 import {
+  abortRequest,
   hasCapabilityToken,
   isCanonicalHost,
   isCrossSiteRequest,
+  parseRequestTarget,
   requiresCapabilityToken,
 } from "./security.mjs";
 import {
@@ -820,8 +822,12 @@ async function handleApi(req, res, entry, url) {
 }
 
 async function handleRequest(req, res, entry) {
-  const url = new URL(req.url, "http://127.0.0.1");
+  let url = null;
   try {
+    url = parseRequestTarget(req.url);
+    if (!url) {
+      throw new HttpError(400, "Invalid request target.");
+    }
     if (!isCanonicalHost(req, entry.host)) {
       throw new HttpError(403, "Request host is not allowed.");
     }
@@ -876,7 +882,7 @@ async function handleRequest(req, res, entry) {
     }
     throw new HttpError(404, "Route not found.");
   } catch (error) {
-    entry.log?.(`${req.method} ${url.pathname}: ${error instanceof Error ? error.message : String(error)}`);
+    entry.log?.(`${req.method} ${url?.pathname ?? "(invalid target)"}: ${error instanceof Error ? error.message : String(error)}`);
     if (res.headersSent) {
       res.end();
       return;
@@ -912,7 +918,7 @@ export async function startInstance(instanceId, initialInput, log) {
     url: null,
   };
   const server = createServer((req, res) => {
-    void handleRequest(req, res, entry);
+    handleRequest(req, res, entry).catch((error) => abortRequest(res, error, entry.log));
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);

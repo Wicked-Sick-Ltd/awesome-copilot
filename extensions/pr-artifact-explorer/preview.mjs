@@ -3,7 +3,7 @@ import { posix } from "node:path";
 import { Transform } from "node:stream";
 import { getCachedEntry } from "./cache.mjs";
 import { mimeForPath } from "./detector.mjs";
-import { isCanonicalHost } from "./security.mjs";
+import { abortRequest, isCanonicalHost, parseRequestTarget } from "./security.mjs";
 import { streamZipEntry } from "./zip.mjs";
 
 const previewServers = new Map();
@@ -153,7 +153,10 @@ async function servePreviewRequest(
   }
 
   try {
-    const url = new URL(req.url, "http://127.0.0.1");
+    const url = parseRequestTarget(req.url);
+    if (!url) {
+      throw Object.assign(new Error("Invalid request target."), { statusCode: 400 });
+    }
     let relative = safeRelativePath(decodeRequestPath(url.pathname));
     if (!relative || relative.endsWith("/")) {
       relative = `${relative}${posix.basename(entryName)}`;
@@ -238,7 +241,7 @@ export async function startStaticPreview(artifactId, entryPath, options) {
 
   const serverEntry = { host: "" };
   const server = createServer((req, res) => {
-    void servePreviewRequest(
+    servePreviewRequest(
       String(artifactId),
       root,
       context.entry.name,
@@ -247,7 +250,7 @@ export async function startStaticPreview(artifactId, entryPath, options) {
       serverEntry,
       req,
       res,
-    );
+    ).catch((error) => abortRequest(res, error));
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
