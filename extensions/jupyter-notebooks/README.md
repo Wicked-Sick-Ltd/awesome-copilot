@@ -35,4 +35,6 @@ The canvas provides actions for notebook lifecycle, workspace files, cell editin
 
 Notebook execution uses Python isolated mode in a fresh temporary directory. The runner applies CPU, file-size, process, and memory limits where the platform supports them, caps captured output, and stops execution after 30 seconds.
 
+Cells can only change files inside that temporary directory. Timestamp, file-flag, extended-attribute, link, rename, and working-directory changes must name a path inside it without `..`, cannot go through file descriptors or `dir_fd`, and symlinks must point inside it without `..`.
+
 The local canvas server binds to `127.0.0.1`, protects requests with a per-instance capability token, validates action origins, and sends a restrictive content security policy. Notebook state and checkpoints stay in the active Copilot workspace.
