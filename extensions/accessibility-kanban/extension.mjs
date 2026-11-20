@@ -493,7 +493,13 @@ function json(res, code, data) {
 // ─── HTTP server ───
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host}`);
+  } catch {
+    json(res, 400, { error: "Bad request" });
+    return;
+  }
 
   if (url.pathname === "/events") {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });

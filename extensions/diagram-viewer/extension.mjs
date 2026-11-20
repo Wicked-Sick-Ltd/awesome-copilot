@@ -85,7 +85,13 @@ function json(res, code, data) {
 
 // HTTP server
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host}`);
+  } catch {
+    json(res, 400, { error: "Bad request" });
+    return;
+  }
   const token = url.searchParams.get("token");
   const instanceId = url.searchParams.get("instance");
 
