@@ -102,6 +102,64 @@ function loadOpenPRs() {
 	return loadPRsPromise;
 }
 
+// The page only posts tiny JSON objects ({ number } or { decision }).
+const MAX_BODY_BYTES = 16 * 1024;
+
+function sendJson(res, status, data, headers = {}) {
+	res.writeHead(status, { "Content-Type": "application/json", ...headers });
+	res.end(JSON.stringify(data));
+}
+
+function rejectTooLarge(req, res) {
+	req.pause();
+	res.writeHead(413, { "Content-Type": "application/json", Connection: "close" });
+	res.end(JSON.stringify({ ok: false, error: "Request body too large." }), () => req.destroy());
+}
+
+// Calls onBody with the parsed JSON object only after the whole body has
+// arrived within MAX_BODY_BYTES; larger bodies are dropped and the request
+// is destroyed without being parsed.
+function readJsonBody(req, res, onBody) {
+	if (Number(req.headers["content-length"]) > MAX_BODY_BYTES) {
+		rejectTooLarge(req, res);
+		return;
+	}
+	const chunks = [];
+	let received = 0;
+	let finished = false;
+	req.on("data", (chunk) => {
+		if (finished) return;
+		received += chunk.length;
+		if (received > MAX_BODY_BYTES) {
+			finished = true;
+			chunks.length = 0;
+			rejectTooLarge(req, res);
+			return;
+		}
+		chunks.push(chunk);
+	});
+	req.on("end", () => {
+		if (finished) return;
+		finished = true;
+		let parsed;
+		try {
+			parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+		} catch {
+			parsed = null;
+		}
+		chunks.length = 0;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			sendJson(res, 400, { ok: false, error: "Request body must be a JSON object." });
+			return;
+		}
+		onBody(parsed);
+	});
+	req.on("error", () => {
+		finished = true;
+		chunks.length = 0;
+	});
+}
+
 // --- Loopback HTTP server for the iframe ---
 const server = http.createServer((req, res) => {
 	if (req.method === "GET" && req.url === "/") {
@@ -137,10 +195,7 @@ const server = http.createServer((req, res) => {
 	}
 
 	if (req.method === "POST" && req.url === "/select-pr") {
-		let body = "";
-		req.on("data", (chunk) => (body += chunk));
-		req.on("end", () => {
-			const { number } = JSON.parse(body);
+		readJsonBody(req, res, ({ number }) => {
 			const pr = prList.find((p) => p.number === number);
 			if (pr) {
 				currentPR = pr;
@@ -148,17 +203,13 @@ const server = http.createServer((req, res) => {
 				broadcast("pr", currentPR);
 				broadcast("state", { state: "idle" });
 			}
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true }));
+			sendJson(res, 200, { ok: true });
 		});
 		return;
 	}
 
 	if (req.method === "POST" && req.url === "/gesture-decision") {
-		let body = "";
-		req.on("data", (chunk) => (body += chunk));
-		req.on("end", () => {
-			const { decision } = JSON.parse(body);
+		readJsonBody(req, res, ({ decision }) => {
 			gestureState = decision; // "approved" or "rejected"
 			lastDecision = { decision, pr: currentPR, timestamp: Date.now() };
 			broadcast("state", { state: gestureState });
@@ -170,8 +221,7 @@ const server = http.createServer((req, res) => {
 				});
 			}
 
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ ok: true, decision }));
+			sendJson(res, 200, { ok: true, decision });
 		});
 		return;
 	}
