@@ -106,6 +106,7 @@ checks:
     paths:
       - "extensions/**"
       - "eng/validate-plugins.mjs"
+      - "eng/edit-tutorial-install.test.mjs"
       - ".github/workflows/validate-canvas-extensions.yml"
     required: true
     contribution_steps: ["^Validate changed extensions$"]
