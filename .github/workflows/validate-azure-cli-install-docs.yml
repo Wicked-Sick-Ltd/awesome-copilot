@@ -1,0 +1,31 @@
+name: Validate Azure CLI Install Docs
+
+on:
+  pull_request:
+    paths:
+      - "skills/azure-devops-cli/SKILL.md"
+      - "skills/azure-container-registry-cli/SKILL.md"
+      - "eng/azure-cli-install-docs.test.mjs"
+      - "eng/fixtures/microsoft-release-signing.asc"
+      - ".github/workflows/validate-azure-cli-install-docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-azure-cli-install-docs:
+    name: validate-azure-cli-install-docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Test Azure CLI install instructions
+        run: node --test eng/azure-cli-install-docs.test.mjs
