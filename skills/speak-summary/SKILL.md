@@ -21,12 +21,19 @@ The synthesis engine is [Kyutai `pocket-tts`](https://github.com/kyutai-labs/poc
 a small neural TTS model designed to run on CPUs.
 
 The bundled script installs it automatically into a cached virtualenv on first
-use, so usually you need do nothing. To install it explicitly:
+use, so usually you need do nothing. It installs only the reviewed versions in
+[`scripts/requirements.txt`](scripts/requirements.txt), with pip's
+`--require-hashes --only-binary :all:`, so a new or tampered release on PyPI is
+refused rather than installed. To install it explicitly, use the same lockfile:
 
 ```bash
-pip install pocket-tts          # any platform
+python3 -m pip install --require-hashes --only-binary :all: -r scripts/requirements.txt
 brew install pocket-tts         # macOS, if preferred
 ```
+
+Do not run a bare `pip install pocket-tts`; it installs whatever release is
+newest on PyPI. To move to a newer `pocket-tts`, review the release and
+regenerate `scripts/requirements.txt` with the command in its header.
 
 `pocket-tts` requires **Python >=3.10 and <3.15**. The script searches for a
 compatible interpreter rather than assuming `python3` is one — worth knowing if
@@ -77,7 +84,7 @@ Environment overrides:
 | Variable | Purpose |
 |---|---|
 | `SPEAK_TTS_BIN` | Path to a specific `pocket-tts` binary; skips all auto-detection. |
-| `SPEAK_TTS_HOME` | Where to create/find the cached virtualenv. Default `~/.cache/speak-summary/venv`. |
+| `SPEAK_TTS_HOME` | Where to create/find the cached virtualenv. Default `~/.cache/speak-summary/venv`. A virtualenv not built from the current `scripts/requirements.txt` is rebuilt. |
 
 ## Voices
 

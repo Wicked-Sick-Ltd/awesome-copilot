@@ -10,7 +10,8 @@
 # Resolution order for the engine:
 #   1. pocket-tts already on PATH (e.g. `brew install pocket-tts`)
 #   2. a cached venv at $SPEAK_TTS_HOME (default ~/.cache/speak-summary/venv)
-#   3. create that venv and `pip install pocket-tts`
+#      that was built from the current requirements.txt
+#   3. (re)create that venv and install the hash-pinned requirements.txt
 # Set SPEAK_TTS_BIN to point at a specific pocket-tts binary to skip all this.
 set -euo pipefail
 
@@ -19,6 +20,9 @@ OUT="${2:?usage: tts.sh <input.txt> <output.mp3> [voice.safetensors]}"
 VOICE="${3:-}"
 
 TTS_HOME="${SPEAK_TTS_HOME:-$HOME/.cache/speak-summary/venv}"
+LOCK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/requirements.txt"
+# Copy of the lockfile a venv was built from; a venv without a matching copy is rebuilt.
+LOCK_STAMP="$TTS_HOME/speak-summary-requirements.txt"
 
 # pocket-tts supports Python >=3.10,<3.15. The system python3 is often outside
 # that range, so search for a usable interpreter rather than assuming.
@@ -34,7 +38,10 @@ find_python() {
 resolve_tts() {
   if [ -n "${SPEAK_TTS_BIN:-}" ]; then echo "$SPEAK_TTS_BIN"; return; fi
   if command -v pocket-tts >/dev/null 2>&1; then command -v pocket-tts; return; fi
-  if [ -x "$TTS_HOME/bin/pocket-tts" ]; then echo "$TTS_HOME/bin/pocket-tts"; return; fi
+  [ -f "$LOCK" ] || { echo "Missing $LOCK; cannot install pocket-tts safely." >&2; exit 1; }
+  if [ -x "$TTS_HOME/bin/pocket-tts" ] && cmp -s "$LOCK" "$LOCK_STAMP"; then
+    echo "$TTS_HOME/bin/pocket-tts"; return
+  fi
 
   PY="$(find_python)" || {
     cat >&2 <<'MSG'
@@ -45,11 +52,19 @@ MSG
     exit 1
   }
 
-  echo "pocket-tts not found; creating a virtualenv at $TTS_HOME using $PY (one-off, a few minutes)..." >&2
-  "$PY" -m venv "$TTS_HOME" >&2 || { echo "Failed to create virtualenv (is the venv module installed?)." >&2; exit 1; }
-  "$TTS_HOME/bin/pip" install --quiet --upgrade pip >&2
-  "$TTS_HOME/bin/pip" install --quiet pocket-tts >&2 || { echo "Failed to install pocket-tts." >&2; exit 1; }
+  if [ -f "$TTS_HOME/pyvenv.cfg" ]; then
+    echo "Rebuilding the virtualenv at $TTS_HOME from the pinned requirements using $PY (one-off, a few minutes)..." >&2
+    "$PY" -m venv --clear "$TTS_HOME" >&2 || { echo "Failed to rebuild virtualenv (is the venv module installed?)." >&2; exit 1; }
+  else
+    echo "pocket-tts not found; creating a virtualenv at $TTS_HOME using $PY (one-off, a few minutes)..." >&2
+    "$PY" -m venv "$TTS_HOME" >&2 || { echo "Failed to create virtualenv (is the venv module installed?)." >&2; exit 1; }
+  fi
+  # Only reviewed, hash-verified wheels: no unpinned packages, no build scripts.
+  "$TTS_HOME/bin/python" -m pip install --quiet --disable-pip-version-check \
+    --require-hashes --only-binary :all: -r "$LOCK" >&2 \
+    || { echo "Failed to install pocket-tts from $LOCK." >&2; exit 1; }
   [ -x "$TTS_HOME/bin/pocket-tts" ] || { echo "pocket-tts install completed but the binary is missing." >&2; exit 1; }
+  cp "$LOCK" "$LOCK_STAMP"
   echo "$TTS_HOME/bin/pocket-tts"
 }
 
