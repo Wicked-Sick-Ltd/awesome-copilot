@@ -5,7 +5,7 @@
 
 import { createServer } from "node:http";
 import { statSync, accessSync, realpathSync, constants as fsConstants } from "node:fs";
-import { readdir, readFile, writeFile, stat, rename, unlink, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, stat, lstat, open, rename, unlink, mkdir } from "node:fs/promises";
 import { join, delimiter, isAbsolute, sep, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -575,10 +575,33 @@ function hasCapabilityToken(req, token) {
 
 // --- Stash management ---
 
-async function readStash(workshopDir) {
-    const fp = join(workshopDir, ".desk-stash.json");
+// .desk-stash.json sits in a cloned repo, so its directory entry is untrusted:
+// a workshop can commit it as a symlink to a file elsewhere (e.g. a home-dir
+// config). Reads open the entry without following a final symlink and only
+// accept the regular file lstat saw (same dev/ino on the open handle; where
+// O_NOFOLLOW is unavailable this is what catches a swap). Writes create a fresh
+// file in the workshop and rename it over the entry, which replaces the link
+// itself and never writes into whatever it points at.
+const STASH_FILE = ".desk-stash.json";
+
+async function readStashFile(fp) {
+    const seen = await lstat(fp, { bigint: true });
+    if (!seen.isFile()) return null;
+    const handle = await open(fp, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
     try {
-        const raw = await readFile(fp, "utf-8");
+        const info = await handle.stat({ bigint: true });
+        if (!info.isFile() || info.dev !== seen.dev || info.ino !== seen.ino) return null;
+        return await handle.readFile("utf-8");
+    } finally {
+        await handle.close();
+    }
+}
+
+async function readStash(workshopDir) {
+    const fp = join(workshopDir, STASH_FILE);
+    try {
+        const raw = await readStashFile(fp);
+        if (raw === null) return [];
         const stash = JSON.parse(raw);
         const now = Date.now();
         const live = stash.filter(e => (now - new Date(e.stashedAt).getTime()) < STASH_TTL_MS);
@@ -588,8 +611,20 @@ async function readStash(workshopDir) {
 }
 
 async function writeStash(workshopDir, entries) {
-    const fp = join(workshopDir, ".desk-stash.json");
-    await writeFile(fp, JSON.stringify(entries, null, 2), "utf-8");
+    const fp = join(workshopDir, STASH_FILE);
+    const tmp = join(workshopDir, `${STASH_FILE}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`);
+    const handle = await open(tmp, "wx");
+    try {
+        try {
+            await handle.writeFile(JSON.stringify(entries, null, 2), "utf-8");
+        } finally {
+            await handle.close();
+        }
+        await rename(tmp, fp);
+    } catch (err) {
+        await unlink(tmp).catch(() => {});
+        throw err;
+    }
 }
 
 async function stashDesk(workshopDir, deskName) {
