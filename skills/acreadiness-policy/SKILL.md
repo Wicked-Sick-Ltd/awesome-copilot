@@ -71,17 +71,19 @@ Scaffold `policies/<name>.json` with sensible defaults. Walk the user through:
    ```
 
 ### `apply <path-or-pkg>`
-Run `agentrc readiness --json --policy <source>` and re-render the report by handing off to the `assess` skill / `ai-readiness-reporter` agent. Supports chaining:
+Run `readiness --json --policy <source>` and re-render the report by handing off to the `assess` skill / `ai-readiness-reporter` agent. Supports chaining:
 ```bash
-npx -y github:microsoft/agentrc readiness --json --policy ./org-baseline.json,./team-frontend.json
+npx -y github:microsoft/agentrc#f0ff6f36edb712b1744995d9bbc654f8277d642f readiness --json --policy ./org-baseline.json,./team-frontend.json
 ```
+
+The `#f0ff6f36edb712b1744995d9bbc654f8277d642f` suffix pins AgentRC to the exact commit of its `v2.1.0` release. Run every AgentRC command in this skill exactly as written: never drop the suffix, never replace it with a branch or tag name (such as `#main` or `#v2.1.0`), and never substitute `npx agentrc` or `npx @microsoft/agentrc`. Branches, tags, and registry versions can be repointed; a full commit SHA cannot.
 
 ## CI gating
 
 Combine policies with `--fail-level` to enforce a minimum maturity level in CI:
 
 ```yaml
-- run: npx -y github:microsoft/agentrc readiness --policy ./policies/strict.json --fail-level 3
+- run: npx -y github:microsoft/agentrc#f0ff6f36edb712b1744995d9bbc654f8277d642f readiness --policy ./policies/strict.json --fail-level 3
 ```
 
 ## Advanced

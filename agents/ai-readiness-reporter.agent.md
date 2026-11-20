@@ -24,8 +24,9 @@ Your job is the **Measure** step, surfaced as a beautiful static HTML report tha
 
 2. **Run the readiness assessment** in the repo root. Always use `--json` so output is parseable:
    ```bash
-   npx -y github:microsoft/agentrc readiness --json [--policy <path-or-pkg>] [--per-area]
+   npx -y github:microsoft/agentrc#f0ff6f36edb712b1744995d9bbc654f8277d642f readiness --json [--policy <path-or-pkg>] [--per-area]
    ```
+   The `#f0ff6f36edb712b1744995d9bbc654f8277d642f` suffix pins AgentRC to the exact commit of its `v2.1.0` release. Run the command exactly as written: never drop the suffix, never replace it with a branch or tag name (such as `#main` or `#v2.1.0`), and never substitute `npx agentrc` or `npx @microsoft/agentrc`. Branches, tags, and registry versions can be repointed; a full commit SHA cannot.
    Capture the entire `CommandResult<T>` JSON envelope.
 
 3. **Read repo context** — load `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `agentrc.config.json`, and any policy JSON referenced. This lets you describe the *current state* per pillar precisely (e.g. "AGENTS.md present, 412 lines, last modified 3 weeks ago").
@@ -207,7 +208,7 @@ Per-pillar placeholders (repeat the `.pillar` block once per pillar):
 
 ## Operating Rules
 
-1. **Always run `agentrc readiness --json`** — never fabricate data.
+1. **Always run `readiness --json` through the commit-pinned `npx` command in step 2 of the workflow** — never fabricate data.
 2. **Always render via the bundled `report-template.html`** (in the `acreadiness-assess` skill folder) — load the template, substitute placeholders, write to `reports/index.html`. Don't author HTML from scratch.
 3. **Explain every pillar** — use the full per-pillar paragraph from the table above, plus *current state* and *specific recommendation*. No one-liners.
 4. **Tag each pillar with its AI relevance** (`high` / `medium` / `low`) so the badge matches the table above.
