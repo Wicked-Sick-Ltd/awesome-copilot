@@ -1552,8 +1552,13 @@ function renderHtml(instanceId) {
 }
 
 async function handleApi(req, res, instanceId) {
+    let pathname;
+    try {
+        ({ pathname } = new URL(req.url, "http://127.0.0.1"));
+    } catch {
+        return sendJson(res, 400, { error: "Bad request", code: "bad_request" });
+    }
     await loadState();
-    const { pathname } = new URL(req.url, "http://127.0.0.1");
     if (req.method === "GET" && pathname === "/api/state") {
         return sendJson(res, 200, stateCache);
     }
@@ -1729,7 +1734,10 @@ async function handleApi(req, res, instanceId) {
 async function startServer(instanceId) {
     const clients = new Set();
     const server = createServer((req, res) => {
-        handleApi(req, res, instanceId);
+        handleApi(req, res, instanceId).catch(() => {
+            if (!res.headersSent) sendJson(res, 500, { error: "Unexpected error", code: "internal_error" });
+            else res.destroy();
+        });
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();

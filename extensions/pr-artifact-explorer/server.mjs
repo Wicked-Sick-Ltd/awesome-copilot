@@ -820,7 +820,12 @@ async function handleApi(req, res, entry, url) {
 }
 
 async function handleRequest(req, res, entry) {
-  const url = new URL(req.url, "http://127.0.0.1");
+  let url;
+  try {
+    url = new URL(req.url, "http://127.0.0.1");
+  } catch {
+    return sendJson(res, 400, { error: "Bad request.", status: 400 });
+  }
   try {
     if (!isCanonicalHost(req, entry.host)) {
       throw new HttpError(403, "Request host is not allowed.");
@@ -912,7 +917,10 @@ export async function startInstance(instanceId, initialInput, log) {
     url: null,
   };
   const server = createServer((req, res) => {
-    void handleRequest(req, res, entry);
+    handleRequest(req, res, entry).catch(() => {
+      if (!res.headersSent) sendJson(res, 500, { error: "Request failed.", status: 500 });
+      else res.destroy();
+    });
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);

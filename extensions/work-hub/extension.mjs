@@ -113,8 +113,22 @@ async function requestItemSession(input = {}) {
     return { ok: true, message: `Requested a ${mode === "cloud" ? "cloud coding" : label} session for ${repo} #${number}.` };
 }
 
+function failRequest(res) {
+    try {
+        if (res.headersSent) res.destroy();
+        else writeJson(res, { error: "Request failed" }, 500);
+    } catch {
+        res.destroy();
+    }
+}
+
 async function handleRequest(entry, req, res) {
-    const url = new URL(req.url || "/", "http://127.0.0.1");
+    let url;
+    try {
+        url = new URL(req.url || "/", "http://127.0.0.1");
+    } catch {
+        return writeJson(res, { error: "Bad request" }, 400);
+    }
     const p = url.pathname;
     try {
         if (req.method === "GET" && p === "/") return writeHtml(res, renderHtml());
@@ -205,7 +219,9 @@ async function handleRequest(entry, req, res) {
 
 async function startServer(instanceId) {
     const entry = { server: null, url: "", clients: new Set(), instanceId };
-    const server = createServer((req, res) => handleRequest(entry, req, res));
+    const server = createServer((req, res) => {
+        handleRequest(entry, req, res).catch(() => failRequest(res));
+    });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
