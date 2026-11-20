@@ -39,24 +39,25 @@ skill-name/
 
 ### CLI Alternative
 
-If the Learn MCP server is not available, use the `mslearn` CLI from a terminal or shell (for example, Bash, PowerShell, or cmd) instead:
+If the Learn MCP server is not available, use the `mslearn` CLI (Node.js 22+) from a terminal or shell (for example, Bash, PowerShell, or cmd) instead. Install it only from the lockfile bundled in this skill's [`learn-cli/`](learn-cli/package-lock.json) folder, which pins `@microsoft/learn-cli` 1.0.0 and every dependency to an exact version and integrity hash, then run that copy by path:
 
 ```bash
-# Run directly (no install needed)
-npx @microsoft/learn-cli search "semantic kernel overview"
+# One-time install: exact versions, integrity-checked, no install scripts
+npm ci --prefix <skill-folder>/learn-cli --ignore-scripts --no-audit --no-fund
 
-# Or install globally, then run
-npm install -g @microsoft/learn-cli
-mslearn search "semantic kernel overview"
+# Run the locked CLI (on Windows: <skill-folder>\learn-cli\node_modules\.bin\mslearn.cmd)
+<skill-folder>/learn-cli/node_modules/.bin/mslearn search "semantic kernel overview"
 ```
 
-| MCP Tool | CLI Command |
-|----------|-------------|
-| `microsoft_docs_search(query: "...")` | `mslearn search "..."` |
-| `microsoft_code_sample_search(query: "...", language: "...")` | `mslearn code-search "..." --language ...` |
-| `microsoft_docs_fetch(url: "...")` | `mslearn fetch "..."` |
+Replace `<skill-folder>` with the folder that contains this `SKILL.md`. If that folder is read-only, copy `learn-cli/package.json` and `learn-cli/package-lock.json` to a writable folder and run the same `npm ci` there. Never run the CLI through npx, a global npm install, or an `mslearn` already on your PATH: those fetch whatever release and dependencies are currently published and execute them. If `npm ci` fails, for example with an integrity error, stop and report it instead of falling back to an unlocked install.
 
-Generated skills should include this same CLI fallback table so agents can use either path.
+| MCP Tool | Locked CLI Subcommand |
+|----------|-----------------------|
+| `microsoft_docs_search(query: "...")` | `search "..."` |
+| `microsoft_code_sample_search(query: "...", language: "...")` | `code-search "..." --language ...` |
+| `microsoft_docs_fetch(url: "...")` | `fetch "..."` |
+
+Generated skills should include this same CLI fallback section and a copy of this skill's `learn-cli/package.json` and `learn-cli/package-lock.json` (not `node_modules/`), so agents can use either path without an unlocked install.
 
 ## Creation Process
 
@@ -116,6 +117,9 @@ Use the appropriate template from [skill-templates.md](references/skill-template
 {skill-name}/
 ├── SKILL.md                    # Core knowledge + Learn MCP guidance
 ├── references/                 # Detailed local documentation (if needed)
+├── learn-cli/                  # Copy of this skill's locked mslearn CLI installer
+│   ├── package.json
+│   └── package-lock.json
 └── sample_codes/               # Working code examples
     ├── getting-started/
     └── common-patterns/
@@ -197,6 +201,9 @@ microsoft_docs_fetch(url="https://learn.microsoft.com/semantic-kernel/overview/"
 ```
 semantic-kernel/
 ├── SKILL.md
+├── learn-cli/
+│   ├── package.json
+│   └── package-lock.json
 └── sample_codes/
     ├── getting-started/
     │   └── hello-kernel.cs
@@ -238,13 +245,13 @@ See [getting-started/hello-kernel.cs](sample_codes/getting-started/hello-kernel.
 
 ## CLI Alternative
 
-If the Learn MCP server is not available, use the `mslearn` CLI instead:
+If the Learn MCP server is not available, install the `mslearn` CLI from the bundled lockfile with `npm ci --prefix <skill-folder>/learn-cli --ignore-scripts --no-audit --no-fund`, then run `<skill-folder>/learn-cli/node_modules/.bin/mslearn <subcommand>`:
 
-| MCP Tool | CLI Command |
-|----------|-------------|
-| `microsoft_docs_search(query: "...")` | `mslearn search "..."` |
-| `microsoft_code_sample_search(query: "...", language: "...")` | `mslearn code-search "..." --language ...` |
-| `microsoft_docs_fetch(url: "...")` | `mslearn fetch "..."` |
+| MCP Tool | Locked CLI Subcommand |
+|----------|-----------------------|
+| `microsoft_docs_search(query: "...")` | `search "..."` |
+| `microsoft_code_sample_search(query: "...", language: "...")` | `code-search "..." --language ...` |
+| `microsoft_docs_fetch(url: "...")` | `fetch "..."` |
 
-Run directly with `npx @microsoft/learn-cli <command>` or install globally with `npm install -g @microsoft/learn-cli`.
+Never run the CLI through npx, a global npm install, or an `mslearn` already on your PATH. If `npm ci` fails, stop and report it.
 ```
