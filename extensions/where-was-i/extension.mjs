@@ -1014,6 +1014,20 @@ function requestIsAuthorized(req, url, entry) {
     return tokenMatches(url.searchParams.get("k") || "", entry.token);
 }
 
+const REQUEST_BASE = "http://127.0.0.1";
+
+// Only origin-form targets ("/path?query"). "//", "/\" and the like are valid
+// HTTP request-targets that the URL parser rejects or reads as an authority.
+function parseRequestUrl(rawUrl) {
+    if (typeof rawUrl !== "string" || !rawUrl.startsWith("/") || rawUrl.startsWith("//")) return null;
+    try {
+        const url = new URL(rawUrl, REQUEST_BASE);
+        return url.origin === REQUEST_BASE ? url : null;
+    } catch {
+        return null;
+    }
+}
+
 async function startServer(instanceId, cwd, workspacePath) {
     const entry = {
         server: null,
@@ -1023,8 +1037,7 @@ async function startServer(instanceId, cwd, workspacePath) {
         canonicalHost: "",
         origin: "",
     };
-    entry.server = createServer(async (req, res) => {
-        const url = new URL(req.url, "http://localhost");
+    const handleRequest = async (req, res, url) => {
         if (!requestIsAuthorized(req, url, entry)) {
             res.writeHead(403, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Forbidden" }));
@@ -1153,6 +1166,25 @@ async function startServer(instanceId, cwd, workspacePath) {
 
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Not found" }));
+    };
+
+    // A throw here must not become an unhandled rejection: that exits the
+    // extension host and every canvas running in it.
+    entry.server = createServer((req, res) => {
+        const url = parseRequestUrl(req.url);
+        if (!url) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Bad request" }));
+            return;
+        }
+        handleRequest(req, res, url).catch(() => {
+            if (res.headersSent) {
+                res.destroy();
+                return;
+            }
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Internal error" }));
+        });
     });
 
     await new Promise((resolve) => entry.server.listen(0, "127.0.0.1", resolve));
