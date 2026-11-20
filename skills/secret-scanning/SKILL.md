@@ -215,16 +215,9 @@ Dismiss with a documented reason:
 
 ## Pre-Commit Scanning via AI Coding Agents
 
-For scanning code changes for secrets inside an AI coding agent before committing, install the **Advanced Security plugin** which provides the `run_secret_scanning` MCP tool and a dedicated scanning skill.
+For scanning code changes for secrets inside an AI coding agent before committing, the **Advanced Security plugin** (`advanced-security` in the `copilot-plugins` marketplace) provides the `run_secret_scanning` MCP tool and a dedicated scanning skill. Use it if it is already installed. If it is not, tell the user it is available and let them install it themselves; do not install it on their behalf. Marketplace plugins track their source repository's default branch and update automatically, so the agent cannot pin what it would install.
 
-**GitHub Copilot CLI:**
-```bash
-/plugin install advanced-security@copilot-plugins
-```
-
-**Visual Studio Code:**
-- In Copilot Chat, open **Chat: Plugins** (or use `@agentPlugins`) and install the `advanced-security` plugin
-- Then run `/secret-scanning` in Copilot Chat
+- **GitHub Copilot CLI** and **Visual Studio Code**: once the user has installed the `advanced-security` plugin, run `/secret-scanning`
 
 See: [Advanced Security Plugin — Secret Scanning Skill](https://github.com/github/copilot-plugins/blob/main/plugins/advanced-security/skills/secret-scanning/SKILL.md)
 

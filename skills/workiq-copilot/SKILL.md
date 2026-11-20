@@ -19,14 +19,14 @@ WorkIQ (Public Preview) lets Copilot query Microsoft 365 data with natural langu
 
 ## Getting Access
 
-1. **Copilot CLI plugin (preferred)**
-   - `copilot`
-   - `/plugin marketplace add github/copilot-plugins`
-   - `/plugin install workiq@copilot-plugins`
-   - Restart Copilot CLI.
-2. **Standalone CLI / MCP server**
-   - `npm install -g @microsoft/workiq` (or `npx -y @microsoft/workiq mcp`).
-   - Run `workiq mcp` to expose MCP tools if needed.
+1. **Use what is already installed (preferred)**
+   - If WorkIQ MCP tools are already available in the session, or `workiq version` succeeds, use that installation. Do not install, update, or reinstall WorkIQ.
+   - Run `workiq mcp` to expose MCP tools from the installed CLI if needed.
+2. **If WorkIQ is missing, ask before installing**
+   - Tell the user WorkIQ is not installed and ask whether to install it. Do not install anything without their go-ahead.
+   - Install only with the bundled script, which downloads `@microsoft/workiq` at the version pinned in [`scripts/install-workiq.mjs`](scripts/install-workiq.mjs), refuses it unless its sha512 matches the pinned integrity, and installs exactly the verified bytes with install scripts disabled:
+     `node scripts/install-workiq.mjs` (run from this skill's folder).
+   - Never install or run WorkIQ through an unpinned npm global install, through npx, or from a plugin marketplace on the user's behalf. Those fetch whatever is published or committed at the time, and the `copilot-plugins` marketplace entries track their source repository's default branch and update automatically, so they cannot be pinned.
 3. **Tenant consent**
    - First use prompts for Microsoft 365 admin consent (EULA + permissions). Non-admins must contact tenant admin to approve per the Tenant Administrator Enablement Guide.
 
@@ -84,7 +84,7 @@ WorkIQ (Public Preview) lets Copilot query Microsoft 365 data with natural langu
 
 ## Troubleshooting
 
-- **Missing CLI** – install via npm or ensure PATH is set; notify user if unavailable.
+- **Missing CLI** – check PATH first; otherwise notify the user and, only with their go-ahead, run the bundled `scripts/install-workiq.mjs` (see Getting Access).
 - **Consent/auth errors** – re-run command after admin grants permissions or after completing device login.
 - **Long/incomplete output** – rerun with refined scope or ask for specific data slices (per day/project/person).
 - **Command hanging** – cancel the running command in your terminal (for example, with Ctrl+C) or restart the Copilot CLI session, then retry; ensure browser login completed.
