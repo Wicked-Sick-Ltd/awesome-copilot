@@ -124,6 +124,7 @@ conversion. Never guess or assume the directory.
 | `ModuleNotFoundError: No module named 'markitdown'` or `'fitz'` / exit code 2 | MarkItDown or PyMuPDF not installed | Follow `references/setup.md` |
 | `ERROR: Unsupported file type '...'` / exit code 3 | Not a `.pdf` file | Ask the user for the correct file, or if it's `.doc`/`.docx`/`.xlsx`, use the matching sibling skill instead |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
+| `FAILED <file> -> <folder> already exists; refusing to replace it` / exit code 1 | A file or folder with the output name is already there (an earlier conversion, or an unrelated folder that happens to share the document's name) | The script never deletes, replaces, or writes into an existing path. Do not delete or rename it yourself; if it is an earlier conversion, read the existing Markdown, otherwise tell the user and ask where the output should go |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
 | `NOTE: skipped N non-.pdf file(s)` | Folder contains non-PDF files | Expected — those files are intentionally ignored |
 | Markdown body is empty or near-empty despite images being extracted | The PDF is scanned/image-only with no embedded text layer; MarkItDown does not perform OCR | Tell the user OCR isn't supported — the extracted page images are still available for them to view |

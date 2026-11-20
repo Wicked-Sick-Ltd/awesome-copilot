@@ -38,16 +38,23 @@ Output:
     file, or under -o/--output (treated as a parent directory, created if
     missing) if given, preserving relative subfolder structure when
     --recursive is used.
+  - The "<name>/" destination folder must not already exist. If anything is
+    already at that path (an earlier conversion or any unrelated folder),
+    that file is reported as failed and the existing path is left untouched;
+    it is never deleted, replaced, or written into.
   - If a workbook has no embedded images, no "img/" folder or "Images in
     this sheet" sections are created.
 
 Exit codes:
   0 - all requested conversions succeeded
-  1 - one or more conversions failed (partial success in batch mode)
+  1 - one or more conversions failed (partial success in batch mode),
+      including a destination folder that already exists
   2 - required dependency ("markitdown") is not installed
   3 - invalid input (path not found, or single-file input is not .xlsx)
 """
 import argparse
+import errno
+import os
 import posixpath
 import re
 import shutil
@@ -60,6 +67,87 @@ EXIT_OK = 0
 EXIT_CONVERSION_FAILED = 1
 EXIT_MISSING_DEPENDENCY = 2
 EXIT_INVALID_INPUT = 3
+
+_DIR_FD_SUPPORTED = (
+    os.open in os.supports_dir_fd
+    and os.mkdir in os.supports_dir_fd
+    and os.listdir in os.supports_fd
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
+
+
+class OutputDir:
+    """A directory created by this script for one conversion.
+
+    Output never replaces or removes anything that already exists: the
+    directory itself and every entry in it are created exclusively. Where the
+    platform supports it, writes go through a descriptor for the directory
+    that was created and checked empty, so a path swapped in afterwards is
+    never written to."""
+
+    def __init__(self, path: Path, fd=None):
+        self.path = path
+        self._fd = fd
+
+    @classmethod
+    def create(cls, path: Path) -> "OutputDir":
+        """Create `path` as a new directory. Raises FileExistsError if
+        anything is already there."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not _DIR_FD_SUPPORTED:
+            os.mkdir(path)
+            return cls(path)
+        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            return cls._create_at(parent_fd, path.name, path)
+        finally:
+            os.close(parent_fd)
+
+    @classmethod
+    def _create_at(cls, parent_fd, name: str, path: Path) -> "OutputDir":
+        os.mkdir(name, dir_fd=parent_fd)
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        if os.listdir(fd):
+            os.close(fd)
+            raise FileExistsError(errno.EEXIST, "directory changed after it was created", str(path))
+        return cls(path, fd)
+
+    def mkdir(self, name: str) -> "OutputDir":
+        if self._fd is None:
+            os.mkdir(self.path / name)
+            return OutputDir(self.path / name)
+        return OutputDir._create_at(self._fd, name, self.path / name)
+
+    def _open_new(self, name: str, mode: str, **kwargs):
+        if self._fd is None:
+            return open(self.path / name, mode.replace("w", "x"), **kwargs)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(name, flags, 0o666, dir_fd=self._fd)
+        try:
+            return os.fdopen(fd, mode, **kwargs)
+        except BaseException:
+            os.close(fd)
+            raise
+
+    def write_bytes(self, name: str, data: bytes) -> None:
+        with self._open_new(name, "wb") as handle:
+            handle.write(data)
+
+    def write_text(self, name: str, text: str) -> None:
+        with self._open_new(name, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def close(self) -> None:
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
 
 _REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 _MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -182,33 +270,40 @@ def _sanitize_filename_part(name: str) -> str:
     return safe or "sheet"
 
 
-def extract_images(xlsx_path: Path, img_dir: Path):
-    """Extract embedded images from xlsx_path, grouped by sheet name.
-    Returns {sheet_name: [filename, ...]} in per-sheet order. Files are
+def extract_images(xlsx_path: Path, out: OutputDir):
+    """Extract embedded images from xlsx_path into a new 'img/' folder inside
+    `out` (created only if there is at least one image), grouped by sheet
+    name. Returns {sheet_name: [filename, ...]} in per-sheet order. Files are
     named '<sanitized_sheet_name>_img{N:03d}.<ext>'."""
     sheet_media = _sheet_name_to_media(xlsx_path)
     if not sheet_media:
         return {}
 
     written = {}
-    with zipfile.ZipFile(xlsx_path) as z:
-        names_in_zip = set(z.namelist())
-        for sheet_idx, (sheet_name, media_paths) in enumerate(sheet_media.items(), start=1):
-            safe_name = f"sheet{sheet_idx:03d}_{_sanitize_filename_part(sheet_name)}"
-            files = []
-            for idx, media_path in enumerate(media_paths, start=1):
-                if media_path not in names_in_zip:
-                    print(f"WARNING: {media_path} not found in {xlsx_path}", file=sys.stderr)
-                    continue
-                ext = Path(media_path).suffix.lstrip(".").lower() or "bin"
-                if ext == "jpg":
-                    ext = "jpeg"
-                out_name = f"{safe_name}_img{idx:03d}.{ext}"
-                img_dir.mkdir(parents=True, exist_ok=True)
-                (img_dir / out_name).write_bytes(z.read(media_path))
-                files.append(out_name)
-            if files:
-                written[sheet_name] = files
+    img_dir = None
+    try:
+        with zipfile.ZipFile(xlsx_path) as z:
+            names_in_zip = set(z.namelist())
+            for sheet_idx, (sheet_name, media_paths) in enumerate(sheet_media.items(), start=1):
+                safe_name = f"sheet{sheet_idx:03d}_{_sanitize_filename_part(sheet_name)}"
+                files = []
+                for idx, media_path in enumerate(media_paths, start=1):
+                    if media_path not in names_in_zip:
+                        print(f"WARNING: {media_path} not found in {xlsx_path}", file=sys.stderr)
+                        continue
+                    ext = Path(media_path).suffix.lstrip(".").lower() or "bin"
+                    if ext == "jpg":
+                        ext = "jpeg"
+                    out_name = f"{safe_name}_img{idx:03d}.{ext}"
+                    if img_dir is None:
+                        img_dir = out.mkdir("img")
+                    img_dir.write_bytes(out_name, z.read(media_path))
+                    files.append(out_name)
+                if files:
+                    written[sheet_name] = files
+    finally:
+        if img_dir is not None:
+            img_dir.close()
     return written
 
 
@@ -242,9 +337,9 @@ def insert_sheet_images(markdown_text: str, sheet_images) -> str:
 
 
 def convert_one(md, source: Path, dest_dir: Path) -> bool:
-    """Convert a single .xlsx file to a '<name>/' folder containing the
-    Markdown file and an 'img/' folder of extracted images. Returns True on
-    success."""
+    """Convert a single .xlsx file to a new '<name>/' folder containing the
+    Markdown file and an 'img/' folder of extracted images. Refuses if
+    anything already exists at dest_dir. Returns True on success."""
     try:
         result = md.convert(str(source))
     except Exception as exc:  # noqa: BLE001 - surface any conversion error
@@ -252,15 +347,25 @@ def convert_one(md, source: Path, dest_dir: Path) -> bool:
         return False
 
     try:
-        img_dir = dest_dir / "img"
-        if dest_dir.exists():
-            if img_dir.exists():
-              shutil.rmtree(img_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        sheet_images = extract_images(source, img_dir)
-        text = insert_sheet_images(result.text_content, sheet_images)
-        md_path = dest_dir / f"{source.stem}.md"
-        md_path.write_text(text, encoding="utf-8")
+        out = OutputDir.create(dest_dir)
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> {dest_dir} already exists; refusing to replace it. "
+            "Remove or rename it yourself, or choose a new destination with -o.",
+            file=sys.stderr,
+        )
+        return False
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not create {dest_dir}: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        with out:
+            sheet_images = extract_images(source, out)
+            text = insert_sheet_images(result.text_content, sheet_images)
+            md_name = f"{source.stem}.md"
+            out.write_text(md_name, text)
+            md_path = dest_dir / md_name
     except OSError as exc:
         print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
         return False

@@ -41,16 +41,23 @@ Output:
     file, or under -o/--output (treated as a parent directory, created if
     missing) if given, preserving relative subfolder structure when
     --recursive is used.
+  - The "<name>/" destination folder must not already exist. If anything is
+    already at that path (an earlier conversion or any unrelated folder),
+    that file is reported as failed and the existing path is left untouched;
+    it is never deleted, replaced, or written into.
   - If a document has no embedded images, no "img/" folder or "Extracted
     Images" section is created.
 
 Exit codes:
   0 - all requested conversions succeeded
-  1 - one or more conversions failed (partial success in batch mode)
+  1 - one or more conversions failed (partial success in batch mode),
+      including a destination folder that already exists
   2 - a required dependency ("markitdown" or "pymupdf") is not installed
   3 - invalid input (path not found, or single-file input is not .pdf)
 """
 import argparse
+import errno
+import os
 import sys
 import hashlib
 import shutil
@@ -60,6 +67,87 @@ EXIT_OK = 0
 EXIT_CONVERSION_FAILED = 1
 EXIT_MISSING_DEPENDENCY = 2
 EXIT_INVALID_INPUT = 3
+
+_DIR_FD_SUPPORTED = (
+    os.open in os.supports_dir_fd
+    and os.mkdir in os.supports_dir_fd
+    and os.listdir in os.supports_fd
+    and hasattr(os, "O_DIRECTORY")
+    and hasattr(os, "O_NOFOLLOW")
+)
+
+
+class OutputDir:
+    """A directory created by this script for one conversion.
+
+    Output never replaces or removes anything that already exists: the
+    directory itself and every entry in it are created exclusively. Where the
+    platform supports it, writes go through a descriptor for the directory
+    that was created and checked empty, so a path swapped in afterwards is
+    never written to."""
+
+    def __init__(self, path: Path, fd=None):
+        self.path = path
+        self._fd = fd
+
+    @classmethod
+    def create(cls, path: Path) -> "OutputDir":
+        """Create `path` as a new directory. Raises FileExistsError if
+        anything is already there."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not _DIR_FD_SUPPORTED:
+            os.mkdir(path)
+            return cls(path)
+        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            return cls._create_at(parent_fd, path.name, path)
+        finally:
+            os.close(parent_fd)
+
+    @classmethod
+    def _create_at(cls, parent_fd, name: str, path: Path) -> "OutputDir":
+        os.mkdir(name, dir_fd=parent_fd)
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        if os.listdir(fd):
+            os.close(fd)
+            raise FileExistsError(errno.EEXIST, "directory changed after it was created", str(path))
+        return cls(path, fd)
+
+    def mkdir(self, name: str) -> "OutputDir":
+        if self._fd is None:
+            os.mkdir(self.path / name)
+            return OutputDir(self.path / name)
+        return OutputDir._create_at(self._fd, name, self.path / name)
+
+    def _open_new(self, name: str, mode: str, **kwargs):
+        if self._fd is None:
+            return open(self.path / name, mode.replace("w", "x"), **kwargs)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(name, flags, 0o666, dir_fd=self._fd)
+        try:
+            return os.fdopen(fd, mode, **kwargs)
+        except BaseException:
+            os.close(fd)
+            raise
+
+    def write_bytes(self, name: str, data: bytes) -> None:
+        with self._open_new(name, "wb") as handle:
+            handle.write(data)
+
+    def write_text(self, name: str, text: str) -> None:
+        with self._open_new(name, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def close(self) -> None:
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
 
 
 def _import_markitdown():
@@ -93,8 +181,10 @@ def _import_fitz():
         sys.exit(EXIT_MISSING_DEPENDENCY)
 
 
-def extract_images(fitz, pdf_path: Path, img_dir: Path):
-  """Extract embedded images from pdf_path, grouped by 1-based page number.
+def extract_images(fitz, pdf_path: Path, out: OutputDir):
+  """Extract embedded images from pdf_path into a new 'img/' folder inside
+  `out` (created only if there is at least one image), grouped by 1-based
+  page number.
   Returns {page_num: [filename, ...]} in per-page image order. Files are
   named 'page{P:03d}_img{N:03d}.<ext>'. Corrupt/unreadable images are
   skipped with a warning rather than aborting the whole conversion.
@@ -113,6 +203,7 @@ def extract_images(fitz, pdf_path: Path, img_dir: Path):
     print(f"WARNING: could not open {pdf_path} for image extraction: {exc}", file=sys.stderr)
     return written_by_page
 
+  img_dir = None
   try:
     for page_index in range(len(doc)):
       page = doc[page_index]
@@ -179,14 +270,17 @@ def extract_images(fitz, pdf_path: Path, img_dir: Path):
           continue
         seen_hashes.add(h)
         out_name = f"page{page_label:03d}_img{img_idx:03d}.{ext}"
-        img_dir.mkdir(parents=True, exist_ok=True)
-        (img_dir / out_name).write_bytes(img_bytes)
+        if img_dir is None:
+          img_dir = out.mkdir("img")
+        img_dir.write_bytes(out_name, img_bytes)
         page_files.append(out_name)
         img_idx += 1
 
       if page_files:
         written_by_page[page_label] = page_files
   finally:
+    if img_dir is not None:
+      img_dir.close()
     doc.close()
 
   return written_by_page
@@ -207,9 +301,9 @@ def build_image_appendix(written_by_page) -> str:
 
 
 def convert_one(md, fitz, source: Path, dest_dir: Path) -> bool:
-    """Convert a single .pdf file to a '<name>/' folder containing the
-    Markdown file and an 'img/' folder of extracted images. Returns True on
-    success."""
+    """Convert a single .pdf file to a new '<name>/' folder containing the
+    Markdown file and an 'img/' folder of extracted images. Refuses if
+    anything already exists at dest_dir. Returns True on success."""
     try:
         result = md.convert(str(source))
     except Exception as exc:  # noqa: BLE001 - surface any conversion error
@@ -217,15 +311,27 @@ def convert_one(md, fitz, source: Path, dest_dir: Path) -> bool:
         return False
 
     try:
-        if dest_dir.exists():
-            shutil.rmtree(dest_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        written_by_page = extract_images(fitz, source, dest_dir / "img")
-        appendix = build_image_appendix(written_by_page)
-        text = result.text_content.rstrip("\n")
-        full_text = f"{text}\n{appendix}" if appendix else f"{text}\n"
-        md_path = dest_dir / f"{source.stem}.md"
-        md_path.write_text(full_text, encoding="utf-8")
+        out = OutputDir.create(dest_dir)
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> {dest_dir} already exists; refusing to replace it. "
+            "Remove or rename it yourself, or choose a new destination with -o.",
+            file=sys.stderr,
+        )
+        return False
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not create {dest_dir}: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        with out:
+            written_by_page = extract_images(fitz, source, out)
+            appendix = build_image_appendix(written_by_page)
+            text = result.text_content.rstrip("\n")
+            full_text = f"{text}\n{appendix}" if appendix else f"{text}\n"
+            md_name = f"{source.stem}.md"
+            out.write_text(md_name, full_text)
+            md_path = dest_dir / md_name
     except OSError as exc:
         print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
         return False

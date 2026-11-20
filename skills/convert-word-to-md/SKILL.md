@@ -124,6 +124,7 @@ conversion. Never guess or assume the directory.
 | `ModuleNotFoundError: No module named 'markitdown'` / exit code 2 | MarkItDown not installed | Follow `references/setup.md` |
 | `ERROR: Unsupported file type '.doc'` / exit code 3 | Legacy `.doc`, not `.docx` | Ask the user to re-save as `.docx` |
 | `ERROR: Input path not found` / exit code 3 | Wrong path, or file moved | Confirm the correct path with the user |
+| `FAILED <file> -> <folder> already exists; refusing to replace it` / exit code 1 | A file or folder with the output name is already there (an earlier conversion, or an unrelated folder that happens to share the document's name) | The script never deletes, replaces, or writes into an existing path. Do not delete or rename it yourself; if it is an earlier conversion, read the existing Markdown, otherwise tell the user and ask where the output should go |
 | `FAILED <file> -> ...` in batch output | That specific file is corrupt, password-protected, or otherwise unreadable | Report which file(s) failed; other files in the batch still succeed |
 | `NOTE: skipped N non-.docx file(s)` | Folder contains non-Word files | Expected — those files are intentionally ignored |
 | `WARNING: found N image placeholder(s) ... but extracted M image file(s)` | Mismatch between MarkItDown's placeholder count and images found in `word/media/` (unusual/malformed docx) | Placeholders are left unreplaced rather than risk wrong images; inspect the source file's media manually if images are needed |
