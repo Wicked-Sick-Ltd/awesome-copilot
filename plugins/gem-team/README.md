@@ -62,16 +62,78 @@ model_routing:
 
 ## Quick Start
 
-Install [APM](https://microsoft.github.io/apm/) first:
+Install [APM](https://microsoft.github.io/apm/) first. These steps download a
+fixed APM release archive from GitHub and compare it with the SHA-256 digest
+written below before anything is unpacked or run. If the digest does not match,
+nothing is installed.
 
 ```bash
 # macOS / Linux
-curl -sSL https://aka.ms/apm-unix | sh
+(
+  set -eu
+  version=v0.35.1
+  case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64) asset=apm-darwin-arm64 sha256=8047f2443699cb7fd904f691f3c97d82766060bf70a4b868e7f994e44f07c47b ;;
+    Darwin/x86_64) asset=apm-darwin-x86_64 sha256=34eb25c97663b35dc91a46b8a4bb0eeefa9e8749d73d7505948281ecb05b899f ;;
+    Linux/x86_64) asset=apm-linux-x86_64 sha256=e7f06b9c80e26152ab579fe50d7dcd3d76ebbd8eacd44eed424e39880044eb3e ;;
+    Linux/aarch64 | Linux/arm64) asset=apm-linux-arm64 sha256=96d65f6ed385d4c4c6093257e9f083bd3e4b51617c228abd787def92c18ab429 ;;
+    *) echo "No pinned APM build for $(uname -s)/$(uname -m)" >&2; exit 1 ;;
+  esac
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  archive="$tmp/$asset.tar.gz"
+  curl -fsSL -o "$archive" "https://github.com/microsoft/apm/releases/download/$version/$asset.tar.gz"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$archive" | cut -d ' ' -f 1)"
+  else
+    actual="$(shasum -a 256 "$archive" | cut -d ' ' -f 1)"
+  fi
+  if [ "$actual" != "$sha256" ]; then
+    echo "$asset.tar.gz does not match the pinned SHA-256; not installing." >&2
+    exit 1
+  fi
+  tar -xzf "$archive" -C "$tmp"
+  mkdir -p "$HOME/.local/lib" "$HOME/.local/bin"
+  rm -rf "$HOME/.local/lib/apm"
+  mv "$tmp/$asset" "$HOME/.local/lib/apm"
+  ln -sfn "$HOME/.local/lib/apm/apm" "$HOME/.local/bin/apm"
+)
+```
 
+Make sure `~/.local/bin` is on your `PATH`.
+
+```powershell
 # Windows PowerShell
-irm https://aka.ms/apm-windows | iex
+& {
+  $ErrorActionPreference = 'Stop'
+  $sha256 = '5725ca5c817c5d0b68a3093dbdd2c64c119ea85b5b588d6d4103801680809177'
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())
+  New-Item -ItemType Directory -Path $tmp | Out-Null
+  try {
+    $zip = Join-Path $tmp 'apm-windows-x86_64.zip'
+    Invoke-WebRequest -UseBasicParsing -OutFile $zip -Uri https://github.com/microsoft/apm/releases/download/v0.35.1/apm-windows-x86_64.zip
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash -ne $sha256) {
+      throw 'apm-windows-x86_64.zip does not match the pinned SHA-256; not installing.'
+    }
+    $root = Join-Path $env:LOCALAPPDATA 'Programs\apm'
+    $bin = Join-Path $root 'apm-windows-x86_64'
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+    if (Test-Path -LiteralPath $bin) { Remove-Item -Recurse -Force -LiteralPath $bin }
+    Expand-Archive -LiteralPath $zip -DestinationPath $root
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (($userPath -split ';') -notcontains $bin) {
+      [Environment]::SetEnvironmentVariable('Path', ((@($bin, $userPath) | Where-Object { $_ }) -join ';'), 'User')
+    }
+    $env:Path = "$bin;$env:Path"
+  } finally {
+    Remove-Item -Recurse -Force -LiteralPath $tmp
+  }
+}
+```
 
-# Verify
+Then confirm APM is available:
+
+```bash
 apm --version
 ```
 
@@ -106,6 +168,9 @@ apm update -g mubaidr/gem-team --yes
 ```
 
 To check for an update to the APM CLI itself, use `apm self-update --check`.
+To upgrade, take the new release tag and the SHA-256 digests published with
+that release on the [APM releases](https://github.com/microsoft/apm/releases)
+page, update them in the install steps above, and run those steps again.
 
 For reproducible environments, pin a release tag:
 
