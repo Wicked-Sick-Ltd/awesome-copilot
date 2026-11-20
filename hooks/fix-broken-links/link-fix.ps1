@@ -11,13 +11,13 @@
 #     lookups and no prompts.
 # Generic anchor text is flagged as an SEO note either way.
 #
-# Pure PowerShell + .NET (Invoke-WebRequest/regex), plus an optional Copilot CLI
+# Pure PowerShell + .NET (HttpClient/regex), plus an optional Copilot CLI
 # hand-off for suggestions.
 # Covers: HTML · Markdown · JS/TS · JSON · CSS · SQL · templates (all via URL scan)
 # Trigger: postToolUse
 
 Set-StrictMode -Off
-$ProgressPreference = 'SilentlyContinue'   # Invoke-WebRequest is far faster without the bar
+$ProgressPreference = 'SilentlyContinue'
 
 # The agent hand-off below invokes `copilot`, which may itself re-fire this hook.
 # The child run is marked with this env var; exit immediately if it is present so
@@ -84,16 +84,47 @@ function Read-Answer {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# URLs come from edited (untrusted) files and only the status code is used, so
+# never buffer a response body (Invoke-WebRequest reads the whole body into
+# memory, with no size cap). The request returns once headers arrive, a single
+# read of at most $PEEK_BYTES confirms the body starts (a server that sends
+# headers and then nothing is still unreachable), and the response is disposed.
+# With draining disabled and Connection: close, disposing aborts the socket
+# rather than reading the rest of the body; the same applies to the bodies of
+# redirects the handler follows. One timeout covers the whole check.
+$PEEK_BYTES = 1024
+$script:HttpClient = $null
+function Get-HttpClient {
+  if (-not $script:HttpClient) {
+    $handler = [System.Net.Http.SocketsHttpHandler]::new()
+    $handler.AllowAutoRedirect        = $true
+    $handler.MaxAutomaticRedirections = 5
+    $handler.MaxResponseDrainSize     = 0
+    $client = [System.Net.Http.HttpClient]::new($handler)
+    [void]$client.DefaultRequestHeaders.TryAddWithoutValidation('User-Agent', $UA)
+    $script:HttpClient = $client
+  }
+  return $script:HttpClient
+}
+
 function Get-HttpStatus {
   param([string]$Url)
+  $cts = $null; $req = $null; $resp = $null
   try {
-    $resp = Invoke-WebRequest -Uri $Url -MaximumRedirection 5 -TimeoutSec $TIMEOUT `
-              -UserAgent $UA -ErrorAction Stop
+    $cts = [System.Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($TIMEOUT))
+    $req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $Url)
+    $req.Headers.ConnectionClose = $true
+    $resp = (Get-HttpClient).SendAsync($req, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cts.Token).GetAwaiter().GetResult()
+    $body = $resp.Content.ReadAsStream($cts.Token)
+    $buf  = [byte[]]::new($PEEK_BYTES)
+    [void]$body.ReadAsync($buf, 0, $buf.Length, $cts.Token).GetAwaiter().GetResult()
     return [string][int]$resp.StatusCode
   } catch {
-    $resp = $_.Exception.Response
-    if ($resp -and $resp.StatusCode) { return [string][int]$resp.StatusCode }
     return 'ERR'
+  } finally {
+    if ($resp) { $resp.Dispose() }
+    if ($req)  { $req.Dispose() }
+    if ($cts)  { $cts.Dispose() }
   }
 }
 
