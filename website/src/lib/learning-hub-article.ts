@@ -103,6 +103,20 @@ function splitCallouts(html: string, kinds: CalloutKind[]): ArticleBlock[] {
 }
 
 /**
+ * Removes HTML tags from heading text. Repeat until the string stops changing
+ * so one replacement cannot leave another tag match behind.
+ */
+function stripHtmlTags(value: string): string {
+  let current = value;
+  let previous = "";
+  do {
+    previous = current;
+    current = current.replace(/<[^>]+>/g, "");
+  } while (current !== previous);
+  return current;
+}
+
+/**
  * Removes decorative emoji (and the variation-selector/ZWJ glyphs that
  * usually trail them) from heading text used in the "In this article" nav.
  */
@@ -161,7 +175,7 @@ export function buildArticleSections(
       // the article body, but stripped down to plain text in the "In this
       // article" nav they read as stray glyphs — other Learning Hub pages
       // don't emoji-decorate their nav, so strip them here for consistency (#2962).
-      heading: stripEmoji(heading[2].replace(/<[^>]+>/g, "").trim()),
+      heading: stripEmoji(stripHtmlTags(heading[2]).trim()),
       from: heading.index ?? 0,
     });
   }

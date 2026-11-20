@@ -46,6 +46,16 @@ test("removes only empty source anchors that duplicate rendered heading IDs", ()
   );
 });
 
+test("strips heading tags until a tag split by another tag cannot reappear", () => {
+  const sections = buildArticleSections(
+    '<h2 id="plain"><em>Hello</em></h2><p>x</p><h2 id="split"><scr<script>ipt>Hello</h2>',
+    "",
+  );
+  assert.equal(sections[0].heading, "Hello");
+  assert.equal(sections[1].heading, "ipt>Hello");
+  assert.equal(sections[1].heading?.includes("<"), false);
+});
+
 test("preserves linked anchors, custom attributes, and escaped code samples", () => {
   const html = '<h2 id="same">Same</h2><a id="same" href="/page/">Read more</a><a id="same" class="custom"></a><pre>&lt;a id="same"&gt;&lt;/a&gt;</pre>';
   assert.equal(stripRedundantHeadingAnchors(html), html);

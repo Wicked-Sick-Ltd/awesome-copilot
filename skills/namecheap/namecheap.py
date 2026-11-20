@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Namecheap API CLI wrapper for DNS management.
 
-Uses only the Python standard library (no third-party dependencies). Credentials
-are read from ``~/.namecheap-api`` (or env vars) and are never passed on the
-command line, so they cannot leak via ``ps``/shell history.
+Uses the Python standard library. The optional ``keyring`` package is used when
+it is installed; nothing is required from pip.
+
+The API username may be stored in ``~/.namecheap-api`` (mode ``0600``). The API
+key is never written to that file or any other file. It is read from the
+``NAMECHEAP_API_KEY`` environment variable, or from an OS keyring backend
+(macOS Keychain, Windows Credential Manager, Secret Service, or KWallet)
+when ``keyring`` resolves to one. Plaintext file backends are not used.
+Credentials are never passed on the command line, so
+they cannot leak via ``ps`` or shell history.
 """
 
 import argparse
@@ -75,22 +82,122 @@ class NamecheapError(Exception):
 
 # --- Configuration --------------------------------------------------------
 
+_KEYRING_SERVICE = "namecheap-api"
+# OS stores only. File and fail backends (including keyrings.alt plaintext)
+# are rejected even when a Chainer lists them first.
+_SECURE_KEYRING_TYPES = frozenset({
+    "keyring.backends.macOS.Keyring",
+    "keyring.backends.Windows.WinVaultKeyring",
+    "keyring.backends.SecretService.Keyring",
+    "keyring.backends.kwallet.DBusKeyring",
+})
+
+
+def _read_config_file():
+    """Return the username file as a dict. Does not treat any value as a secret."""
+    if not os.path.isfile(CONFIG_FILE):
+        return {}
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+            content = fh.read()
+    except (OSError, UnicodeError):
+        warn("Could not read ~/.namecheap-api; ignoring it.")
+        return {}
+    # File uses shell-style KEY="value" lines for backward compatibility.
+    pattern = re.compile(r'^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$', re.MULTILINE)
+    return {m.group(1): m.group(2) for m in pattern.finditer(content)}
+
+
+def _keyring_qualname(backend):
+    return f"{type(backend).__module__}.{type(backend).__name__}"
+
+
+def _secure_keyrings():
+    """Return OS keyring backends in priority order, skipping file/fail backends."""
+    try:
+        import keyring
+    except ImportError:
+        return []
+    try:
+        backend = keyring.get_keyring()
+    except Exception:
+        return []
+    candidates = list(getattr(backend, "backends", None) or [backend])
+    return [
+        candidate for candidate in candidates
+        if _keyring_qualname(candidate) in _SECURE_KEYRING_TYPES
+    ]
+
+
+def _keyring_get(account):
+    """Return the API key from the first OS keyring that has one."""
+    if not account:
+        return None
+    for backend in _secure_keyrings():
+        try:
+            secret = backend.get_password(_KEYRING_SERVICE, account) or None
+        except Exception:
+            continue
+        if secret:
+            return secret
+    return None
+
+
+def _keyring_set(account, api_key):
+    """Store the API key where a later lookup will actually find it.
+
+    If a trusted backend already returns a key, only that backend is updated.
+    Writing a replacement into a later backend would leave lookup returning
+    the old key. When nothing is stored yet, the first backend that accepts
+    the write is used, and success requires lookup to return the same value.
+    """
+    if not account or not api_key:
+        return False
+    backends = _secure_keyrings()
+    for backend in backends:
+        try:
+            existing = backend.get_password(_KEYRING_SERVICE, account) or None
+        except Exception:
+            continue
+        if not existing:
+            continue
+        try:
+            backend.set_password(_KEYRING_SERVICE, account, api_key)
+        except Exception:
+            return False
+        return _keyring_get(account) == api_key
+    for backend in backends:
+        try:
+            backend.set_password(_KEYRING_SERVICE, account, api_key)
+        except Exception:
+            continue
+        return _keyring_get(account) == api_key
+    return False
+
+
 def load_config():
-    """Return (api_user, api_key), preferring env vars then the config file."""
+    """Return (api_user, api_key).
+
+    Environment variables win and are used without opening the config file.
+    Otherwise the username comes from ``~/.namecheap-api`` and the API key
+    comes from an OS keyring backend. A key left in the username file by an
+    older version is ignored.
+    """
     api_user = os.environ.get("NAMECHEAP_API_USER")
     api_key = os.environ.get("NAMECHEAP_API_KEY")
     if api_user and api_key:
         return api_user, api_key
-
-    if os.path.isfile(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
-            content = fh.read()
-        # File uses shell-style KEY="value" lines for backward compatibility.
-        pattern = re.compile(r'^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$', re.MULTILINE)
-        values = {m.group(1): m.group(2) for m in pattern.finditer(content)}
-        api_user = api_user or values.get("NAMECHEAP_API_USER")
-        api_key = api_key or values.get("NAMECHEAP_API_KEY")
-
+    values = _read_config_file()
+    api_user = api_user or values.get("NAMECHEAP_API_USER")
+    if values.get("NAMECHEAP_API_KEY"):
+        warn(
+            "Ignoring NAMECHEAP_API_KEY in ~/.namecheap-api. "
+            "The API key is not read from disk. Set NAMECHEAP_API_KEY with "
+            "`read -rs` in bash, or install keyring with an OS backend and "
+            "run setup again, then delete that line from the file."
+        )
+    if not api_key:
+        api_key = _keyring_get(api_user)
     return api_user, api_key
 
 
@@ -99,7 +206,8 @@ def check_credentials():
     if not api_user or not api_key:
         err("Namecheap API credentials not configured.")
         print()
-        print("Run 'python3 namecheap.py setup' to configure your credentials.")
+        print("Run 'python3 namecheap.py setup' to store your username.")
+        print("Export NAMECHEAP_API_KEY in your shell. The API key is never written to disk.")
         print()
         print("You need:")
         print("  1. Your Namecheap username")
@@ -109,11 +217,24 @@ def check_credentials():
     return api_user, api_key
 
 
-def save_config(api_user, api_key):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as fh:
+def _write_username(api_user):
+    """Write the username file mode 0600. The API key is not stored here."""
+    fd = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(f'NAMECHEAP_API_USER="{api_user}"\n')
-        fh.write(f'NAMECHEAP_API_KEY="{api_key}"\n')
-    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)  # 600
+    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
+
+
+def save_config(api_user, api_key):
+    """Save the username to disk and the API key to the OS keyring.
+
+    The API key is never written to ``~/.namecheap-api`` or any other file.
+    Returns True when the key was stored in the OS keyring. When the optional
+    ``keyring`` package is missing, the caller must keep the key in
+    ``NAMECHEAP_API_KEY`` only.
+    """
+    _write_username(api_user)
+    return _keyring_set(api_user, api_key)
 
 
 # --- Networking -----------------------------------------------------------
@@ -248,8 +369,18 @@ def cmd_setup(_args):
         err("Both username and API key are required.")
         sys.exit(1)
 
-    save_config(api_user, api_key)
-    success(f"Credentials saved to {CONFIG_FILE}")
+    stored = save_config(api_user, api_key)
+    if stored:
+        success(f"Username saved to {CONFIG_FILE}; API key stored in the OS keyring.")
+    else:
+        success(f"Username saved to {CONFIG_FILE}.")
+        warn("The API key was not saved. It is never written to disk.")
+        print("In bash, read it without putting the secret in shell history:")
+        print("  read -rs NAMECHEAP_API_KEY")
+        print("  export NAMECHEAP_API_KEY")
+        print("Or install the optional 'keyring' package with an OS backend")
+        print("(macOS Keychain, Windows Credential Manager, Secret Service, or KWallet)")
+        print("and run setup again. A plaintext file backend is not used.")
     print("\nTesting API connection...")
     try:
         # Use the just-entered credentials directly for the validation call.

@@ -12,7 +12,9 @@
 var HostBridge = (function () {
 
     var api = null;
-    var handlers = {};
+    // Null prototype: command lookup cannot see Object.prototype methods
+    // such as constructor or toString. Only names registered with on() exist.
+    var handlers = Object.create(null);
 
     // acquireVsCodeApi exists only inside a webview, and may be called
     // exactly once per page load
@@ -27,9 +29,13 @@ var HostBridge = (function () {
     if (api) {
         window.addEventListener('message', function (event) {
             var message = event.data;
-            if (!message || !message.command) return;
-            var fn = handlers[message.command];
-            if (fn) fn(message);
+            if (!message || typeof message.command !== 'string') return;
+            // Allow-list: only an own property registered via on(), and only
+            // when that property is a function.
+            var command = message.command;
+            if (!Object.prototype.hasOwnProperty.call(handlers, command)) return;
+            var fn = handlers[command];
+            if (typeof fn === 'function') fn(message);
         });
     }
 
@@ -51,6 +57,7 @@ var HostBridge = (function () {
      * Register a handler for a command sent by the extension host.
      */
     function on(command, fn) {
+        if (typeof command !== 'string' || typeof fn !== 'function') return;
         handlers[command] = fn;
     }
 
