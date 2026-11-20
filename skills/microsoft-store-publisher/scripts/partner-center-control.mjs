@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
@@ -42,9 +44,15 @@ const edgePath = edgeCandidates.find((candidate) => existsSync(candidate));
 const profilePath =
   process.env.PARTNER_CENTER_PROFILE ??
   path.join(os.homedir(), ".copilot", "browser-profiles", "partner-center");
-const port = Number.parseInt(process.env.PARTNER_CENTER_DEBUG_PORT ?? "9223", 10);
-const endpoint =
-  process.env.PARTNER_CENTER_CDP_ENDPOINT ?? `http://127.0.0.1:${port}`;
+// The browser stays inside the `launch` process; Playwright drives it over a
+// pipe, never a DevTools port. Other commands reach it through a loopback
+// channel that requires the token in this file. The file lives inside the
+// profile so it is no easier to read than the profile's own cookies.
+const sessionFile = path.join(
+  profilePath,
+  ".partner-center-control-session.json",
+);
+const maxRequestBytes = 1024 * 1024;
 
 function requireWriteAccess(command) {
   if (
@@ -66,8 +74,8 @@ function pageSummary(page, index) {
   };
 }
 
-async function listPages(browser) {
-  const pages = browser.contexts().flatMap((context) => context.pages());
+async function listPages(context) {
+  const pages = context.pages();
   return Promise.all(
     pages.map(async (page, index) => ({
       ...pageSummary(page, index),
@@ -76,10 +84,9 @@ async function listPages(browser) {
   );
 }
 
-async function activePage(browser) {
-  const pages = browser.contexts().flatMap((context) => context.pages());
-  const configuredIndex = process.env.PARTNER_CENTER_PAGE_INDEX;
-  if (configuredIndex !== undefined) {
+async function activePage(context, configuredIndex) {
+  const pages = context.pages();
+  if (configuredIndex !== undefined && configuredIndex !== null) {
     const page = pages[Number.parseInt(configuredIndex, 10)];
     if (!page) {
       throw new Error(
@@ -98,11 +105,6 @@ async function activePage(browser) {
     throw new Error("No browser page is available.");
   }
   return page;
-}
-
-async function connect() {
-  const browser = await chromium.connectOverCDP(endpoint);
-  return { browser, page: await activePage(browser) };
 }
 
 function commandHelp() {
@@ -127,62 +129,26 @@ function commandHelp() {
       "screenshot <path>",
     ],
     guardedWrites: [...writeCommands].sort(),
+    session: ["launch", "close"],
     environment: {
       PARTNER_CENTER_PROFILE: profilePath,
-      PARTNER_CENTER_CDP_ENDPOINT: endpoint,
       PARTNER_CENTER_PAGE_INDEX: "optional zero-based page index",
       PARTNER_CENTER_ALLOW_WRITE: "set to 1 only for an approved mutation",
     },
+    sessionFile,
   };
 }
 
-const [command = "help", ...args] = process.argv.slice(2);
-requireWriteAccess(command);
-
-if (command === "help") {
-  console.log(JSON.stringify(commandHelp(), null, 2));
-  process.exit(0);
-}
-
-if (command === "launch") {
-  if (!edgePath) {
-    throw new Error(
-      "Microsoft Edge was not found. Set PARTNER_CENTER_EDGE_PATH to msedge.exe.",
-    );
-  }
-  const context = await chromium.launchPersistentContext(profilePath, {
-    executablePath: edgePath,
-    headless: false,
-    args: [
-      `--remote-debugging-port=${port}`,
-      "--no-first-run",
-      "--start-maximized",
-    ],
-  });
-  const page = context.pages()[0] ?? (await context.newPage());
-  await page.goto("https://storedeveloper.microsoft.com", {
-    waitUntil: "domcontentloaded",
-    timeout: 120000,
-  });
-  console.log(
-    JSON.stringify({
-      ready: true,
-      url: page.url(),
-      profilePath,
-      endpoint,
-    }),
-  );
-  await new Promise(() => {});
-}
-
-const { browser, page } = await connect();
-try {
+async function runCommand(context, command, args, pageIndex) {
+  const page = await activePage(context, pageIndex);
+  const output = [];
+  const print = (value) => output.push(value);
   if (command === "status") {
-    console.log(
+    print(
       JSON.stringify({ title: await page.title(), url: page.url() }),
     );
   } else if (command === "pages") {
-    console.log(JSON.stringify(await listPages(browser)));
+    print(JSON.stringify(await listPages(context)));
   } else if (command === "goto") {
     const url = args[0];
     if (!url) {
@@ -192,19 +158,19 @@ try {
       waitUntil: "domcontentloaded",
       timeout: 120000,
     });
-    console.log(
+    print(
       JSON.stringify({ title: await page.title(), url: page.url() }),
     );
   } else if (command === "reload") {
     await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
-    console.log(
+    print(
       JSON.stringify({ title: await page.title(), url: page.url() }),
     );
   } else if (command === "text") {
     await page.waitForLoadState("domcontentloaded");
-    console.log((await page.locator("body").innerText()).slice(0, 50000));
+    print((await page.locator("body").innerText()).slice(0, 50000));
   } else if (command === "anchors") {
-    console.log(
+    print(
       JSON.stringify(
         await page.locator("a").evaluateAll((anchors) =>
           anchors
@@ -238,7 +204,7 @@ try {
             anchor.ariaLabel === "Submission Options",
         ),
     );
-    console.log(
+    print(
       JSON.stringify({
         title: await page.title(),
         url: page.url(),
@@ -272,7 +238,7 @@ try {
         }), index),
       );
     }
-    console.log(
+    print(
       JSON.stringify({
         title: await page.title(),
         url: page.url(),
@@ -288,7 +254,7 @@ try {
     await target.waitFor({ state: "visible", timeout: 30000 });
     await target.click();
     await page.waitForTimeout(1500);
-    console.log(
+    print(
       JSON.stringify({ title: await page.title(), url: page.url() }),
     );
   } else if (command === "click-role") {
@@ -298,7 +264,7 @@ try {
     await target.waitFor({ state: "visible", timeout: 30000 });
     await target.click();
     await page.waitForTimeout(1500);
-    console.log(
+    print(
       JSON.stringify({ title: await page.title(), url: page.url() }),
     );
   } else if (command === "click-text-index") {
@@ -308,7 +274,7 @@ try {
     await target.waitFor({ state: "visible", timeout: 30000 });
     await target.click();
     await page.waitForTimeout(1500);
-    console.log(
+    print(
       JSON.stringify({
         title: await page.title(),
         url: page.url(),
@@ -326,7 +292,7 @@ try {
     );
     await ancestor.click();
     await page.waitForTimeout(1500);
-    console.log(
+    print(
       JSON.stringify({ title: await page.title(), url: page.url() }),
     );
   } else if (command === "fill-label") {
@@ -334,24 +300,24 @@ try {
     await page
       .getByLabel(label, { exact: true })
       .fill(valueParts.join(" "));
-    console.log(JSON.stringify({ label, filled: true }));
+    print(JSON.stringify({ label, filled: true }));
   } else if (command === "fill-selector") {
     const [selector, ...valueParts] = args;
     await page.locator(selector).first().fill(valueParts.join(" "));
-    console.log(JSON.stringify({ selector, filled: true }));
+    print(JSON.stringify({ selector, filled: true }));
   } else if (command === "check-label") {
     const label = args.join(" ");
     await page.getByLabel(label, { exact: true }).first().check();
-    console.log(JSON.stringify({ label, checked: true }));
+    print(JSON.stringify({ label, checked: true }));
   } else if (command === "uncheck-label") {
     const label = args.join(" ");
     await page.getByLabel(label, { exact: true }).first().uncheck();
-    console.log(JSON.stringify({ label, checked: false }));
+    print(JSON.stringify({ label, checked: false }));
   } else if (command === "upload-file") {
     const filePath = args.join(" ");
     await page.locator("input[type='file']").first().setInputFiles(filePath);
     await page.waitForTimeout(2000);
-    console.log(JSON.stringify({ filePath, url: page.url() }));
+    print(JSON.stringify({ filePath, url: page.url() }));
   } else if (command === "upload-file-index") {
     const index = Number.parseInt(args[0], 10);
     const filePaths = args.slice(1);
@@ -360,14 +326,14 @@ try {
       .nth(index)
       .setInputFiles(filePaths);
     await page.waitForTimeout(2000);
-    console.log(JSON.stringify({ index, filePaths, url: page.url() }));
+    print(JSON.stringify({ index, filePaths, url: page.url() }));
   } else if (command === "check-name") {
     const name = args.join(" ");
     await page.getByLabel("Name", { exact: true }).fill(name);
     await page.getByText("Check availability", { exact: true }).click();
     await page.waitForTimeout(1000);
     const body = await page.locator("body").innerText();
-    console.log(
+    print(
       JSON.stringify({
         name,
         result: body.includes("The name is not available.")
@@ -381,7 +347,7 @@ try {
     const name = args.join(" ");
     const button = page.getByRole("button", { name, exact: true });
     const count = await button.count();
-    console.log(
+    print(
       JSON.stringify({
         name,
         count,
@@ -406,7 +372,7 @@ try {
         }), index),
       );
     }
-    console.log(JSON.stringify({ text, count, elements }));
+    print(JSON.stringify({ text, count, elements }));
   } else if (command === "match-context") {
     const text = args.join(" ");
     const matches = page.getByText(text, { exact: true });
@@ -441,9 +407,9 @@ try {
         }, index),
       );
     }
-    console.log(JSON.stringify({ text, count, elements }));
+    print(JSON.stringify({ text, count, elements }));
   } else if (command === "inputs") {
-    console.log(
+    print(
       JSON.stringify(
         await page
           .locator("input, textarea, he-checkbox, [role='checkbox']")
@@ -473,7 +439,7 @@ try {
       ),
     );
   } else if (command === "radios") {
-    console.log(
+    print(
       JSON.stringify(
         await page.locator("input[type='radio']").evaluateAll((radios) =>
           radios.map((radio, index) => ({
@@ -493,7 +459,7 @@ try {
       ),
     );
   } else if (command === "comboboxes") {
-    console.log(
+    print(
       JSON.stringify(
         await page
           .locator("[role='combobox'], select")
@@ -522,7 +488,7 @@ try {
     const combo = page.locator("[role='combobox'], select").nth(index);
     await combo.click();
     await page.waitForTimeout(500);
-    console.log(
+    print(
       JSON.stringify({
         index,
         options: await page.getByRole("option").evaluateAll((options) =>
@@ -549,19 +515,19 @@ try {
         .getByRole("option", { name: optionText, exact: true })
         .click();
     }
-    console.log(JSON.stringify({ index, optionText }));
+    print(JSON.stringify({ index, optionText }));
   } else if (command === "add-combo-token") {
     const index = Number.parseInt(args[0], 10);
     const token = args.slice(1).join(" ");
     const combo = page.locator("[role='combobox']").nth(index);
     await combo.fill(token);
     await combo.press("Enter");
-    console.log(JSON.stringify({ index, token }));
+    print(JSON.stringify({ index, token }));
   } else if (command === "ancestors") {
     const text = args.join(" ");
     const target = page.getByText(text, { exact: true }).first();
     await target.waitFor({ state: "attached", timeout: 30000 });
-    console.log(
+    print(
       JSON.stringify(
         await target.evaluate((element) => {
           const ancestors = [];
@@ -587,10 +553,212 @@ try {
       throw new Error("screenshot requires an output path.");
     }
     await page.screenshot({ path: output, fullPage: true });
-    console.log(JSON.stringify({ output }));
+    print(JSON.stringify({ output }));
   } else {
     throw new Error(`Unknown command: ${command}`);
   }
-} finally {
-  await browser.close();
+  return output.join("\n");
+}
+
+function tokenDigest(value) {
+  return createHash("sha256").update(String(value)).digest();
+}
+
+function isAuthorized(request, token) {
+  const header = request.headers.authorization ?? "";
+  const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
+  return timingSafeEqual(tokenDigest(presented), tokenDigest(token));
+}
+
+async function readJsonBody(request) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxRequestBytes) {
+      throw new Error("Request is too large.");
+    }
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function serveSession(context) {
+  const token = randomBytes(32).toString("base64url");
+  let queue = Promise.resolve();
+  let shuttingDown = false;
+
+  const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    rmSync(sessionFile, { force: true });
+    server.close();
+    await context.close().catch(() => {});
+    process.exit(0);
+  };
+
+  const server = http.createServer(async (request, response) => {
+    const reply = (status, body, done) => {
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify(body), done);
+    };
+    if (!isAuthorized(request, token)) {
+      request.resume();
+      reply(401, { error: "Unauthorized." });
+      return;
+    }
+    if (request.method !== "POST" || request.url !== "/") {
+      request.resume();
+      reply(404, { error: "Not found." });
+      return;
+    }
+
+    let message;
+    try {
+      message = await readJsonBody(request);
+    } catch (error) {
+      reply(400, { error: error.message });
+      return;
+    }
+    const { command, args, pageIndex } = message ?? {};
+    if (
+      typeof command !== "string" ||
+      !Array.isArray(args) ||
+      !args.every((arg) => typeof arg === "string")
+    ) {
+      reply(400, { error: "Malformed command." });
+      return;
+    }
+
+    if (command === "close") {
+      reply(200, { output: JSON.stringify({ closed: true }) }, shutdown);
+      return;
+    }
+
+    const run = queue.then(() => runCommand(context, command, args, pageIndex));
+    queue = run.catch(() => {});
+    try {
+      reply(200, { output: await run });
+    } catch (error) {
+      reply(500, { error: error.message });
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  rmSync(sessionFile, { force: true });
+  writeFileSync(
+    sessionFile,
+    JSON.stringify({ pid: process.pid, port: server.address().port, token }),
+    { mode: 0o600, flag: "wx" },
+  );
+
+  context.on("close", shutdown);
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+function readSession() {
+  let session;
+  try {
+    session = JSON.parse(readFileSync(sessionFile, "utf8"));
+  } catch {
+    throw new Error(
+      `No Partner Center session found at ${sessionFile}. Run launch first.`,
+    );
+  }
+  if (
+    !Number.isInteger(session?.port) ||
+    typeof session?.token !== "string"
+  ) {
+    throw new Error(`The Partner Center session file ${sessionFile} is invalid.`);
+  }
+  return session;
+}
+
+function resolvePathArguments(command, args) {
+  // The launch process may run in another directory, so send absolute paths.
+  if (command === "screenshot" && args[0]) {
+    return [path.resolve(args[0]), ...args.slice(1)];
+  }
+  if (command === "upload-file" && args.length > 0) {
+    return [path.resolve(args.join(" "))];
+  }
+  if (command === "upload-file-index") {
+    return [args[0], ...args.slice(1).map((filePath) => path.resolve(filePath))];
+  }
+  return args;
+}
+
+async function sendCommand(command, args) {
+  const session = readSession();
+  let response;
+  try {
+    response = await fetch(`http://127.0.0.1:${session.port}/`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        command,
+        args: resolvePathArguments(command, args),
+        pageIndex: process.env.PARTNER_CENTER_PAGE_INDEX,
+      }),
+    });
+  } catch (error) {
+    throw new Error(
+      `The Partner Center session is not reachable (${error.cause?.code ?? error.message}). ` +
+        "Run launch again.",
+    );
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      result.error ?? `The Partner Center session returned ${response.status}.`,
+    );
+  }
+  return result.output;
+}
+
+const [command = "help", ...args] = process.argv.slice(2);
+requireWriteAccess(command);
+
+if (command === "help") {
+  console.log(JSON.stringify(commandHelp(), null, 2));
+} else if (command === "launch") {
+  if (!edgePath) {
+    throw new Error(
+      "Microsoft Edge was not found. Set PARTNER_CENTER_EDGE_PATH to msedge.exe.",
+    );
+  }
+  const context = await chromium.launchPersistentContext(profilePath, {
+    executablePath: edgePath,
+    headless: false,
+    args: ["--no-first-run", "--start-maximized"],
+  });
+  const page = context.pages()[0] ?? (await context.newPage());
+  await page.goto("https://storedeveloper.microsoft.com", {
+    waitUntil: "domcontentloaded",
+    timeout: 120000,
+  });
+  await serveSession(context);
+  console.log(
+    JSON.stringify({
+      ready: true,
+      url: page.url(),
+      profilePath,
+      sessionFile,
+    }),
+  );
+} else {
+  const output = await sendCommand(command, args);
+  if (output) {
+    console.log(output);
+  }
 }
