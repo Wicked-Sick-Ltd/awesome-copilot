@@ -33,8 +33,8 @@ export async function createInstanceServer(options) {
     let rec;
 
     const server = createServer(async (req, res) => {
-        const url = new URL(req.url, "http://127.0.0.1");
         try {
+            const url = new URL(req.url, "http://127.0.0.1");
             if (req.method === "GET" && url.pathname === "/") {
                 const state = await getWorkflowState(options.workspace, options.stateId);
                 res.writeHead(200, {
@@ -80,6 +80,12 @@ export async function createInstanceServer(options) {
             await pushState(rec, state);
             sendJson(res, 200, state);
         } catch (error) {
+            // The handler is async and nothing awaits it, so anything thrown here
+            // becomes an unhandled rejection that exits the extension process.
+            if (res.headersSent) {
+                res.destroy();
+                return;
+            }
             sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
         }
     });
