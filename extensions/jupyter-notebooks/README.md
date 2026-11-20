@@ -33,6 +33,6 @@ The canvas provides actions for notebook lifecycle, workspace files, cell editin
 
 ## Security and local data
 
-Notebook execution uses Python isolated mode in a fresh temporary directory. The runner applies CPU, file-size, process, and memory limits where the platform supports them, caps captured output, and stops execution after 30 seconds.
+Notebook execution uses Python isolated mode in a fresh temporary directory. Before any cell runs, the operating system is told to refuse process creation for the runner: a seccomp filter on Linux (x86_64 and aarch64) denies `fork`, `vfork`, `execve`, `execveat`, and non-thread `clone`; a job object limited to one active process is used on Windows; and a sandbox profile denying `process-fork` and `process-exec` is applied on macOS. If that lock cannot be applied, cells are not run. The runner also applies CPU, file-size, and open-file limits where the platform supports them, caps captured output, and stops execution after 30 seconds.
 
 The local canvas server binds to `127.0.0.1`, protects requests with a per-instance capability token, validates action origins, and sends a restrictive content security policy. Notebook state and checkpoints stay in the active Copilot workspace.
