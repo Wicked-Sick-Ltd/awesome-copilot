@@ -32,10 +32,12 @@ This skill is about doing the work, not describing it. Read code, edit files, ru
 
 **First, activate the virtual environment**. Identify the correct virtual environment for the project and activate it. After the virtual environment is active, run the setup.sh included in the skill's resources.
 The script updates the `eval-driven-dev` skill and `pixie-qa` python package to latest version, initialize the pixie working directory if it's not already initialized, and start a web server in the background to show user updates.
+The skill update uses the `skills` CLI pinned by version and integrity in `resources/skills-cli/package-lock.json`. Do not replace it with `npx skills` or any other unpinned invocation.
 
 **Setup error handling — what you can skip vs. what must succeed:**
 
 - **Skill update fails** → OK to continue. The existing skill version is sufficient.
+- **Skill CLI integrity check fails (`EINTEGRITY`)** → **STOP.** Nothing from the download was run. Ask the user to check their npm registry configuration.
 - **pixie-qa upgrade fails but was already installed** → OK to continue with the existing version.
 - **pixie-qa is NOT installed and installation fails** → **STOP.** Ask the user for help. The workflow cannot proceed without the `pixie` package.
 - **`pixie init` fails** → **STOP.** Ask the user for help.

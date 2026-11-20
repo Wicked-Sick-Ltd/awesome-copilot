@@ -5,6 +5,7 @@
 #
 # Error handling:
 #   - Skill update failure → non-fatal (continue with existing version)
+#   - Skill CLI download does not match the pinned integrity → FATAL (exit 1)
 #   - pixie-qa upgrade failure when already installed → non-fatal
 #   - pixie-qa NOT installed and install fails → FATAL (exit 1)
 #   - pixie init failure → FATAL (exit 1)
@@ -12,9 +13,43 @@
 set -u
 
 echo "=== Updating skill ==="
-npx skills update github/awesome-copilot --skill eval-driven-dev -g -y && npx skills update github/awesome-copilot --skill eval-driven-dev -p -y || {
-  echo "(skill update failed — proceeding with existing version)"
+# The CLI is installed only from the committed lockfile: npm ci rejects any
+# tarball whose bytes do not match the pinned sha512 integrity, and
+# --ignore-scripts keeps package lifecycle scripts from running. Never replace
+# this with a registry-resolved invocation (npx, npm exec, npm install <name>).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PINNED_CLI_SRC="$SCRIPT_DIR/skills-cli"
+PINNED_CLI_DIR=""
+
+_install_pinned_cli() {
+  PINNED_CLI_DIR="$(mktemp -d)" || return 1
+  cp "$PINNED_CLI_SRC/package.json" "$PINNED_CLI_SRC/package-lock.json" "$PINNED_CLI_DIR/" || return 1
+  local ci_log ci_status
+  ci_log="$(cd "$PINNED_CLI_DIR" && npm ci --ignore-scripts --no-audit --no-fund 2>&1)"
+  ci_status=$?
+  if [ "$ci_status" -ne 0 ]; then
+    printf '%s\n' "$ci_log"
+    if printf '%s' "$ci_log" | grep -q "EINTEGRITY"; then
+      rm -rf "$PINNED_CLI_DIR"
+      echo ""
+      echo "ERROR: The downloaded skill CLI does not match the integrity pinned in"
+      echo "$PINNED_CLI_SRC/package-lock.json. Nothing from it was run."
+      echo "Ask the user to check their registry configuration before continuing."
+      exit 1
+    fi
+    return 1
+  fi
+  [ -x "$PINNED_CLI_DIR/node_modules/.bin/skills" ]
 }
+
+if _install_pinned_cli; then
+  "$PINNED_CLI_DIR/node_modules/.bin/skills" update github/awesome-copilot --skill eval-driven-dev -g -y \
+    && "$PINNED_CLI_DIR/node_modules/.bin/skills" update github/awesome-copilot --skill eval-driven-dev -p -y \
+    || echo "(skill update failed — proceeding with existing version)"
+else
+  echo "(skill update failed — proceeding with existing version)"
+fi
+[ -n "$PINNED_CLI_DIR" ] && rm -rf "$PINNED_CLI_DIR"
 
 echo ""
 echo "=== Installing / upgrading pixie-qa[all] ==="

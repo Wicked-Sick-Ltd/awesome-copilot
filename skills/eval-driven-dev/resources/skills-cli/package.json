@@ -1,0 +1,8 @@
+{
+  "name": "eval-driven-dev-skills-cli",
+  "private": true,
+  "description": "Pinned skills CLI used by ../setup.sh. Install only with `npm ci --ignore-scripts` so package-lock.json integrity is enforced.",
+  "dependencies": {
+    "skills": "1.8.1"
+  }
+}
