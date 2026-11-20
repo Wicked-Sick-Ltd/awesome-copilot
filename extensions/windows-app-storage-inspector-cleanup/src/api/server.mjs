@@ -52,6 +52,26 @@ function authorized(request, url, token) {
     return request.headers["x-storage-inspector-token"] === token || url.searchParams.get("token") === token;
 }
 
+function parseRequestUrl(request) {
+    try {
+        return new URL(request.url ?? "/", "http://127.0.0.1");
+    } catch {
+        return undefined;
+    }
+}
+
+function failRequest(response, error) {
+    if (response.headersSent) {
+        response.destroy();
+        return;
+    }
+    try {
+        sendError(response, error);
+    } catch {
+        response.destroy();
+    }
+}
+
 export async function startCanvasServer(service, requestAgentInvestigation, cancelAgentInvestigation) {
     assertWindowsPlatform();
     const token = randomBytes(32).toString("hex");
@@ -64,7 +84,7 @@ export async function startCanvasServer(service, requestAgentInvestigation, canc
         }
     });
 
-    const server = createServer(async (request, response) => {
+    const handleRequest = async (request, response) => {
         if (!isWindowsPlatform()) {
             sendError(response, createWindowsOnlyError());
             return;
@@ -73,7 +93,11 @@ export async function startCanvasServer(service, requestAgentInvestigation, canc
             sendJson(response, 403, { code: "request_forbidden", message: "Canvas request host is invalid" });
             return;
         }
-        const url = new URL(request.url ?? "/", "http://127.0.0.1");
+        const url = parseRequestUrl(request);
+        if (!url) {
+            sendJson(response, 400, { code: "request_target_invalid", message: "Canvas request target is invalid" });
+            return;
+        }
         response.setHeader("content-security-policy", "default-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'");
         response.setHeader("referrer-policy", "no-referrer");
 
@@ -203,6 +227,10 @@ export async function startCanvasServer(service, requestAgentInvestigation, canc
         } catch (error) {
             sendError(response, error);
         }
+    };
+
+    const server = createServer((request, response) => {
+        handleRequest(request, response).catch((error) => failRequest(response, error));
     });
 
     await new Promise((resolve, reject) => {
