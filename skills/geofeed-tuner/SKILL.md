@@ -677,12 +677,21 @@ Locate this pattern in the template:
 const commentMap = {{.Comments}};
 ```
 
-Replace `{{.Comments}}` with the serialized JSON object from `./run/data/comments.json`. The JSON is embedded directly as a JavaScript object literal (not inside a string), so no extra escaping is needed:
+Replace `{{.Comments}}` with the serialized JSON object from `./run/data/comments.json`. The JSON is embedded directly as a JavaScript object literal inside a `<script>` element, and the comment lines come from the input feed. `json.dumps` leaves `<`, `>` and `&` intact, so a comment containing `</script>` would end the script element and let the rest of the line run as markup. Always replace those characters (and the U+2028/U+2029 line separators) with their JSON `\uXXXX` escapes before inserting — the browser still decodes the original text, so `commentMap` is unchanged:
 
 ```python
-comments_json = json.dumps(comments)
+comments_json = (
+    json.dumps(comments, ensure_ascii=True)
+    .replace("<", "\\u003c")
+    .replace(">", "\\u003e")
+    .replace("&", "\\u0026")
+    .replace("\u2028", "\\u2028")
+    .replace("\u2029", "\\u2029")
+)
 template = template.replace("{{.Comments}}", comments_json)
 ```
+
+Use this snippet as-is; do not substitute a plain `json.dumps(comments)` or HTML-escape the JSON instead (HTML entities are not decoded inside `<script>` and would corrupt the comments).
 
 #### Step 3: Expand the Entries Range Block
 
@@ -824,7 +833,7 @@ If `Messages` is empty, replace the entire matched region with an empty string (
 
 - The report must be readable in any modern browser without extra network dependencies beyond the CDN links already in the template (`leaflet`, `h3-js`, `bootstrap-icons`, Raleway font).
 - All values embedded in HTML must be **HTML-escaped** (`<`, `>`, `&`, `"`) to prevent rendering issues.
-- `commentMap` is embedded as a direct JavaScript object literal (not inside a string), so no JS string escaping is needed — just emit valid JSON.
+- `commentMap` is embedded as a direct JavaScript object literal inside a `<script>` element. Emit it with the Step 2 snippet so `<`, `>`, `&`, U+2028 and U+2029 are written as `\uXXXX` escapes; raw `json.dumps` output is not safe there because a comment line containing `</script>` closes the script element.
 - All values must be derived **only from analysis output**, not recomputed heuristically.
 
 
