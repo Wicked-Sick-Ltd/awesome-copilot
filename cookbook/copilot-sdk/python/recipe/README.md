@@ -41,11 +41,14 @@ python <filename>.py
 python pr_visualization.py --repo github/copilot-sdk
 ```
 
-**Managing Local Files (edit the file to change target folder):**
+**Managing Local Files with specific folder:**
 
 ```bash
-# Edit the target_folder variable in managing_local_files.py first
-python managing_local_files.py
+# Preview a plan only; every change is refused
+python managing_local_files.py /path/to/folder
+
+# Move files, confirming each command on the terminal
+python managing_local_files.py /path/to/folder --apply
 ```
 
 ## Local SDK Development

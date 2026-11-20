@@ -37,11 +37,14 @@ go run <filename>.go
 go run pr-visualization.go -repo github/copilot-sdk
 ```
 
-**Managing Local Files (edit the file to change target folder):**
+**Managing Local Files with specific folder:**
 
 ```bash
-# Edit the targetFolder variable in managing-local-files.go first
-go run managing-local-files.go
+# Preview a plan only; every change is refused
+go run managing-local-files.go /path/to/folder
+
+# Move files, confirming each command on the terminal
+go run managing-local-files.go /path/to/folder --apply
 ```
 
 ## Go Best Practices

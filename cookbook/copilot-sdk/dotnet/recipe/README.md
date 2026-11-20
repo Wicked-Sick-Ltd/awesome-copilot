@@ -36,11 +36,14 @@ dotnet run <filename>.cs
 dotnet run pr-visualization.cs -- --repo github/copilot-sdk
 ```
 
-**Managing Local Files (edit the file to change target folder):**
+**Managing Local Files with specific folder:**
 
 ```bash
-# Edit the targetFolder variable in managing-local-files.cs first
-dotnet run managing-local-files.cs
+# Preview a plan only; every change is refused
+dotnet run managing-local-files.cs -- /path/to/folder
+
+# Move files, confirming each command on the terminal
+dotnet run managing-local-files.cs -- /path/to/folder --apply
 ```
 
 ## Safety & Prerequisites
@@ -51,7 +54,7 @@ Some recipes have side effects or external dependencies. Expand each section for
 <summary><strong>⚠️ Managing Local Files</strong> — Modifies your filesystem</summary>
 
 Before running on a real directory, test it on a copy first.
-Run these snippets from this recipe directory so the recipe path is captured before switching to the temporary folder.
+Run these snippets from this recipe directory.
 
 **PowerShell:**
 ```powershell
@@ -60,8 +63,7 @@ $tempDir = New-Item -ItemType Directory -Path ([IO.Path]::Combine([IO.Path]::Get
 @("document1.txt", "image1.png", "data.json") | ForEach-Object { 
     New-Item -Path "$tempDir/$_" -ItemType File
 }
-cd $tempDir
-dotnet run "$recipeDir/managing-local-files.cs"
+dotnet run "$recipeDir/managing-local-files.cs" -- $tempDir --apply
 # Inspect results, then clean up
 Remove-Item $tempDir -Recurse
 ```
@@ -71,13 +73,12 @@ Remove-Item $tempDir -Recurse
 recipeDir=$(pwd)
 tempDir=$(mktemp -d)
 touch "$tempDir"/{document1.txt,image1.png,data.json}
-cd "$tempDir"
-dotnet run "$recipeDir/managing-local-files.cs"
+dotnet run "$recipeDir/managing-local-files.cs" -- "$tempDir" --apply
 # Inspect results, then clean up
 rm -rf "$tempDir"
 ```
 
-Edit the `targetFolder` variable in the `.cs` file to point to your test directory before running.
+Without `--apply` the recipe only prints a plan. With `--apply` it asks on the terminal before each command or file write.
 </details>
 
 <details>

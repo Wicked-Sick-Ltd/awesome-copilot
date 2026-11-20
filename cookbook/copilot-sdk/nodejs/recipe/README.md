@@ -45,11 +45,14 @@ npx tsx <filename>.ts
 npx tsx pr-visualization.ts --repo github/copilot-sdk
 ```
 
-**Managing Local Files (edit the file to change target folder):**
+**Managing Local Files with specific folder:**
 
 ```bash
-# Edit the targetFolder variable in managing-local-files.ts first
-npx tsx managing-local-files.ts
+# Preview a plan only; every change is refused
+npx tsx managing-local-files.ts /path/to/folder
+
+# Move files, confirming each command on the terminal
+npx tsx managing-local-files.ts /path/to/folder --apply
 ```
 
 ## Local SDK Development
