@@ -29,6 +29,43 @@ export function escapeHtml(value) {
   return String(value ?? "").replace(ESCAPE_PATTERN, (ch) => HTML_ESCAPES[ch]);
 }
 
+// Escapes every "&" too, so the page shows exactly the characters of value.
+function escapeHtmlExact(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
+}
+
+// Characters that render as nothing but are still text to a model: format
+// characters (zero-width, bidi controls, Unicode tags), control characters
+// other than newline and tab, variation selectors, and the blank fillers.
+const INVISIBLE_PATTERN =
+  /[\p{Cf}\u0000-\u0008\u000B-\u001F\u007F-\u009F\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/gu;
+
+export function stripInvisible(value) {
+  return String(value ?? "").replace(INVISIBLE_PATTERN, "");
+}
+
+const DECODED_REFERENCES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+
+// The text a browser shows for a string escaped with escapeHtml, which keeps
+// well-formed character references. A reference this cannot decode is
+// dropped rather than kept, so the result never holds more than the page
+// showed.
+export function displayedText(value) {
+  const decoded = String(value ?? "").replace(
+    /&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/g,
+    (_, ref) => {
+      if (ref[0] !== "#") return DECODED_REFERENCES[ref] ?? "";
+      const codePoint = /^#[xX]/.test(ref) ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : "";
+    },
+  );
+  return stripInvisible(decoded);
+}
+
+function singleLine(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 let uidCounter = 0;
 
 export function uid(prefix = "mcc") {
@@ -975,13 +1012,16 @@ function renderCardShell(options) {
     });
   }
 
+  // The page shows each action's label and prompt as plain text, and the
+  // server sends the stored prompt, so both are stored as displayed.
   const config = {
     id,
+    revision: options.revision ?? uid("rev"),
     kind: options.kind,
     dwellMs: options.dwellMs ?? 1200,
     contextActions: (options.contextActions ?? []).map((action) => ({
-      label: String(action.label ?? ""),
-      prompt: String(action.prompt ?? ""),
+      label: stripInvisible(action.label),
+      prompt: stripInvisible(action.prompt),
     })),
     draggable: options.draggable !== false,
   };
@@ -1012,7 +1052,7 @@ ${body}
   return { id, articleHtml, config };
 }
 
-function finishCard(shellOptions, summary) {
+function finishCard(shellOptions, summary, extra = {}) {
   const { id, articleHtml, config } = renderCardShell(shellOptions);
   return {
     id,
@@ -1021,6 +1061,7 @@ function finishCard(shellOptions, summary) {
     articleHtml,
     config,
     summary,
+    ...extra,
   };
 }
 
@@ -1249,6 +1290,21 @@ function normalizeFieldOptions(options = []) {
   );
 }
 
+const CHOICE_FIELD_TYPES = new Set(["select", "checkbox", "radio"]);
+
+function fieldChoices(field, type) {
+  if (type === "select") return normalizeFieldOptions(field.options);
+  return normalizeFieldOptions(field.options ?? [{ label: field.label ?? field.name, value: "yes" }]);
+}
+
+// Choice values are keys the page posts back, not text the card shows.
+// escapeHtml leaves a character reference in place, and the browser then
+// decodes it, so the posted key would not match the stored value. Exact
+// escaping makes the control submit the stored value unchanged.
+function choiceValueAttribute(option) {
+  return escapeHtmlExact(option.value ?? option.label ?? "");
+}
+
 function renderFormField(field, formId) {
   const type = field.type ?? "text";
   const fieldId = `${formId}-${String(field.name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
@@ -1268,17 +1324,17 @@ function renderFormField(field, formId) {
 <textarea id="${fieldId}" name="${name}"${placeholder}${required}>${value}</textarea>${help}</div>`;
   }
   if (type === "select") {
-    const optionTags = normalizeFieldOptions(field.options)
+    const optionTags = fieldChoices(field, type)
       .map((option) => {
         const selected = option.value === field.value ? " selected" : "";
-        return `<option value="${escapeHtml(option.value ?? option.label)}"${selected}>${escapeHtml(option.label)}</option>`;
+        return `<option value="${choiceValueAttribute(option)}"${selected}>${escapeHtml(option.label)}</option>`;
       })
       .join("");
     return `<div class="mcc-field"><label for="${fieldId}">${label}${requiredMark}</label>
 <select id="${fieldId}" name="${name}"${required}>${optionTags}</select>${help}</div>`;
   }
   if (type === "checkbox" || type === "radio") {
-    const choiceOptions = normalizeFieldOptions(field.options ?? [{ label: field.label ?? field.name, value: "yes" }]);
+    const choiceOptions = fieldChoices(field, type);
     // Native required covers "pick one" radio groups and a lone confirmation
     // checkbox. A required multi-checkbox group means "check at least one",
     // which HTML cannot express (required on each box would demand all of
@@ -1290,7 +1346,7 @@ function renderFormField(field, formId) {
         const choiceId = `${fieldId}-${index}`;
         const checked = option.value === field.value ? " checked" : "";
         return `<label class="mcc-choice" for="${choiceId}">
-<input type="${type}" id="${choiceId}" name="${name}" value="${escapeHtml(option.value ?? option.label)}"${checked}${nativeRequired}>
+<input type="${type}" id="${choiceId}" name="${name}" value="${choiceValueAttribute(option)}"${checked}${nativeRequired}>
 ${escapeHtml(option.label)}</label>`;
       })
       .join("\n");
@@ -1303,24 +1359,59 @@ ${choices}${help}</fieldset>`;
 <input type="${escapeHtml(type)}" id="${fieldId}" name="${name}" value="${value}"${placeholder}${required}>${help}</div>`;
 }
 
+// What the server needs to build a submission's prompt, holding each string
+// as the card displays it. Hidden fields keep their value for
+// get_form_responses only.
+function formFieldSpec(field) {
+  const type = field.type ?? "text";
+  const spec = { name: String(field.name), type, label: singleLine(displayedText(field.label ?? field.name)) };
+  if (CHOICE_FIELD_TYPES.has(type)) {
+    spec.options = fieldChoices(field, type).map((option) => ({
+      value: String(option.value ?? ""),
+      label: singleLine(displayedText(option.label)),
+    }));
+  }
+  if (type === "hidden") spec.value = String(field.value ?? "");
+  return spec;
+}
+
 export function buildFormCard(options) {
   const title = requireTitle(options);
   const fields = Array.isArray(options.fields) ? options.fields : [];
   if (fields.length === 0) throw new Error("Provide at least one field.");
+  const names = new Set();
+  for (const field of fields) {
+    const name = String(field?.name ?? "");
+    if (name.length === 0) throw new Error("Every field needs a non-empty name.");
+    if (names.has(name)) throw new Error(`Field names must be unique; "${name}" is used more than once.`);
+    names.add(name);
+  }
 
   const formId = uid("form");
+  const revision = uid("rev");
   const fieldHtml = fields.map((field) => renderFormField(field, formId)).join("\n");
   const description = options.description ? `<p class="mcc-help">${escapeHtml(options.description)}</p>` : "";
-  const templateAttr = options.promptTemplate
-    ? ` data-prompt-template="${escapeHtml(options.promptTemplate)}"`
+  const promptTemplate = options.promptTemplate ? displayedText(options.promptTemplate) : null;
+  const templatePreview = promptTemplate
+    ? `<div class="mcc-form-preview"><p class="mcc-help">Submitting sends this message to the conversation, with your answers in place of the {{placeholders}}:</p>
+<pre>${escapeHtmlExact(promptTemplate)}</pre></div>`
     : "";
 
   const body = `<section class="mcc-block">
 ${description}
-<form class="mcc-form" data-card-title="${escapeHtml(title)}"${templateAttr}>
+<form class="mcc-form" data-card-revision="${escapeHtml(revision)}">
 ${fieldHtml}
+${templatePreview}
 <div>
 <button type="submit" class="mcc-btn mcc-btn-primary">${escapeHtml(options.submitLabel ?? "Submit")}</button>
+</div>
+<div class="mcc-form-review">
+<p class="mcc-help">This exact message will be sent to the conversation as your next prompt:</p>
+<pre></pre>
+<div>
+<button type="button" class="mcc-btn mcc-btn-primary mcc-confirm-send">Send</button>
+<button type="button" class="mcc-btn mcc-cancel-send">Edit answers</button>
+</div>
 </div>
 <p class="mcc-form-status" role="status" aria-live="polite"></p>
 <div class="mcc-form-fallback">
@@ -1337,14 +1428,85 @@ ${fieldHtml}
       subtitle: options.subtitle,
       kind: "form",
       body,
+      revision,
       contextActions: options.contextActions,
       // Forms stay pinned in place: dragging one away from its explanatory
       // neighbors invites mis-submissions.
       draggable: false,
     },
     `Created form card "${title}" with ${fields.length} field(s). ` +
-      "Submitting it sends the values back to the conversation as the next prompt.",
+      "Submitting it sends the visible values back to the conversation as the next prompt.",
+    {
+      form: {
+        title: singleLine(displayedText(title)),
+        promptTemplate,
+        fields: fields.map(formFieldSpec),
+      },
+    },
   );
+}
+
+function submittedList(raw, field) {
+  if (raw === undefined || raw === null) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  if (!list.every((value) => typeof value === "string")) {
+    throw new Error(`Field "${field.name}" must be submitted as text.`);
+  }
+  return list;
+}
+
+// Build the prompt for a form submission from the stored form spec and the
+// raw values the page posted. Only fields the user could see contribute:
+// hidden fields are left out, a choice contributes the label the user picked
+// (never its underlying value), and every value is JSON-quoted so it reads
+// as one piece of data however it is worded. The surrounding text is either
+// fixed here or the template the card displayed.
+export function buildFormSubmission(form, submitted) {
+  const raw = submitted && typeof submitted === "object" && !Array.isArray(submitted) ? submitted : {};
+  const values = {};
+  const visible = new Map();
+  const lines = [];
+  for (const field of form.fields) {
+    if (field.type === "hidden") {
+      values[field.name] = field.value;
+      continue;
+    }
+    const list = submittedList(Object.hasOwn(raw, field.name) ? raw[field.name] : undefined, field);
+    let text;
+    if (field.options) {
+      if (field.type !== "checkbox" && list.length > 1) {
+        throw new Error(`Field "${field.name}" accepts one choice.`);
+      }
+      text = list
+        .map((value) => {
+          const option = field.options.find((candidate) => candidate.value === value);
+          if (!option) throw new Error(`Field "${field.name}" has no such option.`);
+          return option.label;
+        })
+        .join(", ");
+    } else {
+      if (list.length > 1) throw new Error(`Field "${field.name}" accepts one value.`);
+      text = stripInvisible(list[0] ?? "");
+    }
+    values[field.name] = text;
+    visible.set(field.name, text);
+    lines.push(`- ${field.label}: ${JSON.stringify(text)}`);
+  }
+
+  const prompt = form.promptTemplate
+    ? form.promptTemplate.replace(/\{\{([^{}]*)\}\}/g, (token, name) =>
+        visible.has(name) ? JSON.stringify(visible.get(name)) : token,
+      )
+    : `Form ${JSON.stringify(form.title)} submitted. Each value is quoted exactly as the user entered or chose it:\n` +
+      lines.join("\n");
+  return { prompt, values };
+}
+
+// Build the prompt for a context action from the stored action, which the
+// menu displayed in full. The user's selection is JSON-quoted.
+export function buildContextActionPrompt(action, selection) {
+  const quoted = JSON.stringify(stripInvisible(typeof selection === "string" ? selection : ""));
+  return action.prompt.split("{{selection}}").join(quoted);
 }
 
 export function buildRevealCard(options) {

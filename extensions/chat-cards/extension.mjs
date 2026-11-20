@@ -24,7 +24,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { joinSession, createCanvas } from "@github/copilot-sdk/extension";
-import { buildCard, CARD_BUILDERS } from "./cards-core.mjs";
+import {
+  buildCard,
+  buildContextActionPrompt,
+  buildFormSubmission,
+} from "./cards-core.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CANVAS_PAGE = readFileSync(path.join(__dirname, "assets", "canvas.html"), "utf8");
@@ -437,7 +441,7 @@ const TUTOR_TERMS_SCHEMA = {
 const CONTEXT_ACTIONS_SCHEMA = {
   type: "array",
   description:
-    "Right-click actions for the card. Choosing one sends its prompt to the conversation; {{selection}} in a prompt is replaced with the user's selected text.",
+    "Right-click actions for the card. The menu shows each action's prompt under its label, and choosing one sends that prompt to the conversation; {{selection}} in a prompt is replaced with the user's selected text, quoted.",
   items: {
     type: "object",
     properties: {
@@ -544,7 +548,8 @@ const FORM_CARD_PROPERTIES = {
   submitLabel: { type: "string" },
   promptTemplate: {
     type: "string",
-    description: "Prompt sent on submit; {{fieldName}} tokens are replaced with values",
+    description:
+      "Prompt sent on submit, shown in full on the card; {{fieldName}} tokens of visible fields are replaced with the quoted values",
   },
   fields: {
     type: "array",
@@ -552,15 +557,18 @@ const FORM_CARD_PROPERTIES = {
     items: {
       type: "object",
       properties: {
-        name: { type: "string" },
+        name: { type: "string", description: "Unique field name" },
         label: { type: "string" },
         type: {
           type: "string",
           enum: ["text", "textarea", "select", "checkbox", "radio", "number", "email", "url", "date", "hidden"],
+          description:
+            "Hidden fields are kept with the submission for get_form_responses but never sent in the prompt",
         },
         options: {
           type: "array",
-          description: "Choices for select/checkbox/radio; strings or { label, value } objects",
+          description:
+            "Choices for select/checkbox/radio; strings or { label, value } objects. The prompt carries the chosen label; get_form_responses reports the label too",
           items: {},
         },
         required: { type: "boolean" },
@@ -728,8 +736,9 @@ const canvas = createCanvas({
       "create_form_card",
       "form",
       "Render a form card the user fills in to give the conversation context and direction. " +
-        "Submitting sends the values back to the conversation as the next prompt (optionally shaped " +
-        "by promptTemplate with {{fieldName}} tokens). Check get_form_responses if no prompt arrives.",
+        "Submitting sends the visible values back to the conversation as the next prompt (optionally " +
+        "shaped by promptTemplate with {{fieldName}} tokens; the card shows the template). Check " +
+        "get_form_responses if no prompt arrives.",
       FORM_CARD_PROPERTIES,
       ["title", "fields"],
     ),
@@ -941,6 +950,34 @@ function readJsonBody(req) {
   });
 }
 
+// The card a canvas request acts on, provided it is still the revision the
+// page displayed. Answers the request and returns null otherwise.
+function shownCard(res, instance, body) {
+  const card = instance.cards.find((candidate) => candidate.id === body.cardId);
+  if (!card) {
+    json(res, 404, { error: "This card is no longer in the deck." });
+    return null;
+  }
+  const revision = card.config?.revision;
+  if (typeof revision !== "string" || body.revision !== revision) {
+    json(res, 409, { error: "This card changed after it was shown. Review it and try again." });
+    return null;
+  }
+  return card;
+}
+
+function sendablePrompt(res, prompt) {
+  if (!prompt.trim()) {
+    json(res, 400, { error: "There is nothing to send." });
+    return false;
+  }
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    json(res, 413, { error: `The message would exceed ${MAX_PROMPT_CHARS} characters.` });
+    return false;
+  }
+  return true;
+}
+
 // A panel's server answers for exactly one canvas instance: the id is
 // bound when the server is created rather than taken from the request.
 // Ports are recycled as panels close and reopen, so a page orphaned by an
@@ -996,21 +1033,42 @@ async function handleCanvasRequest(req, res, servedInstanceId) {
       return;
     }
 
+    // A click sends a prompt as the user's own turn, so the page never
+    // supplies prompt text. The page names the card and the revision it
+    // displayed; the prompt is built here from that card as stored, and a
+    // card the agent re-rendered since is refused rather than sent.
+    //
+    // A form submission takes two requests. Without "confirm" the prompt is
+    // only built and returned for the page to show in full (a long default
+    // value can sit out of view in its input). With it, the prompt is built
+    // again and sent only if it is the one the user reviewed.
     if (req.method === "POST" && url.pathname === "/api/submit") {
       const body = await readJsonBody(req);
-      const prompt = String(body.prompt ?? "").slice(0, MAX_PROMPT_CHARS);
-      if (!prompt.trim()) {
-        json(res, 400, { error: "A non-empty prompt is required." });
+      const card = shownCard(res, instance, body);
+      if (!card) return;
+      if (!card.form) {
+        json(res, 409, { error: "This card cannot be submitted. Ask the agent to create the form again." });
         return;
       }
-      const cardId = typeof body.cardId === "string" ? body.cardId : null;
-      const cardIndex = cardId ? findCardIndex(instance, cardId) : -1;
-      const values = body.values && typeof body.values === "object" && !Array.isArray(body.values) ? body.values : {};
+      const { prompt, values } = buildFormSubmission(card.form, body.values);
+      if (!sendablePrompt(res, prompt)) return;
+      const digest = crypto
+        .createHash("sha256")
+        .update(`${card.id}\n${card.config.revision}\n${prompt}`)
+        .digest("hex");
+      if (body.confirm === undefined) {
+        json(res, 200, { ok: true, review: true, prompt, confirm: digest });
+        return;
+      }
+      if (body.confirm !== digest) {
+        json(res, 409, { error: "The message differs from the one you reviewed. Submit again to review it." });
+        return;
+      }
       const delivered = await sendPrompt(prompt);
       instance.submissions.push({
         id: crypto.randomBytes(6).toString("hex"),
-        cardId,
-        cardTitle: cardIndex === -1 ? null : instance.cards[cardIndex].title,
+        cardId: card.id,
+        cardTitle: card.title,
         values,
         prompt,
         delivered,
@@ -1018,17 +1076,22 @@ async function handleCanvasRequest(req, res, servedInstanceId) {
       });
       while (instance.submissions.length > MAX_SUBMISSIONS) instance.submissions.shift();
       markDirty(instance);
-      json(res, 200, { ok: true, delivered });
+      json(res, 200, { ok: true, delivered, prompt });
       return;
     }
 
-    if (req.method === "POST" && url.pathname === "/api/prompt") {
+    if (req.method === "POST" && url.pathname === "/api/context-action") {
       const body = await readJsonBody(req);
-      const prompt = String(body.prompt ?? "").slice(0, MAX_PROMPT_CHARS);
-      if (!prompt.trim()) {
-        json(res, 400, { error: "A non-empty prompt is required." });
+      const card = shownCard(res, instance, body);
+      if (!card) return;
+      const actions = Array.isArray(card.config?.contextActions) ? card.config.contextActions : [];
+      const action = Number.isInteger(body.action) ? actions[body.action] : undefined;
+      if (!action) {
+        json(res, 400, { error: "This card has no such action." });
         return;
       }
+      const prompt = buildContextActionPrompt(action, body.selection);
+      if (!sendablePrompt(res, prompt)) return;
       const delivered = await sendPrompt(prompt);
       json(res, 200, { ok: true, delivered });
       return;

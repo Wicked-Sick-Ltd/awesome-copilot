@@ -33,8 +33,9 @@ Every card keeps the signature interactions of the MCP version: a "Copy card" bu
 copies the card as a standalone HTML document, a `</>` toggle that shows the card's own
 HTML source, a collapse toggle, drag to reorder cards in the deck, tutor terms that show
 tooltips after a hover dwell, and model-defined right-click actions that send prompts back
-to the conversation (`{{selection}}` in an action prompt is replaced with the user's
-selected text). The deck has a light and a dark theme.
+to the conversation. The menu shows each action's prompt under its label, and
+`{{selection}}` in an action prompt is replaced with the user's selected text, quoted. The
+deck has a light and a dark theme.
 
 ## Example action inputs
 
@@ -65,9 +66,22 @@ selected text). The deck has a light and a dark theme.
 }
 ```
 
-When the user submits the form, the filled template is handed to the agent as the next
-prompt. If the handoff fails, the card reveals the prompt text with a copy button, and the
-agent can always read submissions later with `get_form_responses`.
+The card shows the template under the fields. When the user submits the form, the card
+first shows the exact message it will send (for a topic of closures, `Teach "closures"
+with "practical" examples.`); choosing **Send** hands that message to the agent as the next prompt. Without a
+template, the message lists each visible field's label with its quoted value. If the
+handoff fails, the card reveals the message with a copy button, and the agent can always
+read submissions later with `get_form_responses`.
+
+Only what the user can see goes into the message:
+
+- Hidden fields are never sent. Their values are kept with the submission and reported by
+  `get_form_responses`.
+- A select, radio, or checkbox choice sends the label the user picked, not its `value`.
+- Every value is JSON-quoted, and characters that render as nothing (zero-width and bidi
+  controls, Unicode tag characters, variation selectors) are removed.
+- The extension builds the message from the card it stored. If the agent re-renders the
+  card after the user saw it, the submission is refused and the user reviews it again.
 
 ## Installation
 
@@ -141,6 +155,11 @@ extension/
 - All model- and user-supplied text is HTML-escaped before it reaches card markup, and the
   markdown renderer emits only escaped text nodes.
 - The canvas page loads no external scripts, stylesheets, or fonts.
+- A click in the canvas sends a prompt as the user's own turn, so the page never supplies
+  prompt text. It names the card, the card revision it displayed, and the raw field values
+  or action index; the extension builds the prompt from the stored card, refuses a card
+  revision the user did not see, and sends a form message only after the user has reviewed
+  it in full.
 - Prompts sent from the canvas (form submissions and context actions) are length-capped.
 
 ## Development
@@ -149,6 +168,13 @@ The rendering core has no SDK dependency, so it can be exercised directly:
 
 ```bash
 node -e "import('./cards-core.mjs').then(m => console.log(m.buildTableCard({ title: 'Demo', rows: [['a', 'b']] }).summary))"
+```
+
+`eng/chat-cards-prompt-authority.test.mjs` in this repository loads the extension with a
+stubbed SDK and drives the canvas page in headless Chrome (skipped when Chrome is missing):
+
+```bash
+node --test eng/chat-cards-prompt-authority.test.mjs
 ```
 
 To run the extension itself, follow [Installation](#installation) above.
