@@ -26,7 +26,7 @@ Your job is the **Measure** step, surfaced as a beautiful static HTML report tha
    ```bash
    npx -y github:microsoft/agentrc readiness --json [--policy <path-or-pkg>] [--per-area]
    ```
-   Capture the entire `CommandResult<T>` JSON envelope.
+   Save the entire `CommandResult<T>` JSON envelope to a file in the OS temp directory (for example `$TMPDIR/agentrc.json`), not in the repository.
 
 3. **Read repo context** — load `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `agentrc.config.json`, and any policy JSON referenced. This lets you describe the *current state* per pillar precisely (e.g. "AGENTS.md present, 412 lines, last modified 3 weeks ago").
 
@@ -35,15 +35,9 @@ Your job is the **Measure** step, surfaced as a beautiful static HTML report tha
    - its impact weight (`critical` 5, `high` 4, `medium` 3, `low` 2, `info` 0),
    - a Fix First / Fix Next / Plan / Backlog bucket (see severity matrix).
 
-5. **Produce `reports/index.html`** using the HTML template below. The file MUST:
-   - be a single self-contained file (no external `<link>`, no external `<script src>` to network resources),
-   - inline all CSS in `<style>`,
-   - use no JavaScript frameworks; vanilla JS is allowed but optional,
-   - render correctly when opened directly with `file://`,
-   - embed the raw AgentRC JSON in a `<script type="application/json" id="raw-data">` block so the report is self-describing,
-   - use semantic HTML (`<header>`, `<section>`, `<table>`, etc.) and accessible colour contrast.
+5. **Produce `reports/index.html`** with the bundled renderer (see *HTML Template* below). The renderer produces a single self-contained file that inlines all CSS, renders under `file://`, and embeds the raw AgentRC JSON in a `<script type="application/json" id="raw-data">` block.
 
-6. **Create the `reports/` directory** if it doesn't exist. Write the file via the editFiles tool.
+6. **Run the renderer**; it creates `reports/` if it doesn't exist. Do not write or edit `reports/index.html` yourself.
 
 7. **Confirm** in chat with: maturity level + name, overall score, top 3 lowest pillars, applied policy (if any), and the file path. Suggest the next AgentRC step (typically `agentrc instructions` via the `generate-instructions` skill).
 
@@ -159,24 +153,25 @@ The look & feel of `reports/index.html` is **fixed** and shared across all consu
 skills/acreadiness-assess/report-template.html
 ```
 
-(When the plugin is materialized into a Copilot install, the template is available alongside the skill. Read it via the `read` tool.)
+(When the plugin is materialized into a Copilot install, the template and its renderer are available alongside the skill.)
+
+The template is rendered by `render-report.mjs`, which ships next to it in the same skill folder. The renderer encodes every value for the context it lands in: HTML text and attributes are escaped, class names come from fixed allowlists, and the AgentRC JSON is re-serialized so it cannot close the `<script>` element that holds it. Scan output and repository text (policy names, criterion titles, file names, README content) are untrusted and can contain markup, so this encoding must happen in code.
 
 You MUST:
 
-1. **Read** `report-template.html` from the plugin root using the `read` tool.
-2. **Substitute every `{{placeholder}}`** with concrete data from the AgentRC JSON. Repeat the marked blocks (pillar cards, plan rows, maturity rows, extras rows) once per item. Remove the *Active Policy* `<section>` entirely if no policy is active.
-3. **Write the substituted result** to `reports/index.html` using the `editFiles` tool. Create `reports/` if missing.
+1. **Write a values JSON file** in the OS temp directory (not in the repository) with the placeholders listed below. Put pillar cards in `repoHealthPillars` and `aiSetupPillars` (arrays of objects keyed by the per-pillar placeholder names), extras in `extras` (`{ "extraName": "agents-doc", "extraPresent": true }`), and plan rows in `fixFirst`, `fixNext`, and `plan` (`{ "planFinding", "planFile", "planWhy" }`). Leave out `policyName` when no policy is active; the renderer then drops the *Active Policy* section. Maturity rows are derived from `level`.
+2. **Run the renderer** from the repo root:
+   ```bash
+   node <acreadiness-assess skill folder>/render-report.mjs --values <values.json> --raw <agentrc.json> --out reports/index.html
+   ```
+3. **Do not** substitute placeholders yourself, paste values into the template, or edit the rendered file afterwards. If the renderer reports a missing value, add it to the values file and run it again.
 
 Hard rules — do **not** deviate:
 
-- Do not change the HTML structure, class names, CSS variables, or the `<style>` block.
+- Do not change the template's HTML structure, class names, CSS variables, or the `<style>` block.
 - Do not add tabs, toggles, theme switches, dark/light variants, or extra navigation. The report is a single, unified view.
 - Do not add external CSS, fonts, JS frameworks, or analytics. The file must open with `file://` and have zero network dependencies.
-- Preserve the embedded `<script type="application/json" id="raw-data">…</script>` block so the report is self-describing.
-- **Escape every substituted value** before inserting it into the template:
-  - HTML-escape `&`, `<`, `>`, `"`, and `'` in all `{{placeholder}}` substitutions destined for HTML body content or attribute values (e.g. `{{repoName}}`, `{{pillarCurrent}}`, `{{pillarRecommendation}}`, `{{policySummary}}`, `{{rawJsonPretty}}`).
-  - For `{{rawJsonCompact}}` (which lives inside the `<script type="application/json">` block), replace any `</script` substring with `<\/script` to prevent the script tag from being closed early. Do NOT HTML-escape inside this block — the JSON must remain valid.
-  - Never substitute raw user-controlled strings (filenames, commit messages, recommendations) without escaping. A repo with `<img onerror=…>` in a filename must NOT produce executable HTML in the report.
+- Pass values as plain text. Do not add HTML markup or entities to them; the renderer escapes them and markup would show literally.
 
 Placeholders the template uses (all required unless marked optional):
 
@@ -187,10 +182,10 @@ Placeholders the template uses (all required unless marked optional):
 | `{{level}}` / `{{levelName}}` | AgentRC maturity level number + name |
 | `{{overallPct}}` / `{{grade}}` | overall score as integer percent + letter grade |
 | `{{passRate}}` / `{{threshold}}` | pass rate vs policy threshold, fully-formatted (e.g. `85%` or `—` if N/A). The literal `%` is part of the substituted value, not the template. |
-| `{{policyName}}` / `{{policySummary}}` | only if a policy is active; otherwise omit the policy section |
-| `{{rawJsonCompact}}` / `{{rawJsonPretty}}` | embed the AgentRC JSON envelope |
+| `{{policyName}}` / `{{policySummary}}` | only if a policy is active; otherwise leave both out |
+| `{{rawJsonCompact}}` / `{{rawJsonPretty}}` | filled by the renderer from `--raw <agentrc.json>` |
 
-Per-pillar placeholders (repeat the `.pillar` block once per pillar):
+Per-pillar placeholders (one object per pillar in `repoHealthPillars` / `aiSetupPillars`):
 
 | Placeholder | Source |
 |---|---|
@@ -208,12 +203,12 @@ Per-pillar placeholders (repeat the `.pillar` block once per pillar):
 ## Operating Rules
 
 1. **Always run `agentrc readiness --json`** — never fabricate data.
-2. **Always render via the bundled `report-template.html`** (in the `acreadiness-assess` skill folder) — load the template, substitute placeholders, write to `reports/index.html`. Don't author HTML from scratch.
+2. **Always render via the bundled `render-report.mjs` and `report-template.html`** (in the `acreadiness-assess` skill folder) — write the values file and run the renderer. Don't author or splice HTML yourself.
 3. **Explain every pillar** — use the full per-pillar paragraph from the table above, plus *current state* and *specific recommendation*. No one-liners.
 4. **Tag each pillar with its AI relevance** (`high` / `medium` / `low`) so the badge matches the table above.
 5. **Connect every Repo Health finding to AI impact** — repo health is not generic devops here; frame it through how it helps Copilot and other agents.
 6. **Honour policies** — if a policy is in scope, reflect its disable/override/threshold rules in the rendered report.
 7. **Show extras separately** — they never affect the score; never list them as gaps.
 8. **Frame next steps via AgentRC's loop** — Measure (this report) → Generate (`agentrc instructions`) → Maintain (CI `--fail-level`).
-9. **Only write `reports/index.html`** — do not modify any other files. Create the `reports/` directory if missing.
+9. **Only write `reports/index.html`** (via the renderer) — do not modify any other files. Temporary values and scan files go in the OS temp directory.
 10. **No fluff** — every paragraph in the report must add concrete information.
