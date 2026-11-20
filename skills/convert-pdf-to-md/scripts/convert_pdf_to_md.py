@@ -43,17 +43,24 @@ Output:
     --recursive is used.
   - If a document has no embedded images, no "img/" folder or "Extracted
     Images" section is created.
+  - The "<name>/" destination folder must not already exist. If it does
+    (for example from an earlier run, or an unrelated folder with the same
+    name), that document fails and the existing folder is left untouched.
+    Documents whose name has no usable stem (e.g. "..pdf") are rejected.
 
 Exit codes:
   0 - all requested conversions succeeded
-  1 - one or more conversions failed (partial success in batch mode)
+  1 - one or more conversions failed (partial success in batch mode),
+      including when a destination folder already exists
   2 - a required dependency ("markitdown" or "pymupdf") is not installed
   3 - invalid input (path not found, or single-file input is not .pdf)
 """
 import argparse
-import sys
 import hashlib
+import os
 import shutil
+import sys
+import tempfile
 from pathlib import Path
 
 EXIT_OK = 0
@@ -107,6 +114,7 @@ def extract_images(fitz, pdf_path: Path, img_dir: Path):
   Deduplication is by image bytes hash so the same raster is never written twice
   on the same page regardless of which source reported it."""
   written_by_page = {}
+  img_dir_created = False
   try:
     doc = fitz.open(str(pdf_path))
   except Exception as exc:  # noqa: BLE001
@@ -179,8 +187,11 @@ def extract_images(fitz, pdf_path: Path, img_dir: Path):
           continue
         seen_hashes.add(h)
         out_name = f"page{page_label:03d}_img{img_idx:03d}.{ext}"
-        img_dir.mkdir(parents=True, exist_ok=True)
-        (img_dir / out_name).write_bytes(img_bytes)
+        if not img_dir_created:
+          img_dir.mkdir()
+          img_dir_created = True
+        with open(img_dir / out_name, "xb") as fh:
+          fh.write(img_bytes)
         page_files.append(out_name)
         img_idx += 1
 
@@ -206,29 +217,92 @@ def build_image_appendix(written_by_page) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _has_usable_stem(source: Path) -> bool:
+    """Reject stems such as "." or ".." (from "..pdf" / "...pdf") that
+    would make "<parent>/<stem>" resolve to an existing ancestor folder.
+    Trailing dots and spaces are stripped by Windows, so those count too."""
+    return bool(source.stem.strip(". "))
+
+
+def _publish_new_output(source: Path, dest_dir: Path, write):
+    """Write into a private directory, then rename it to dest_dir.
+
+    dest_dir appears only after write() finishes, so a failed conversion does
+    not leave a folder that blocks a retry. An existing dest_dir is never
+    deleted or written into.
+    """
+    if dest_dir.exists() or dest_dir.is_symlink():
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return None
+    staging = None
+    try:
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f".{dest_dir.name}.", dir=dest_dir.parent))
+        md_path = write(staging)
+        relative = md_path.relative_to(staging)
+        os.rename(staging, dest_dir)
+        staging = None
+        return dest_dir / relative
+    except FileExistsError:
+        print(
+            f"FAILED  {source} -> output folder {dest_dir} already exists; "
+            "it was left untouched. Move or remove it, or pass -o with a new "
+            "folder path",
+            file=sys.stderr,
+        )
+        return None
+    except OSError as exc:
+        print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
+        return None
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def convert_one(md, fitz, source: Path, dest_dir: Path) -> bool:
     """Convert a single .pdf file to a '<name>/' folder containing the
     Markdown file and an 'img/' folder of extracted images. Returns True on
-    success."""
+    success.
+
+    dest_dir must not exist yet. Output is written in a private directory and
+    renamed into place, so an existing folder is never deleted or written into,
+    and a failed conversion does not leave a folder behind."""
+    if not _has_usable_stem(source):
+        print(
+            f"FAILED  {source} -> file name has no usable stem for an output "
+            "folder; rename the file and try again",
+            file=sys.stderr,
+        )
+        return False
+
     try:
         result = md.convert(str(source))
     except Exception as exc:  # noqa: BLE001 - surface any conversion error
         print(f"FAILED  {source} -> {exc}", file=sys.stderr)
         return False
 
-    try:
-        if dest_dir.exists():
-            shutil.rmtree(dest_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        written_by_page = extract_images(fitz, source, dest_dir / "img")
+    notes = {}
+
+    def write(staging: Path) -> Path:
+        written_by_page = extract_images(fitz, source, staging / "img")
+        notes["pages"] = written_by_page
         appendix = build_image_appendix(written_by_page)
         text = result.text_content.rstrip("\n")
         full_text = f"{text}\n{appendix}" if appendix else f"{text}\n"
-        md_path = dest_dir / f"{source.stem}.md"
-        md_path.write_text(full_text, encoding="utf-8")
-    except OSError as exc:
-        print(f"FAILED  {source} -> could not write output in {dest_dir}: {exc}", file=sys.stderr)
+        md_path = staging / f"{source.stem}.md"
+        with open(md_path, "x", encoding="utf-8") as fh:
+            fh.write(full_text)
+        return md_path
+
+    md_path = _publish_new_output(source, dest_dir, write)
+    if md_path is None:
         return False
+    written_by_page = notes["pages"]
 
     img_count = sum(len(v) for v in written_by_page.values())
     img_note = f", {img_count} image(s)" if img_count else ""
