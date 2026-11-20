@@ -18,7 +18,8 @@ On the `preToolUse` event the hook receives the tool invocation as JSON on stdin
 - **Fails open (exit 0)** when the free daily quota is spent, the API is unreachable, or the payload is unusable. It never blocks on these.
 - Python: skips standard library modules and relative imports. JS/TS: skips relative paths, absolute paths, and node builtins; `@scope/name` handled.
 - Answers are cached at `~/.cache/attester-import-check/cache.json` (exists 30 days, negatives 1 day) so repeated edits do not burn the free quota.
-- Allowlist import names that differ from their registry package (`yaml`, `PIL`, `cv2`) via `.attester-allowlist` in the workspace root, one per line.
+- Allowlist import names that differ from their registry package (`yaml`, `PIL`, `cv2`) in `~/.config/attester-import-check/allowlist`, one per line (`#` starts a comment). The allowlist lives outside the repository on purpose: a cloned project or an agent edit cannot grant an exception. A `.attester-allowlist` file in the workspace is ignored.
+- **Blocks (exit 1)** any tool call that targets the allowlist or answer cache directories, so the agent cannot add its own exceptions or forge cached answers.
 
 ## Free quota and the paid path
 
@@ -83,7 +84,7 @@ echo '{"toolName":"write_file","toolInput":{"path":"main.py","content":"import r
 ```
 
 ```
-attester-import-check: 'requestsx_fantasy_helper' does not exist on PyPI (attester.dev oracle). Remove or fix the import, or add the name to .attester-allowlist if this is a false positive.
+attester-import-check: 'requestsx_fantasy_helper' does not exist on PyPI (attester.dev oracle). Remove or fix the import. If this is a false positive, the user can add the name to /home/you/.config/attester-import-check/allowlist.
 ```
 
 ### Real package (exit 0)
@@ -101,7 +102,8 @@ attester-import-check: attester quota exhausted, unchecked
 
 ## Limitations
 
-- Import names that differ from distribution names (`yaml` for PyYAML, `PIL` for Pillow) can warn falsely; allowlist them.
+- Import names that differ from distribution names (`yaml` for PyYAML, `PIL` for Pillow) can warn falsely; add them to `~/.config/attester-import-check/allowlist`.
+- Tool-call inspection is string matching: a shell command that builds the allowlist path indirectly (for example from variables) is not recognized. The same applies to imports written through shell commands, which this hook does not parse.
 - Python dynamic imports (`__import__`, `importlib.import_module`) and bundler path aliases are not resolved.
 - The hook checks names against a public registry oracle; private packages are "not found" there by design.
 

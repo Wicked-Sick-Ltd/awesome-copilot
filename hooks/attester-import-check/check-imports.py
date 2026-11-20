@@ -11,6 +11,11 @@ that blocks the wrong operation is worse than one that misses one.
 Stdlib only. Answers are cached at ~/.cache/attester-import-check/cache.json
 (exists 30 days, negatives 1 day) so repeated edits do not burn quota.
 
+Allowlisted names are read only from ~/.config/attester-import-check/allowlist.
+A workspace file is repository content and is never trusted to skip the
+oracle, and tool calls that target the allowlist or cache are blocked so the
+agent cannot grant itself an exception.
+
 Env:
     ATTESTER_MODE=block|warn          default block (warn never blocks)
     ATTESTER_BASE_URL                 default https://attester.dev
@@ -30,6 +35,15 @@ from pathlib import Path
 
 BASE_URL = os.environ.get("ATTESTER_BASE_URL", "https://attester.dev").rstrip("/")
 CACHE_PATH = Path.home() / ".cache" / "attester-import-check" / "cache.json"
+ALLOWLIST_PATH = Path.home() / ".config" / "attester-import-check" / "allowlist"
+STATE_DIRS = (CACHE_PATH.parent, ALLOWLIST_PATH.parent)
+STATE_MARKERS = (
+    ".cache/attester-import-check",
+    ".config/attester-import-check",
+    "attester-import-check/allowlist",
+    "attester-import-check/cache",
+)
+WORKSPACE_ALLOWLIST = ".attester-allowlist"
 TTL_POSITIVE_S = 30 * 24 * 3600
 TTL_NEGATIVE_S = 24 * 3600
 TIMEOUT_S = 10.0
@@ -158,14 +172,72 @@ def oracle(package: str, ecosystem: str, cache: dict):
 
 
 def load_allowlist() -> set[str]:
-    path = Path.cwd() / ".attester-allowlist"
-    if not path.is_file():
+    try:
+        text = ALLOWLIST_PATH.read_text(errors="replace")
+    except OSError:
         return set()
     return {
         line.strip()
-        for line in path.read_text(errors="replace").splitlines()
+        for line in text.splitlines()
         if line.strip() and not line.strip().startswith("#")
     }
+
+
+def _fold(text: str) -> str:
+    # Case-insensitive filesystems (macOS, Windows defaults) map other casings to the same file.
+    return text.replace("\\", "/").casefold()
+
+
+def _inside(path: Path, directory: Path) -> bool:
+    path_s, dir_s = _fold(str(path)).rstrip("/"), _fold(str(directory)).rstrip("/")
+    return path_s == dir_s or path_s.startswith(dir_s + "/")
+
+
+CONTENT_KEYS = {"content", "contents", "text", "body", "old_string", "new_string", "old_str", "new_str", "patch"}
+COMMAND_KEYS = {"command", "cmd", "script"}
+_PATH_TOKEN = re.compile(r"~?[A-Za-z0-9._~-]*(?:/|\\)[^\s\"'`|&;<>]+")
+
+
+def _token_targets_state(token: str, state_dirs) -> bool:
+    """True when a path token names the allowlist or cache, after . and .. are collapsed."""
+    cleaned = token.strip().strip("'\"")
+    if not cleaned:
+        return False
+    expanded = os.path.expanduser(cleaned)
+    folded = _fold(os.path.normpath(expanded))
+    if any(marker in folded for marker in (_fold(marker) for marker in STATE_MARKERS)):
+        return True
+    try:
+        target = Path(expanded)
+        if not target.is_absolute():
+            target = Path.cwd() / target
+        target = target.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return any(_inside(target, directory) for directory in state_dirs)
+
+
+def targets_hook_state(tool_input) -> str | None:
+    """Return the offending string when a tool call reaches the allowlist or cache.
+
+    Path fields and shell commands are checked after normalization, so /./, //,
+    and .. cannot hide the real path. File contents are not scanned: a write
+    that only mentions the path is not a write to it.
+    """
+    state_dirs = [d.resolve() for d in STATE_DIRS]
+    for key, value in walk_strings(tool_input):
+        if key in CONTENT_KEYS:
+            continue
+        if key in PATH_KEYS:
+            candidates = [value]
+        elif key in COMMAND_KEYS:
+            candidates = _PATH_TOKEN.findall(value)
+        else:
+            continue
+        for candidate in candidates:
+            if _token_targets_state(candidate, state_dirs):
+                return value
+    return None
 
 
 def main() -> int:
@@ -174,6 +246,15 @@ def main() -> int:
     except (ValueError, OSError):
         return 0
     tool_input = payload.get("toolInput") or payload.get("tool_input") or {}
+    warn_only = os.environ.get("ATTESTER_MODE", "block").lower() == "warn"
+
+    if targets_hook_state(tool_input) is not None:
+        print(
+            "attester-import-check: tool call targets the hook's allowlist or answer cache"
+            f" ({ALLOWLIST_PATH.parent} or {CACHE_PATH.parent}). Only the user edits these.",
+            file=sys.stderr,
+        )
+        return 0 if warn_only else 1
 
     filename = ""
     code_chunks: list[str] = []
@@ -205,9 +286,14 @@ def main() -> int:
         return 0
 
     allowlist = load_allowlist()
+    if (Path.cwd() / WORKSPACE_ALLOWLIST).exists():
+        print(
+            f"attester-import-check: ignoring workspace {WORKSPACE_ALLOWLIST};"
+            f" allowlisted names are read only from {ALLOWLIST_PATH}.",
+            file=sys.stderr,
+        )
     cache = load_cache()
     findings: list[tuple[str, str, list[str]]] = []
-    warn_only = os.environ.get("ATTESTER_MODE", "block").lower() == "warn"
     try:
         for package in sorted(candidates):
             if package in allowlist:
@@ -229,7 +315,10 @@ def main() -> int:
         msg = f"attester-import-check: '{package}' does not exist on {registry} (attester.dev oracle)."
         if adjacent:
             msg += f" Closest real name: {', '.join(adjacent)}."
-        msg += " Remove or fix the import, or add the name to .attester-allowlist if this is a false positive."
+        msg += (
+            " Remove or fix the import. If this is a false positive, the user can add the name"
+            f" to {ALLOWLIST_PATH}."
+        )
         print(msg, file=sys.stderr)
     if findings and not warn_only:
         return 1
