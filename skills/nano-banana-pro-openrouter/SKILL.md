@@ -68,7 +68,7 @@ If the script exits non-zero, check stderr against these common blockers:
 | Symptom | Resolution |
 |---------|------------|
 | `OPENROUTER_API_KEY is not set` | Ask the user to set it. PowerShell: `$env:OPENROUTER_API_KEY = "sk-or-..."` / bash: `export OPENROUTER_API_KEY="sk-or-..."` |
-| `uv: command not found` or not recognized | macOS/Linux: <code>curl -LsSf https://astral.sh/uv/install.sh &#124; sh</code>. Windows: <code>powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 &#124; iex"</code>. Then restart the terminal. |
+| `uv: command not found` or not recognized | Stop and ask the user to install uv, then retry once `uv --version` works. Do not download or run an installer script yourself. Suggest they install a specific uv version, for example by downloading its release asset from <https://github.com/astral-sh/uv/releases> and checking it against the matching `.sha256` file before running it. |
 | `AuthenticationError` / HTTP 401 | Key is invalid or has no credits. Verify at <https://openrouter.ai/settings/keys>. |
 
 For transient errors (HTTP 429, network timeouts), retry once after 30 seconds. Do not retry the same error more than twice — surface the issue to the user instead.
