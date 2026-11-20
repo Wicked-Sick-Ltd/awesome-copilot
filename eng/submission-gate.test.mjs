@@ -516,7 +516,7 @@ test("evaluateSubmission reaches approved when checks pass and approvals exist",
   const github = fakeGithub({
     pr: basePr,
     files: [file("docs/a.md")],
-    reviews: [review("alice", "APPROVED")],
+    reviews: [review("alice", "APPROVED", undefined, { commit_id: basePr.head.sha })],
     permissions: { alice: "write" },
     runs: [
       run(1, "check-line-endings.yml", "success"),
@@ -879,7 +879,10 @@ test("a successful contributor check with an unreadable artifact fails closed", 
     run(2, "validate-readme.yml", "success"),
     run(3, "contributor-check.yml", "success"),
   ];
-  const approved = { reviews: [review("alice", "APPROVED")], permissions: { alice: "write" } };
+  const approved = {
+    reviews: [review("alice", "APPROVED", undefined, { commit_id: basePr.head.sha })],
+    permissions: { alice: "write" },
+  };
   const options = { owner: "github", repo: "awesome-copilot", pullNumber: 7, config, finalized: true, readContributorRisk: () => null };
 
   const lost = await evaluateSubmission(
