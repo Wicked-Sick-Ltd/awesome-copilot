@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { CopilotClient, RuntimeConnection } from "@github/copilot-sdk";
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
 import {
@@ -15,8 +13,8 @@ import {
 } from "./lib/analyzer.mjs";
 import { generateDescriptionOptions } from "./lib/copy-generator.mjs";
 import { renderHtml } from "./lib/renderer.mjs";
+import { runTrusted } from "./lib/trusted-exec.mjs";
 
-const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const servers = new Map();
 const states = new Map();
@@ -28,15 +26,9 @@ let copyClientPromise;
 let persisted = { repositories: {} };
 let persistenceLoaded = false;
 
-async function runGh(args, cwd) {
+async function runGh(args, repoPath) {
     try {
-        const { stdout } = await execFileAsync("gh", args, {
-            cwd,
-            timeout: 30000,
-            maxBuffer: 1024 * 1024,
-            windowsHide: true,
-        });
-        return stdout.trim();
+        return await runTrusted("gh", args, { untrustedRoots: [repoPath], timeout: 30000 });
     } catch (error) {
         const detail = String(error?.stderr || error?.message || "GitHub CLI command failed.").trim();
         throw new Error(detail);

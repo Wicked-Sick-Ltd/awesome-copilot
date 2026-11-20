@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
 import { access, readFile, readdir, stat } from "node:fs/promises";
-import { extname, join, relative, resolve } from "node:path";
-import { promisify } from "node:util";
+import { dirname, extname, join, parse, relative, resolve } from "node:path";
+import { runTrusted } from "./trusted-exec.mjs";
 
-const execFileAsync = promisify(execFile);
 const README_NAMES = ["README.md", "readme.md", "Readme.md", "README", "readme", "README.rst", "README.txt"];
 const LICENSE_NAMES = ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md", "LICENCE.txt"];
 const SOURCE_LANGUAGES = new Map([
@@ -77,22 +75,30 @@ const THEMES = [
     "retro",
 ];
 
-async function run(file, args, cwd, timeout = 15000) {
-    const { stdout } = await execFileAsync(file, args, {
-        cwd,
-        timeout,
-        maxBuffer: 1024 * 1024,
-        windowsHide: true,
-    });
-    return stdout.trim();
+function ancestorRoots(start) {
+    const roots = [];
+    let current = resolve(start);
+    const filesystemRoot = parse(current).root;
+    while (current && current !== filesystemRoot) {
+        roots.push(current);
+        const parent = dirname(current);
+        if (parent === current) break;
+        current = parent;
+    }
+    return roots;
 }
 
-async function runOptional(file, args, cwd, timeout) {
+async function runOptional(command, args, untrustedRoot, timeout) {
+    const untrustedRoots = Array.isArray(untrustedRoot) ? untrustedRoot : [untrustedRoot];
     try {
-        return await run(file, args, cwd, timeout);
+        return await runTrusted(command, args, { untrustedRoots, timeout });
     } catch {
         return "";
     }
+}
+
+function runGitOptional(root, args) {
+    return runOptional("git", ["-C", root, ...args], root);
 }
 
 async function pathExists(path) {
@@ -448,7 +454,9 @@ export function buildIssueBody(metadata) {
 
 export async function resolveRepoRoot(candidate) {
     const start = resolve(candidate || process.cwd());
-    const root = await runOptional("git", ["-C", start, "rev-parse", "--show-toplevel"], start);
+    // The repository root is not known yet. A git or gh planted in any ancestor
+    // (the repo toplevel, or node_modules/.bin on PATH) must stay untrusted.
+    const root = await runOptional("git", ["-C", start, "rev-parse", "--show-toplevel"], ancestorRoots(start));
     if (!root) throw new Error(`No Git repository was found at ${start}.`);
     return resolve(root);
 }
@@ -463,7 +471,7 @@ export async function inspectRepository(candidate) {
     const packageJson = await pathExists(packagePath)
         ? parseJson(await readFile(packagePath, "utf8"), {})
         : {};
-    const remote = await runOptional("git", ["remote", "get-url", "origin"], root);
+    const remote = await runGitOptional(root, ["remote", "get-url", "origin"]);
     const githubUrl = normalizeGitUrl(remote);
     const coordinates = githubCoordinates(githubUrl);
     const repoSlug = coordinates ? `${coordinates.owner}/${coordinates.repo}` : "";
@@ -478,13 +486,13 @@ export async function inspectRepository(candidate) {
         : "";
     const githubInfo = parseJson(githubRaw, {});
     const defaultBranch = githubInfo?.defaultBranchRef?.name
-        || await runOptional("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root)
+        || await runGitOptional(root, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
             .then((value) => value.replace(/^origin\//, ""))
         || "main";
     const authorLogin = githubInfo?.owner?.login || coordinates?.owner || "";
     const authorName = authorLogin
         ? await runOptional("gh", ["api", `users/${authorLogin}`, "--jq", ".name // .login"], root)
-        : await runOptional("git", ["config", "user.name"], root);
+        : await runGitOptional(root, ["config", "user.name"]);
     const language = githubInfo?.primaryLanguage?.name || await scanLanguages(root);
     const detectedLicense = detectLicenseText(licenseText)
         || String(packageJson?.license || "").trim()

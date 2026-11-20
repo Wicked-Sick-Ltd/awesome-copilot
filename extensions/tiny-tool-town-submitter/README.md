@@ -13,6 +13,8 @@ The canvas also checks public-repository readiness, detects missing README guida
 
 GitHub CLI must be installed and authenticated to verify repository visibility or submit an issue.
 
+Git and GitHub CLI are only run from absolute `PATH` entries outside the inspected repository, so a `git` or `gh` executable shipped inside a repository is never started.
+
 ## Assets
 
 - `assets/preview.png` shows the submission workshop canvas.
