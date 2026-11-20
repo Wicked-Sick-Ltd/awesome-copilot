@@ -1104,7 +1104,13 @@ ${state.callToAction.label}: ${state.callToAction.url}`;
 async function startServer(initialState) {
     let state = initialState;
 
-    const server = createServer(async (req, res) => {
+    // An async "request" listener's rejection is not caught by the HTTP server
+    // and would terminate the extension process, so every failure must end here.
+    const server = createServer((req, res) => {
+        handleRequest(req, res).catch((error) => respondRequestError(res, error));
+    });
+
+    async function handleRequest(req, res) {
         const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
 
         if (req.method === "GET" && requestUrl.pathname === "/") {
@@ -1146,7 +1152,7 @@ async function startServer(initialState) {
         }
 
         respondJson(res, { error: "Not found" }, 404);
-    });
+    }
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
@@ -2225,28 +2231,83 @@ function renderHtml(state) {
 </html>`;
 }
 
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
+
+class RequestBodyError extends Error {
+    constructor(statusCode, message) {
+        super(message);
+        this.name = "RequestBodyError";
+        this.statusCode = statusCode;
+    }
+}
+
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
-        let body = "";
+        const chunks = [];
+        let received = 0;
+        let settled = false;
 
-        req.setEncoding("utf8");
+        const settle = (callback, value) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            callback(value);
+        };
+
+        const declaredLength = Number(req.headers["content-length"]);
+        if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
+            settle(reject, new RequestBodyError(413, "Request body is too large."));
+            return;
+        }
+
         req.on("data", (chunk) => {
-            body += chunk;
+            if (settled) {
+                return;
+            }
+            received += chunk.length;
+            if (received > MAX_JSON_BODY_BYTES) {
+                chunks.length = 0;
+                settle(reject, new RequestBodyError(413, "Request body is too large."));
+                return;
+            }
+            chunks.push(chunk);
         });
         req.on("end", () => {
+            const body = Buffer.concat(chunks).toString("utf8");
             if (!body.trim()) {
-                resolve({});
+                settle(resolve, {});
                 return;
             }
 
             try {
-                resolve(JSON.parse(body));
-            } catch (error) {
-                reject(error);
+                settle(resolve, JSON.parse(body));
+            } catch {
+                settle(reject, new RequestBodyError(400, "Request body must be valid JSON."));
             }
         });
-        req.on("error", reject);
+        req.on("error", () => {
+            settle(reject, new RequestBodyError(400, "Request body could not be read."));
+        });
+        req.on("close", () => {
+            settle(reject, new RequestBodyError(400, "Request body was not completed."));
+        });
     });
+}
+
+function respondRequestError(res, error) {
+    if (res.headersSent || res.destroyed) {
+        res.destroy();
+        return;
+    }
+
+    if (error instanceof RequestBodyError) {
+        res.setHeader("Connection", "close");
+        respondJson(res, { error: error.message }, error.statusCode);
+        return;
+    }
+
+    respondJson(res, { error: "Internal error." }, 500);
 }
 
 function respondHtml(res, html) {
