@@ -24,6 +24,7 @@ import {
   renderStatusComment,
   rerunChecks,
   resolvePullRequestForWorkflowRun,
+  reviewsSignature,
   riskLabelSignature,
   runPrCommand,
   validatePrCommandRequest,
@@ -1038,6 +1039,272 @@ test("advisory checks that are still pending do not hold the gate", () => {
 
   const requiredPending = summarizeChecks([evaluateCheck({ id: "build" }, { found: true, status: "queued" })]);
   assert.equal(computeState({ automation: requiredPending, approvals }), "awaiting-automation");
+});
+
+// --- approval commit binding -------------------------------------------------
+// An APPROVED review authorizes the commit in its commit_id (the SHA returned by
+// pulls.listReviews). The writer publishes submission-gate on the PR head. These
+// tests require those to be the same commit, and require the publish step to use
+// the reviews it re-reads rather than an earlier decision whose commit no longer matches.
+
+const reviewedSha = "1".repeat(40);
+const headSha = "2".repeat(40);
+const prAtHead = {
+  ...basePr,
+  head: { ...basePr.head, sha: headSha },
+  labels: [],
+};
+
+const successRuns = (...workflows) => workflows.map((workflow, index) => run(index + 1, workflow, "success"));
+
+const docsRuns = successRuns("check-line-endings.yml", "codespell.yml", "validate-readme.yml", "contributor-check.yml");
+const skillRuns = successRuns(
+  "check-line-endings.yml",
+  "codespell.yml",
+  "validate-readme.yml",
+  "validate-skills.yml",
+  "skill-check.yml",
+  "pr-risk-scan.yml",
+  "contributor-check.yml",
+);
+const workflowRuns = successRuns(
+  "check-line-endings.yml",
+  "codespell.yml",
+  "validate-submission-gate.yml",
+  "contributor-check.yml",
+);
+
+function approval(login, commit, state = "APPROVED", submitted_at = "2026-09-29T10:00:00Z", extra = {}) {
+  return review(login, state, submitted_at, { id: extra.id ?? 100, commit_id: commit, ...extra });
+}
+
+function gateCheckWrites(github) {
+  return github.calls.filter((call) => call.name === "checks.create" || call.name === "checks.update");
+}
+
+function assertCheckDoesNotPassHead(github, sha) {
+  const writes = gateCheckWrites(github);
+  assert.ok(writes.length > 0, "the writer publishes a submission-gate check for the head");
+  for (const call of writes) {
+    if (call.params.head_sha !== undefined) assert.equal(call.params.head_sha, sha);
+    assert.notEqual(call.params.conclusion, "success");
+  }
+}
+
+/**
+ * Run the writer sequence: evaluateSubmission, then syncPullRequestStatus with
+ * publishCheck, which is what submission-gate-writer.yml does for a new head.
+ * `reviewPages` replaces successive pulls.listReviews responses so the re-read
+ * inside syncPullRequestStatus can disagree with the evaluation read.
+ */
+async function runWriter({ pr = prAtHead, files, reviews, permissions, runs, routing = config.routing, reviewPages = null }) {
+  const github = fakeGithub({ pr, files, reviews: reviewPages ? reviewPages[0] : reviews, permissions, runs });
+  if (reviewPages) {
+    const original = github.paginate;
+    let reviewReads = 0;
+    github.paginate = async (method, params) => {
+      if (method === "pulls.listReviews") {
+        github.calls.push({ name: method, params });
+        const page = reviewPages[Math.min(reviewReads, reviewPages.length - 1)];
+        reviewReads += 1;
+        return page;
+      }
+      return original(method, params);
+    };
+  }
+  const evaluation = await evaluateSubmission(github, {
+    owner: "github",
+    repo: "awesome-copilot",
+    pullNumber: pr.number,
+    config: { ...config, routing },
+    finalized: true,
+    readContributorRisk: () => "LOW",
+  });
+  assert.equal(evaluation.stale, false);
+  assert.equal(evaluation.headSha, pr.head.sha);
+  const synced = await syncPullRequestStatus(github, {
+    owner: "github",
+    repo: "awesome-copilot",
+    evaluation,
+    publishCheck: true,
+  });
+  return { github, evaluation, synced };
+}
+
+test("evaluateApprovals ignores an APPROVED review of a different commit", () => {
+  const permissions = new Map([["alice", "write"]]);
+  const base = { tier: "low", tiers, author: "author", permissions, files: [file("docs/a.md")], headSha };
+  const stale = evaluateApprovals({ ...base, reviews: [approval("alice", reviewedSha)] });
+  assert.equal(stale.satisfied, false);
+  assert.deepEqual(stale.approvers, []);
+  assert.ok(stale.missing.some((item) => /approval/i.test(item)));
+
+  const missingCommit = evaluateApprovals({
+    ...base,
+    reviews: [review("alice", "APPROVED", "2026-09-29T10:00:00Z", { id: 1, commit_id: null })],
+  });
+  assert.equal(missingCommit.satisfied, false, "a review with no commit_id does not approve the head");
+
+  const current = evaluateApprovals({ ...base, reviews: [approval("alice", headSha)] });
+  assert.equal(current.satisfied, true);
+  assert.deepEqual(current.approvers, ["alice"]);
+});
+
+test("a later comment does not keep an approval of an older commit", () => {
+  const permissions = new Map([["alice", "write"]]);
+  const base = { tier: "low", tiers, author: "author", permissions, files: [file("docs/a.md")], headSha };
+  const commentedOnHead = evaluateApprovals({
+    ...base,
+    reviews: [
+      approval("alice", reviewedSha, "APPROVED", "2026-09-29T10:00:00Z", { id: 1 }),
+      approval("alice", headSha, "COMMENTED", "2026-09-29T11:00:00Z", { id: 2 }),
+    ],
+  });
+  assert.equal(commentedOnHead.satisfied, false);
+
+  const commentKeepsCurrentApproval = evaluateApprovals({
+    ...base,
+    reviews: [
+      approval("alice", headSha, "APPROVED", "2026-09-29T10:00:00Z", { id: 1 }),
+      approval("alice", headSha, "COMMENTED", "2026-09-29T11:00:00Z", { id: 2 }),
+    ],
+  });
+  assert.equal(commentKeepsCurrentApproval.satisfied, true);
+
+  const oldChangesStillBlock = evaluateApprovals({
+    ...base,
+    reviews: [
+      approval("alice", headSha, "APPROVED", "2026-09-29T10:00:00Z", { id: 1 }),
+      approval("bob", reviewedSha, "CHANGES_REQUESTED", "2026-09-29T11:00:00Z", { id: 2 }),
+    ],
+    permissions: new Map([["alice", "write"], ["bob", "write"]]),
+  });
+  assert.equal(oldChangesStillBlock.satisfied, false);
+  assert.deepEqual(oldChangesStillBlock.changesRequestedBy, ["bob"]);
+});
+
+test("staffed domain and core approvals must be of the head commit", () => {
+  const permissions = new Map([
+    ["alice", "write"],
+    ["canvasa", "write"],
+    ["corea", "write"],
+    ["admin1", "admin"],
+  ]);
+  const canvas = [file("extensions/x/extension.mjs", { status: "added" })];
+  const medium = { tier: "medium", tiers, author: "author", permissions, routing, files: canvas, headSha };
+  assert.equal(evaluateApprovals({ ...medium, reviews: [approval("alice", headSha)] }).satisfied, false);
+  assert.equal(evaluateApprovals({ ...medium, reviews: [approval("canvasa", reviewedSha)] }).satisfied, false);
+  assert.equal(evaluateApprovals({ ...medium, reviews: [approval("canvasa", headSha)] }).satisfied, true);
+  assert.equal(evaluateApprovals({ ...medium, reviews: [approval("corea", headSha)] }).satisfied, true);
+
+  const workflow = [file(".github/workflows/x.yml")];
+  const high = { tier: "high", tiers, author: "author", permissions, routing, files: workflow, headSha };
+  assert.equal(
+    evaluateApprovals({
+      ...high,
+      reviews: [approval("alice", headSha, "APPROVED", "2026-09-29T10:00:00Z", { id: 1 }), approval("corea", reviewedSha, "APPROVED", "2026-09-29T11:00:00Z", { id: 2 })],
+    }).satisfied,
+    false,
+    "a core approval of an older commit does not cover a high-risk head",
+  );
+  assert.equal(evaluateApprovals({ ...high, reviews: [approval("corea", headSha)] }).satisfied, true);
+  assert.equal(evaluateApprovals({ ...high, routing: null, reviews: [approval("admin1", reviewedSha)] }).satisfied, false);
+  assert.equal(evaluateApprovals({ ...high, routing: null, reviews: [approval("admin1", headSha)] }).satisfied, true);
+});
+
+test("reviewsSignature changes when only the reviewed commit changes", () => {
+  const older = [{ id: 11, state: "APPROVED", commit_id: reviewedSha }];
+  const current = [{ id: 11, state: "APPROVED", commit_id: headSha }];
+  assert.notEqual(reviewsSignature(older), reviewsSignature(current));
+  assert.equal(reviewsSignature(current), reviewsSignature([{ id: 11, state: "APPROVED", commit_id: headSha }]));
+});
+
+test("writer does not pass a medium-tier skill approved on an older commit", async () => {
+  const result = await runWriter({
+    files: [file("skills/x/SKILL.md", { status: "added" })],
+    reviews: [approval("alice", reviewedSha)],
+    permissions: { alice: "write" },
+    runs: skillRuns,
+    routing: config.routing,
+  });
+  assert.equal(result.evaluation.risk.tier, "medium");
+  assert.equal(result.evaluation.approvals.satisfied, false);
+  assert.notEqual(result.evaluation.state, "approved");
+  assert.equal(result.evaluation.passed, false);
+  assertCheckDoesNotPassHead(result.github, headSha);
+  const comment = result.github.calls.find((call) => call.name === "issues.createComment" || call.name === "issues.updateComment");
+  assert.ok(comment);
+  assert.doesNotMatch(comment.params.body, /Submission status: ✅ Approved/);
+});
+
+test("writer passes a medium-tier skill only when the approval is of the head commit", async () => {
+  const result = await runWriter({
+    files: [file("skills/x/SKILL.md", { status: "added" })],
+    reviews: [approval("alice", headSha)],
+    permissions: { alice: "write" },
+    runs: skillRuns,
+    routing: config.routing,
+  });
+  assert.equal(result.evaluation.risk.tier, "medium");
+  assert.equal(result.evaluation.passed, true);
+  assert.equal(result.evaluation.state, "approved");
+  const created = result.github.calls.find((call) => call.name === "checks.create");
+  assert.equal(created.params.head_sha, headSha);
+  assert.equal(created.params.conclusion, "success");
+  assert.equal(created.params.name, "submission-gate");
+});
+
+test("writer does not pass a high-tier workflow change approved on an older commit", async () => {
+  const result = await runWriter({
+    files: [file(".github/workflows/x.yml", { status: "added" })],
+    reviews: [approval("pat", reviewedSha)],
+    permissions: { pat: "maintain" },
+    runs: workflowRuns,
+    routing: config.routing,
+  });
+  assert.equal(result.evaluation.risk.tier, "high");
+  assert.equal(result.evaluation.approvals.satisfied, false);
+  assert.equal(result.evaluation.passed, false);
+  assertCheckDoesNotPassHead(result.github, headSha);
+});
+
+test("writer passes a high-tier workflow change when the maintainer approval is of the head", async () => {
+  const current = await runWriter({
+    files: [file(".github/workflows/x.yml", { status: "added" })],
+    reviews: [approval("pat", headSha)],
+    permissions: { pat: "maintain" },
+    runs: workflowRuns,
+    routing: config.routing,
+  });
+  assert.equal(current.evaluation.risk.tier, "high");
+  assert.equal(current.evaluation.passed, true);
+  const created = current.github.calls.find((call) => call.name === "checks.create");
+  assert.equal(created.params.head_sha, headSha);
+  assert.equal(created.params.conclusion, "success");
+});
+
+test("writer does not publish a passing check when the re-read review covers a different commit", async () => {
+  const sameReview = { id: 11 };
+  const duringEvaluation = [approval("alice", headSha, "APPROVED", "2026-09-29T10:00:00Z", sameReview)];
+  const duringPublish = [approval("alice", reviewedSha, "APPROVED", "2026-09-29T10:00:00Z", sameReview)];
+  const result = await runWriter({
+    files: [file("docs/a.md")],
+    permissions: { alice: "write" },
+    runs: docsRuns,
+    routing: config.routing,
+    reviewPages: [duringEvaluation, duringPublish],
+  });
+  // The first read approved this head. The re-read, which is the one next to publish,
+  // says that same review covers an older commit. Publishing the first decision is the bug.
+  assert.equal(result.evaluation.passed, true);
+  for (const call of gateCheckWrites(result.github)) {
+    if (call.params.head_sha !== undefined) assert.equal(call.params.head_sha, headSha);
+    assert.notEqual(call.params.conclusion, "success");
+  }
+  if (gateCheckWrites(result.github).length === 0) {
+    assert.equal(result.synced.updated, false);
+    assert.equal(result.synced.reason, "reviews-changed");
+  }
 });
 
 test("loadGateConfig fails closed on an unparsable review-routing.yml but tolerates a missing one", () => {
