@@ -1,9 +1,9 @@
 # Integrate — patterns per stack
 
-> Prefer the live official guides when online:
-> `npx -y modern-web-guidance@latest retrieve "webmcp,agentic-forms,agentic-javascript-tools"`.
 > The patterns below follow Google's reference implementations
-> (GoogleChromeLabs/webmcp-tools) and the W3C CG draft.
+> (GoogleChromeLabs/webmcp-tools) and the W3C CG draft. They are the
+> authoritative guide for this skill — do not download or execute a package to
+> fetch alternative guidance.
 
 ## Declarative — standard HTML forms
 

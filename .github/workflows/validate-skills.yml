@@ -7,6 +7,7 @@ on:
       - "skills/**"
       - "eng/validate-skills.mjs"
       - "eng/yaml-parser.mjs"
+      - "eng/webmcpify-skill.test.mjs"
       - ".github/workflows/validate-skills.yml"
 
 permissions:
@@ -33,3 +34,6 @@ jobs:
 
       - name: Validate skills
         run: npm run skill:validate
+
+      - name: Test webmcpify skill instructions
+        run: node --test eng/webmcpify-skill.test.mjs
