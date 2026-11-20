@@ -3,8 +3,9 @@
 // .github/skills/, extracts assessment facts from Maven/Gradle build files, and
 // reports git branch state. Everything degrades gracefully when files are absent.
 
-import { readFile, readdir, stat, open } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, stat, open, realpath, access } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { join, isAbsolute, relative, delimiter, sep } from "node:path";
 import { execFile } from "node:child_process";
 import { catalogWithRelevance, VALIDATION_GATES } from "./catalog.mjs";
 
@@ -35,9 +36,62 @@ const DEP_SIGNATURES = {
 // parser here scans for early markers/coordinates.
 const MAX_READ_BYTES = 2 * 1024 * 1024;
 
-function execGit(args, cwd) {
+const IS_WINDOWS = process.platform === "win32";
+const GIT_EXECUTABLE = IS_WINDOWS ? "git.exe" : "git";
+
+function pathEntries(env) {
+    const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH");
+    const raw = key ? env[key] : "";
+    return String(raw || "")
+        .split(delimiter)
+        .map((entry) => entry.replace(/^"(.*)"$/, "$1"));
+}
+
+// Relative PATH entries resolve against the child's working directory, and on
+// Windows a drive-less root ("\tools") resolves against the current drive, so
+// only fully qualified directories are searched.
+function isFullyQualified(dir) {
+    if (IS_WINDOWS) return /^(?:[A-Za-z]:[\\/]|[\\/]{2})/.test(dir);
+    return isAbsolute(dir);
+}
+
+function isInside(root, target) {
+    const rel = relative(root, target);
+    return rel === "" || (rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel));
+}
+
+/**
+ * Find git on PATH without ever consulting the working directory. A bare "git"
+ * passed to execFile is resolved by Windows in the child's cwd before PATH, so a
+ * scanned repo could ship its own git.exe. Returns the real path of the first git
+ * outside the repo, or null.
+ */
+export async function resolveGit(repoPath, env = process.env) {
+    let repoReal;
+    try {
+        repoReal = await realpath(repoPath);
+    } catch {
+        return null;
+    }
+    for (const dir of pathEntries(env)) {
+        if (!dir || !isFullyQualified(dir)) continue;
+        let real;
+        try {
+            real = await realpath(join(dir, GIT_EXECUTABLE));
+            if (!(await stat(real)).isFile()) continue;
+            if (!IS_WINDOWS) await access(real, fsConstants.X_OK);
+        } catch {
+            continue;
+        }
+        if (isInside(repoReal, real)) continue;
+        return real;
+    }
+    return null;
+}
+
+function execGit(gitPath, args, repoPath) {
     return new Promise((resolve) => {
-        execFile("git", args, { cwd, timeout: 4000 }, (err, stdout) => {
+        execFile(gitPath, ["-C", repoPath, ...args], { timeout: 4000, windowsHide: true }, (err, stdout) => {
             if (err) resolve(null);
             else resolve(String(stdout).trim());
         });
@@ -541,8 +595,9 @@ export async function scanRepo(repoPath, opts = {}) {
 
     let git = null;
     if (includeGit) {
-        const branch = await execGit(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
-        const dirty = await execGit(["status", "--porcelain"], repoPath);
+        const gitPath = await resolveGit(repoPath);
+        const branch = gitPath ? await execGit(gitPath, ["rev-parse", "--abbrev-ref", "HEAD"], repoPath) : null;
+        const dirty = gitPath ? await execGit(gitPath, ["status", "--porcelain"], repoPath) : null;
         git = {
             branch,
             isMigrationBranch: !!branch && /moderniz|migrat|upgrade|appmod/i.test(branch),
