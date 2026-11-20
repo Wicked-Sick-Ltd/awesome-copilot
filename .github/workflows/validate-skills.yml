@@ -6,6 +6,8 @@ on:
     paths:
       - "skills/**"
       - "eng/validate-skills.mjs"
+      - "eng/validate-skills.test.mjs"
+      - "eng/skill-content-checks.mjs"
       - "eng/yaml-parser.mjs"
       - ".github/workflows/validate-skills.yml"
 
@@ -33,3 +35,6 @@ jobs:
 
       - name: Validate skills
         run: npm run skill:validate
+
+      - name: Test skill validation
+        run: node --test eng/validate-skills.test.mjs

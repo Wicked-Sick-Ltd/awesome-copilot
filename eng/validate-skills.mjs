@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { parseSkillMetadata } from "./yaml-parser.mjs";
+import { findRootRemoteScriptExecutionsInFolder } from "./skill-content-checks.mjs";
 import {
   ROOT_FOLDER,
   SKILLS_DIR,
@@ -93,6 +94,12 @@ function validateSkillFolder(folderPath, folderName) {
     } catch (error) {
       errors.push(`Cannot access bundled asset "${asset}": ${error.message}`);
     }
+  }
+
+  for (const finding of findRootRemoteScriptExecutionsInFolder(folderPath)) {
+    errors.push(
+      `${finding.file}:${finding.line} runs a downloaded script as root (${finding.command}); install from a signed package repository or a pinned, checksum-verified release instead`
+    );
   }
 
   return errors;
