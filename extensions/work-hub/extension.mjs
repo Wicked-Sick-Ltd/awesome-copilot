@@ -114,7 +114,12 @@ async function requestItemSession(input = {}) {
 }
 
 async function handleRequest(entry, req, res) {
-    const url = new URL(req.url || "/", "http://127.0.0.1");
+    let url;
+    try {
+        url = new URL(req.url || "/", "http://127.0.0.1");
+    } catch {
+        return writeJson(res, { error: "Bad request" }, 400);
+    }
     const p = url.pathname;
     try {
         if (req.method === "GET" && p === "/") return writeHtml(res, renderHtml());

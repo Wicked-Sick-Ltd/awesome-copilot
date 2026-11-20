@@ -285,7 +285,13 @@ async function handleApi(req, res, url, entry) {
 }
 
 async function handleRequest(req, res, entry) {
-    const url = new URL(req.url || "/", entry.origin);
+    let url;
+    try {
+        url = new URL(req.url || "/", entry.origin);
+    } catch {
+        json(res, 400, { error: "Bad request." });
+        return;
+    }
     try {
         if (url.pathname.startsWith("/api/")) {
             await handleApi(req, res, url, entry);

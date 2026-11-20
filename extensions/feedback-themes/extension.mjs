@@ -67,7 +67,13 @@ function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(body ? JSON.parse(body) : {}));
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
     req.on("error", reject);
   });
 }
@@ -80,7 +86,26 @@ function json(res, code, data) {
 // ─── HTTP server ───
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  try {
+    await handleRequest(req, res);
+  } catch {
+    if (!res.headersSent) {
+      res.writeHead(400);
+      res.end("Bad request");
+    } else {
+      res.destroy();
+    }
+  }
+});
+
+async function handleRequest(req, res) {
+  const expectedHost = `127.0.0.1:${getPort()}`;
+  if (String(req.headers.host || "").toLowerCase() !== expectedHost) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+  const url = new URL(req.url, `http://${expectedHost}`);
 
   if (url.pathname === "/events") {
     res.writeHead(200, {
@@ -131,7 +156,7 @@ Please help the user explore this theme. Summarize the key patterns, identify wh
 
   res.writeHead(404);
   res.end("Not found");
-});
+}
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 function getPort() {

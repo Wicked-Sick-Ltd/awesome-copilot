@@ -615,7 +615,12 @@ async function readJson(req) {
 
 async function handleRequest(entry, req, res) {
     const projectId = entry.projectId;
-    const url = new URL(req.url, "http://localhost");
+    let url;
+    try {
+        url = new URL(req.url, "http://localhost");
+    } catch {
+        return send(res, 400, "text/plain", "Bad request");
+    }
     const path = url.pathname;
     const method = req.method || "GET";
 

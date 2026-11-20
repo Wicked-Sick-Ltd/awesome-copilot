@@ -73,7 +73,13 @@ export async function startCanvasServer(service, requestAgentInvestigation, canc
             sendJson(response, 403, { code: "request_forbidden", message: "Canvas request host is invalid" });
             return;
         }
-        const url = new URL(request.url ?? "/", "http://127.0.0.1");
+        let url;
+        try {
+            url = new URL(request.url ?? "/", "http://127.0.0.1");
+        } catch {
+            sendJson(response, 400, { code: "request_invalid", message: "Canvas request URL is invalid" });
+            return;
+        }
         response.setHeader("content-security-policy", "default-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'");
         response.setHeader("referrer-policy", "no-referrer");
 

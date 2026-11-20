@@ -820,7 +820,13 @@ async function handleApi(req, res, entry, url) {
 }
 
 async function handleRequest(req, res, entry) {
-  const url = new URL(req.url, "http://127.0.0.1");
+  let url;
+  try {
+    url = new URL(req.url, "http://127.0.0.1");
+  } catch {
+    sendJson(res, 400, { error: "Bad request.", status: 400 });
+    return;
+  }
   try {
     if (!isCanonicalHost(req, entry.host)) {
       throw new HttpError(403, "Request host is not allowed.");

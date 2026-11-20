@@ -1105,6 +1105,18 @@ async function startServer(initialState) {
     let state = initialState;
 
     const server = createServer(async (req, res) => {
+        try {
+            await handleRequest(req, res);
+        } catch {
+            if (!res.headersSent) {
+                respondJson(res, { error: "Bad request" }, 400);
+            } else {
+                res.destroy();
+            }
+        }
+    });
+
+    async function handleRequest(req, res) {
         const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
 
         if (req.method === "GET" && requestUrl.pathname === "/") {
@@ -1146,7 +1158,7 @@ async function startServer(initialState) {
         }
 
         respondJson(res, { error: "Not found" }, 404);
-    });
+    }
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
