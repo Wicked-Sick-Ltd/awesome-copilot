@@ -35,4 +35,6 @@ The canvas provides actions for notebook lifecycle, workspace files, cell editin
 
 Notebook execution uses Python isolated mode in a fresh temporary directory. The runner applies CPU, file-size, process, and memory limits where the platform supports them, caps captured output, and stops execution after 30 seconds.
 
+On Linux and macOS the runner asks the kernel to confine filesystem writes to that temporary directory before any cell runs (Landlock on Linux, Seatbelt on macOS). Cells and any programs they start cannot create, write to, rename, or remove files, directories, links, or named pipes anywhere else. If the sandbox cannot be enabled, for example on a Linux kernel without Landlock, the canvas refuses to run cells and reports `sandbox_unavailable`. A notebook's saved runtime can only be `python3` or `python`.
+
 The local canvas server binds to `127.0.0.1`, protects requests with a per-instance capability token, validates action origins, and sends a restrictive content security policy. Notebook state and checkpoints stay in the active Copilot workspace.
