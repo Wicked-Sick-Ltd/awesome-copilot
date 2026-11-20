@@ -3,10 +3,15 @@ import { createCanvas, joinSession } from "@github/copilot-sdk/extension";
 
 const servers = new Map();
 
-const characters = {
-    mr: { name: "Mr. Pac-Man", color: "#ffd43b" },
-    mrs: { name: "Mrs. Pac-Man", color: "#ff78b7" },
-};
+const characters = Object.freeze(Object.assign(Object.create(null), {
+    mr: Object.freeze({ name: "Mr. Pac-Man", color: "#ffd43b" }),
+    mrs: Object.freeze({ name: "Mrs. Pac-Man", color: "#ff78b7" }),
+}));
+
+function characterKey(value) {
+    return typeof value === "string" && Object.hasOwn(characters, value) ? value : null;
+}
+
 const milestoneThresholds = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 function createState() {
@@ -32,7 +37,7 @@ function snapshot(entry) {
     return {
         ...state,
         percent: Math.min(100, Math.round((state.credits / state.limit) * 100)),
-        character: characters[state.character],
+        character: characters[characterKey(state.character) ?? "mr"],
         nextMilestone: nextMilestone(state.credits),
     };
 }
@@ -252,6 +257,8 @@ function drawGhost(x,y,size,color,dir,frightened){
 }
 function lerp(a,b,t){return a+(b-a)*t;}
 function draw(){
+  const character=game.state.character;
+  if(!character||typeof character.name!=='string')return;
   const w=cvs.width,h=cvs.height,cw=w/W,ch=h/H,cell=Math.min(cw,ch);
   ctx.clearRect(0,0,w,h);ctx.fillStyle='#07091b';ctx.fillRect(0,0,w,h);
   // walls
@@ -268,21 +275,23 @@ function draw(){
   const dead=game.state.dead;
   ghosts.forEach((g,i)=>{const gx=lerp(g.px,g.x,g.prog)*cw+cw/2,gy=lerp(g.py,g.y,g.prog)*ch+ch/2;drawGhost(gx,gy,cell*.4,GHOST_META[i].color,g.dir,false);});
   const pxp=lerp(pac.px,pac.x,pac.prog)*cw+cw/2,pyp=lerp(pac.py,pac.y,pac.prog)*ch+ch/2;
-  if(!(dead&&Math.floor(anim/8)%2===0))drawPac(pxp,pyp,cell*.44,game.state.character.color,pac.dir);
+  if(!(dead&&Math.floor(anim/8)%2===0))drawPac(pxp,pyp,cell*.44,character.color,pac.dir);
   if(dead){ctx.fillStyle='rgba(9,11,32,.55)';ctx.fillRect(0,0,w,h);ctx.fillStyle='#ff7c87';ctx.font='bold '+cell*1.3+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('GAME OVER',w/2,h/2);}
 }
 
 const TICK_FRAMES=20; // frames per tile move (movement speed; higher = slower)
 function loop(){
+  requestAnimationFrame(loop);
   anim++;
   mouth+=.35;
   const inc=1/TICK_FRAMES;
   pac.prog=Math.min(1,pac.prog+inc);ghosts.forEach(g=>g.prog=Math.min(1,g.prog+inc));
   if(pac.prog>=1&&ghosts.every(g=>g.prog>=1)){tick();}
-  draw();requestAnimationFrame(loop);
+  draw();
 }
 
 function paint(s){
+  if(!s||!s.character||typeof s.character.name!=='string')return;
   const didReset = game.state.runVersion !== s.runVersion;
   game.state=s;
   if(didReset){initGame();anim=0;mouth=0;fruitPickup=null;lastFruitVersion=s.fruitVersion;}
@@ -337,9 +346,10 @@ async function startServer(instanceId) {
             } catch {
                 return json(res, 400, { error: "Invalid JSON request body." });
             }
+            if (!input || typeof input !== "object") input = {};
 
             const { state } = entry;
-            if (req.url === "/choose" && characters[input.character]) state.character = input.character;
+            if (req.url === "/choose") { const key = characterKey(input.character); if (key) state.character = key; }
             else if (req.url === "/limit" && Number(input.limit) > 0) { state.limit = Number(input.limit); state.dead = state.credits >= state.limit; state.runVersion += 1; }
             else if (req.url === "/reset") { state.achievements = []; state.fruit = null; state.runVersion += 1; state.dead = state.credits >= state.limit; await syncUsage(entry); }
             broadcast(entry);
