@@ -73,10 +73,14 @@ function ensureMarkdownHooks(): void {
  * Sanitize a fragment of HTML produced from trusted-but-untrusted markdown,
  * stripping scripts, event handlers, and dangerous URL schemes while keeping
  * the formatting tags GitHub-flavored markdown commonly emits.
+ *
+ * `edit` receives the sanitized tree before it is serialized. Its changes are
+ * not sanitized again, so it may only set inert attributes such as `id`.
  */
 export function sanitizeHtml(
   html: string,
   source?: MarkdownSource,
+  edit?: (root: Element) => void,
 ): string {
   if (!html) return html;
   ensureMarkdownHooks();
@@ -140,7 +144,10 @@ export function sanitizeHtml(
     });
   }
   try {
-    return DOMPurify.sanitize(html, config);
+    if (!edit) return DOMPurify.sanitize(html, config);
+    const root = DOMPurify.sanitize(html, { ...config, RETURN_DOM: true }) as Element;
+    edit(root);
+    return root.innerHTML;
   } finally {
     if (imageSource !== undefined) DOMPurify.removeHook("uponSanitizeAttribute");
     if (urls) DOMPurify.removeHook("afterSanitizeAttributes");

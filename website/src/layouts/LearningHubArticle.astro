@@ -42,7 +42,13 @@ const { headings } = await render(entry);
 const html = stripRedundantHeadingAnchors(
   stripLeadingH1(enhanceMarkdownA11y(sanitizeHtml(entry.rendered?.html ?? ""))),
 );
-const sections = buildArticleSections(html, entry.body ?? "");
+// The heading strip and section split scan HTML as text, and a `<` inside a
+// quoted attribute survives sanitizing, so every injected block is sanitized
+// again on its own.
+const sections = buildArticleSections(html, entry.body ?? "").map((section) => ({
+  ...section,
+  blocks: section.blocks.map((block) => ({ ...block, html: sanitizeHtml(block.html) })),
+}));
 const sectionIds = new Set(
   sections.filter((section) => section.heading !== null).map((section) => section.id),
 );

@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import { createServer } from "vite";
+import { JSDOM } from "jsdom";
 
 const website = fileURLToPath(new URL("..", import.meta.url));
 const originalCwd = process.cwd();
@@ -45,13 +46,22 @@ test("remote README uses the existing sanitizer, including raw HTML", () => {
   assert.doesNotMatch(markdownHtml, /srcset=/);
 });
 
-test("sanitizes again after accessibility processing to prevent attribute injection", () => {
+// Markup hidden in a quoted attribute stays attribute text, so check what a
+// browser would parse rather than the serialized string.
+function eventHandlerAttributes(html) {
+  const document = new JSDOM(`<!doctype html><body>${html}</body>`).window.document;
+  return Array.from(document.body.querySelectorAll("*")).flatMap((element) =>
+    element.getAttributeNames().filter((name) => name.toLowerCase().startsWith("on")),
+  );
+}
+
+test("accessibility processing does not turn attribute text into an event handler", () => {
   const { markdownHtml } = renderResourceMarkdown(
     '<div title="<pre onmouseover=alert(1) data-x=x">Documentation</div>',
     urls,
   );
   assert.match(markdownHtml, /Documentation/);
-  assert.doesNotMatch(markdownHtml, /onmouseover/i);
+  assert.deepEqual(eventHandlerAttributes(markdownHtml), []);
 });
 
 test("sanitizes the final HTML after table-of-contents processing", () => {
@@ -61,13 +71,14 @@ test("sanitizes the final HTML after table-of-contents processing", () => {
   );
   const finalHtml = finalizePluginReadme(markdownHtml, urls);
   assert.match(finalHtml, /Documentation/);
-  assert.doesNotMatch(finalHtml, /onmouseover|<style\b|style=/i);
+  assert.deepEqual(eventHandlerAttributes(finalHtml), []);
+  assert.doesNotMatch(finalHtml, /<style\b|style=/i);
 });
 
 test("final URL rewriting failures leave README empty for the source fallback", () => {
   const warnings = [];
-  const finalHtml = renderPluginReadme(
-    `<div title="<h2>Heading</h2><a href='//['>Link</a>">Documentation</div>`,
+  const finalHtml = finalizePluginReadme(
+    `<h2>Heading</h2><p><a href='//['>Link</a></p>`,
     urls,
     (error) => warnings.push(error),
   );
