@@ -234,12 +234,18 @@ test("normalizeRouting reads reviewers and backups case-insensitively", () => {
   assert.ok(normalizeRouting({ teams: { core: ["@x"] } }).get("core").has("x"));
 });
 
-test("low tier needs one approval from a writer, excluding the author", () => {
+test("low tier with zero required approvals is satisfied without a review", () => {
   const permissions = new Map([["alice", "write"], ["author", "write"], ["rando", "read"]]);
   const base = { tier: "low", tiers, author: "author", permissions, files: [file("docs/a.md")] };
-  assert.equal(evaluateApprovals({ ...base, reviews: [review("author", "APPROVED")] }).satisfied, false);
-  assert.equal(evaluateApprovals({ ...base, reviews: [review("rando", "APPROVED")] }).satisfied, false);
-  assert.equal(evaluateApprovals({ ...base, reviews: [review("alice", "APPROVED")] }).satisfied, true);
+  const none = evaluateApprovals({ ...base, reviews: [] });
+  assert.equal(none.required, 0);
+  assert.equal(none.satisfied, true);
+  const self = evaluateApprovals({ ...base, reviews: [review("author", "APPROVED")] });
+  assert.equal(self.satisfied, true);
+  assert.deepEqual(self.approvers, [], "the author still does not count as an approver");
+  const reader = evaluateApprovals({ ...base, reviews: [review("rando", "APPROVED")] });
+  assert.deepEqual(reader.approvers, []);
+  assert.deepEqual(evaluateApprovals({ ...base, reviews: [review("alice", "APPROVED")] }).approvers, ["alice"]);
 });
 
 test("latest review state wins and changes requested blocks", () => {
@@ -249,7 +255,8 @@ test("latest review state wins and changes requested blocks", () => {
     ...base,
     reviews: [review("alice", "APPROVED", "2026-09-29T10:00:00Z"), review("alice", "DISMISSED", "2026-09-29T11:00:00Z")],
   });
-  assert.equal(dismissed.satisfied, false);
+  assert.deepEqual(dismissed.approvers, []);
+  assert.equal(dismissed.satisfied, true, "a dismissed approval is not counted, and this tier requires none");
   const commentAfterApproval = evaluateApprovals({
     ...base,
     reviews: [review("alice", "APPROVED", "2026-09-29T10:00:00Z"), review("alice", "COMMENTED", "2026-09-29T11:00:00Z")],
@@ -294,16 +301,20 @@ test("medium tier requires a domain reviewer when the pool is staffed", () => {
   assert.equal(noRouting.satisfied, true);
 });
 
-test("high tier requires one approval from a core maintainer", () => {
+test("high tier requires no approval and does not require a core maintainer", () => {
   const permissions = new Map([["alice", "write"], ["bob", "write"], ["corea", "write"], ["admin1", "admin"]]);
   const files = [file(".github/workflows/x.yml")];
   const base = { tier: "high", tiers, author: "author", permissions, routing, files };
-  assert.equal(evaluateApprovals({ ...base, reviews: [review("corea", "APPROVED")] }).satisfied, true);
-  assert.equal(evaluateApprovals({ ...base, reviews: [review("alice", "APPROVED"), review("bob", "APPROVED")] }).satisfied, false);
+  const none = evaluateApprovals({ ...base, reviews: [] });
+  assert.equal(none.required, 0);
+  assert.equal(none.satisfied, true);
+  assert.equal(evaluateApprovals({ ...base, reviews: [review("alice", "APPROVED"), review("bob", "APPROVED")] }).satisfied, true);
 
-  const fallback = { ...base, routing: null };
-  assert.equal(evaluateApprovals({ ...fallback, reviews: [review("alice", "APPROVED")] }).satisfied, false);
-  assert.equal(evaluateApprovals({ ...fallback, reviews: [review("admin1", "APPROVED")] }).satisfied, true);
+  const fallback = evaluateApprovals({ ...base, routing: null, reviews: [] });
+  assert.equal(fallback.satisfied, true, "an empty core pool does not fall back to admin or maintain");
+  const blocked = evaluateApprovals({ ...base, reviews: [review("alice", "CHANGES_REQUESTED")] });
+  assert.equal(blocked.satisfied, false);
+  assert.deepEqual(blocked.changesRequestedBy, ["alice"]);
 });
 
 test("gateConclusion reports a PR that only awaits review as action_required", () => {
@@ -313,6 +324,62 @@ test("gateConclusion reports a PR that only awaits review as action_required", (
   assert.equal(gateConclusion({ passed: false, automation: clean, approvals: waiting }), "action_required");
   assert.equal(gateConclusion({ passed: false, automation: clean, approvals: { ...waiting, changesRequestedBy: ["bob"] } }), "failure");
   assert.equal(gateConclusion({ passed: false, automation: { ...clean, contributionFailures: [{}] }, approvals: waiting }), "failure");
+});
+
+test("a pull request with zero approvals on a zero-approval tier gets conclusion success", async () => {
+  for (const name of ["low", "medium", "high"]) {
+    assert.equal(tiers[name].approvals.required, 0, name);
+    const sample = name === "high" ? ".github/workflows/x.yml" : name === "medium" ? "agents/new.agent.md" : "docs/a.md";
+    const result = evaluateApprovals({
+      tier: name,
+      tiers,
+      reviews: [],
+      author: "author",
+      permissions: new Map(),
+      routing: config.routing,
+      files: [file(sample, { status: name === "low" ? "modified" : "added" })],
+    });
+    assert.equal(result.required, 0, name);
+    assert.equal(result.satisfied, true, `${name} is satisfied with zero approvals`);
+    assert.equal(
+      gateConclusion({
+        passed: computeState({ automation: { contributionFailures: [], infrastructureFailures: [], pending: [] }, approvals: result }) === "approved",
+        automation: { contributionFailures: [], infrastructureFailures: [], pending: [] },
+        approvals: result,
+      }),
+      "success",
+      name
+    );
+  }
+  assert.equal(tiers.high.approvals.require_core, false);
+
+  const github = fakeGithub({
+    pr: basePr,
+    files: [file("docs/a.md")],
+    reviews: [],
+    runs: [
+      run(1, "check-line-endings.yml", "success"),
+      run(90, "codespell.yml", "success"),
+      run(2, "validate-readme.yml", "success"),
+      run(3, "contributor-check.yml", "success"),
+      run(4, "pr-duplicate-check.lock.yml", "failure"),
+      run(5, "pr-quality-signal.lock.yml", "skipped"),
+    ],
+  });
+  const evaluation = await evaluateSubmission(github, {
+    owner: "github",
+    repo: "awesome-copilot",
+    pullNumber: 7,
+    config,
+    readContributorRisk: () => "LOW",
+  });
+  assert.equal(evaluation.risk.tier, "low");
+  assert.equal(evaluation.approvals.required, 0);
+  assert.deepEqual(evaluation.approvals.approvers, []);
+  assert.equal(evaluation.approvals.satisfied, true);
+  assert.equal(evaluation.state, "approved");
+  assert.equal(evaluation.passed, true);
+  assert.equal(gateConclusion(evaluation), "success");
 });
 
 // --- checks -------------------------------------------------------------------
@@ -622,7 +689,7 @@ test("evaluateSubmission waits for pending checks in gate mode", async () => {
   });
   assert.equal(polls, 2);
   assert.equal(evaluation.automation.pending.length, 0);
-  assert.equal(evaluation.state, "ready-for-review");
+  assert.equal(evaluation.state, "approved", "a zero-approval tier needs no review once checks pass");
 });
 
 test("unreported required checks become infrastructure failures after the grace period", async () => {

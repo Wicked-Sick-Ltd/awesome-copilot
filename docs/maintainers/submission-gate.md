@@ -129,9 +129,11 @@ The status comment includes a collapsed "Why this tier" list with the reasons th
 
 | Tier | Required approvals |
 |---|---|
-| `merge-risk:low` | 1 approval from an owner of the changed resource: its domain pool, or the core pools for files outside every domain |
-| `merge-risk:medium` | 1 approval from a domain reviewer for the area touched |
-| `merge-risk:high` | 1 approval from a core maintainer |
+| `merge-risk:low` | 0. `require_owner` still names the owner pool when that pool is staffed |
+| `merge-risk:medium` | 0. `require_domain` still names the domain pool when that pool is staffed |
+| `merge-risk:high` | 0, and `require_core` is false, so neither a core maintainer nor an admin/maintain fallback is required |
+
+This fork set every tier to zero approvals on 21 Nov 2026. There is no human reviewer rota, and a required approval left every open pull request on `action_required`. The writer loads policy from the default branch, so a pull request that changes this policy still reports `action_required` until that change is on the default branch.
 
 How approvals are counted:
 
@@ -153,7 +155,7 @@ The core pool is `core-maintainers`. Its members also satisfy the domain and res
 If routing isn't staffed yet, the gate falls back instead of blocking:
 
 - **`.github/review-routing.yml` missing, or the matching domain pools empty:** any approver with write access satisfies the domain or resource-owner requirement. If the file exists but can't be parsed, or `pools` isn't a mapping, the gate fails instead of falling back, so a broken edit can't relax approvals.
-- **`core-maintainers` pool empty:** a high-risk PR needs its approval from a user with `admin` or `maintain` permission.
+- **`core-maintainers` pool empty:** high risk does not use that fallback. `require_core` is false, so an empty core pool does not demand an admin or maintain approval.
 
 The `submission-gate` check reports `action_required` ("Action required") rather than `failure` when the only thing blocking a PR is a missing approval, so it reads as "waiting for a reviewer" instead of a broken workflow. The check summary lists exactly what is missing. It still blocks merging like any non-passing required check. Failed checks and requested changes still report `failure`.
 
@@ -225,7 +227,7 @@ Commands use the same reader/writer split as the gate, so they work on PRs from 
 - **Only trusted code runs.** No workflow here executes PR code with a write token. The gate loads its logic from the base commit, except in the bootstrap case described above, which still has only a read-only token. The writer and command workflows check out the default branch and install dependencies with `npm ci --ignore-scripts`.
 - **Contributor reputation artifact.** It is used only as a raise-only signal. It must match schema `contributor-check-result/v1` and the PR head SHA. If the `pr-check` job succeeded but the artifact is missing or unreadable, the gate records an infrastructure failure and blocks until a later sweep reads it, so a lost `HIGH` signal can't lower the tier.
 - **Untrusted text.** Comment bodies are never interpolated into scripts: the reader passes them through environment variables, and the writer re-reads them from the API. Reviewer logins, check names, and details are sanitized before they go into markdown.
-- **Tampering with other checks.** A PR can also edit the validation workflows the gate waits for. Any such edit touches `.github/**`, which makes the PR `merge-risk:high`: 1 approval from a core maintainer. The writer computes that tier from default-branch code.
+- **Tampering with other checks.** A PR can also edit the validation workflows the gate waits for. Any such edit touches `.github/**`, which makes the PR `merge-risk:high`. On this fork that tier requires no approvals. The writer computes that tier from default-branch code.
 - **Check source.** Check runs created with `GITHUB_TOKEN` belong to the GitHub Actions app, the same app as `pull_request` jobs. Requiring `submission-gate` from GitHub Actions in the ruleset blocks other apps and commit statuses; impostor detection covers jobs in the same app.
 - **Events.** Check runs created with `GITHUB_TOKEN` don't trigger `check_run` workflows. Automation that reacts to the gate should listen for `workflow_run` on **Submission Gate Writer**.
 - **Rate limits.** The hourly writer sweep refreshes at most 60 open PRs updated in the last 30 days, so a large backlog stays within API rate limits.
@@ -236,7 +238,7 @@ These steps need repository-admin action and are not done by automation:
 
 - **Require `submission-gate`** in the `main` ruleset, with GitHub Actions as the source. The writer publishes this check after this change merges; until then no PR reports it.
 - **Create the new labels** by running the **Setup Repository Labels** workflow: `awaiting-automation`, `review-in-progress`, `merge-risk:*`.
-- **Staff the pools** in `.github/review-routing.yml` so the domain and core requirements stop using fallbacks.
+- **Staff the pools** in `.github/review-routing.yml` only if this fork should start requiring domain or resource-owner reviews again. The approval count is already 0, and `require_core` is false, so staffing `core-maintainers` does not add a high-tier approval. Staffing a domain pool does start requiring that pool's reviewer, because `require_domain` and `require_owner` are still set.
 - **Harden the check source:** publish `submission-gate` from a dedicated GitHub App and require it from that app in the ruleset, so no other workflow can post a matching check.
 - **Require Code Owner review** for `.github/**` once Phase 1's `CODEOWNERS` lands.
 - **Fix PR Quality Signal auth:** add `copilot-requests: write` to `.github/workflows/pr-quality-signal.md` and recompile with gh-aw v0.88.8.
