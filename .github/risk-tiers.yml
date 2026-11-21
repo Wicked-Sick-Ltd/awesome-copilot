@@ -87,13 +87,17 @@ high:
     # Applied by the Contributor Reputation Check writer.
     - "needs-review:HIGH"
   approvals:
-    required: 1
-    require_core: true
+    # Fork policy (2026-11-21): no reviewer rota. The count is zero, and a core
+    # maintainer is not required. require_core stays false so an empty core pool
+    # cannot fall back to an admin or maintain approval.
+    required: 0
+    require_core: false
 
 medium:
   description: New or substantially changed resource without privileged execution
   approvals:
-    required: 1
+    # Count is zero. require_domain still applies when that pool is staffed.
+    required: 0
     require_domain: true
 
 low:
@@ -124,10 +128,9 @@ low:
       - "plugins/**"
       - "extensions/**"
   approvals:
-    # One approval from an owner of the changed resource (its domain pool, or the core
-    # pools for files outside every domain). Until pools are staffed, any approver with
-    # write access counts.
-    required: 1
+    # Count is zero. require_owner still names the owner pool when one is staffed.
+    # An empty pool does not demand a review.
+    required: 0
     require_owner: true
 
 # Areas used to pick the domain reviewer pool from .github/review-routing.yml.

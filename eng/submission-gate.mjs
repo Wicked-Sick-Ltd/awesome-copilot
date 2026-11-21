@@ -278,7 +278,8 @@ export function touchedDomains(files, domains = {}) {
  */
 export function evaluateApprovals({ tier, tiers, reviews = [], author, permissions = new Map(), routing = null, files = [] }) {
   const policy = tiers[tier]?.approvals || {};
-  const required = Number(policy.required || 1);
+  // `??` keeps an explicit 0. `||` would treat 0 as missing and require 1.
+  const required = Number(policy.required ?? 1);
   const pools = normalizeRouting(routing);
   const allPoolMembers = unionPools(pools, [...pools.keys()]);
   const authorLogin = String(author || "").toLowerCase();
